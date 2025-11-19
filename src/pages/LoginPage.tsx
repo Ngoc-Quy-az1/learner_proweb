@@ -51,11 +51,14 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-block transform hover:scale-105 transition-transform duration-200">
-            <div className="w-20 h-20 bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-2xl animate-float">
-              <span className="text-white font-bold text-4xl">S</span>
+            <div className="flex items-center justify-center space-x-3 mb-4">
+              <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-20 w-auto shadow-2xl animate-float" />
+              <h1 className="text-4xl font-semibold drop-shadow-lg font-display">
+                <span style={{ color: '#528fcd' }}>skillar</span>
+                <span style={{ color: '#032757' }}>Tutor</span>
+              </h1>
             </div>
           </Link>
-          <h1 className="text-4xl font-extrabold text-white mb-2 drop-shadow-lg">SKILLAR</h1>
           <p className="text-white/90 font-medium drop-shadow-md">Where Growth Begins</p>
         </div>
 

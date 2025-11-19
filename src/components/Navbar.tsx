@@ -10,9 +10,9 @@ interface NavbarProps {
 
 export default function Navbar({ variant = 'home', showSearch = false, showNavLinks = false }: NavbarProps) {
   return (
-    <nav className="relative z-50 bg-white/10 backdrop-blur-lg border-b border-white/20 sticky top-0">
+    <nav className="relative z-50 bg-white/10 backdrop-blur-lg border-b border-white/5 sticky top-0">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
+        <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center">
             <Logo size="md" showTagline={false} taglineColor="white" />

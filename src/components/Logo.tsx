@@ -43,28 +43,27 @@ export default function Logo({ className = '', showTagline = true, size = 'md', 
     return 'text-black'
   }
 
+  const logoSize = {
+    sm: 'h-8 w-auto',
+    md: 'h-10 w-auto',
+    lg: 'h-12 w-auto',
+    xl: 'h-16 md:h-20 w-auto',
+  }[size]
+
+  const textSize = {
+    sm: 'text-lg',
+    md: 'text-xl',
+    lg: 'text-2xl',
+    xl: 'text-3xl md:text-4xl',
+  }[size]
+
   return (
     <Link to="/" className={`flex items-center ${classes.container} ${className}`}>
-      <div className="flex items-end gap-2">
-        <div className="flex items-center space-x-2">
-          <div className="flex items-center justify-center rounded-2xl bg-gradient-to-br from-sky-400 to-sky-300 w-9 h-9 shadow-lg text-white font-extrabold text-lg">
-            S
-          </div>
-          <span
-            className={`font-black uppercase ${classes.logo} text-[#8fd8ff] leading-none tracking-[0.35em]`}
-            style={{ letterSpacing: '0.2em' }}
-          >
-            SKILL
-            <span className="relative inline-block text-[#8fd8ff]">
-              A
-              <span
-                className={`absolute left-1/2 transform -translate-x-1/2 rounded-full bg-[#c7c7c7] ${classes.dot} block`}
-              ></span>
-            </span>
-            R
-          </span>
-        </div>
-      </div>
+      <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className={logoSize} />
+      <span className={`font-semibold ${textSize} font-display`}>
+        <span style={{ color: '#528fcd' }}>skillar</span>
+        <span style={{ color: '#032757' }}>Tutor</span>
+      </span>
       {showTagline && (
         <span className={`font-light tracking-wide ${getTaglineColor()} ${classes.tagline}`}>
           Where Growth Begins

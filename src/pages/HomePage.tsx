@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BookOpen, Users, BarChart3, Shield, Sparkles, TrendingUp, CheckCircle2, Mail, Lock, LogIn } from 'lucide-react'
+import { BookOpen, Users, BarChart3, Shield, Sparkles, TrendingUp, CheckCircle2, Mail, Lock, LogIn, Phone, Download, X } from 'lucide-react'
 import VideoBackground from '../components/VideoBackground'
 import Logo from '../components/Logo'
 import Navbar from '../components/Navbar'
@@ -11,6 +11,9 @@ export default function HomePage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showRegistrationForm, setShowRegistrationForm] = useState(false)
+  const [registrationPhone, setRegistrationPhone] = useState('')
+  const [registrationError, setRegistrationError] = useState('')
   const { login } = useAuth()
   const navigate = useNavigate()
 
@@ -52,26 +55,28 @@ export default function HomePage() {
             <div className="text-white space-y-6 lg:space-y-8 px-6 sm:px-8 lg:px-12 xl:px-20">
               {/* Prominent Logo */}
               <div className="mb-4 lg:mb-6 animate-float">
-                <div className="inline-block bg-white/10 backdrop-blur-md px-6 py-4 lg:px-8 lg:py-6 rounded-xl border border-white/20 shadow-xl hover:shadow-2xl transition-all duration-300">
-                  <Logo size="lg" showTagline={true} taglineColor="white" />
+                <div className="inline-block bg-white/10 backdrop-blur-md px-8 py-6 lg:px-12 lg:py-8 rounded-xl border border-white/20 shadow-xl hover:shadow-2xl transition-all duration-300">
+                  <Logo size="xl" showTagline={true} taglineColor="white" />
                 </div>
               </div>
               
-              <div className="space-y-4 lg:space-y-5">
-                <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-6xl xl:text-7xl font-extrabold leading-[1.1]">
-                  <span className="text-white block">Hệ thống quản lý</span>
-                  <span className="text-primary-400 block">học tập thông minh</span>
+              <div className="space-y-5 lg:space-y-6">
+                <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-6xl xl:text-7xl font-extrabold leading-tight tracking-tight">
+                  <span className="text-white block mb-2">Hệ thống quản lý</span>
+                  <span className="text-primary-400 block mb-2">học tập thông minh</span>
                   <span className="text-white block">cho mọi người</span>
                 </h1>
-                <p className="text-base sm:text-lg text-white/85 leading-relaxed max-w-xl">
-                  Hệ thống quản lý học tập là chuyên ngành của dòng thiết kế. Chúng tôi sử dụng HTML, CSS, 
-                  phần mềm chỉnh sửa WYSIWYG, trình xác thực đánh dấu, v.v., để tạo các phần tử thiết kế.
+                <p className="text-lg sm:text-xl text-white/90 leading-relaxed max-w-2xl font-medium">
+                Học tập chính là hành trình khai phóng tư duy, liên tục tiếp thu và ứng dụng tri thức mới, từ đó mở rộng tầm nhìn, chinh phục mọi thách thức, kiến tạo nên phiên bản tốt nhất của chính bản thân chúng ta mỗi ngày.
                 </p>
               </div>
               
-              <div className="pt-2">
-                <button className="bg-primary-500 hover:bg-primary-600 text-white px-8 py-3 rounded-lg font-bold text-base uppercase transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
-                  Tham gia ngay
+              <div className="pt-4">
+                <button 
+                  onClick={() => setShowRegistrationForm(true)}
+                  className="bg-primary-500 hover:bg-primary-600 text-white px-10 py-4 rounded-xl font-bold text-lg uppercase transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 tracking-wide"
+                >
+                  THAM GIA NGAY
                 </button>
               </div>
             </div>
@@ -220,6 +225,113 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Registration Form Modal */}
+      {showRegistrationForm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto relative">
+            <button
+              onClick={() => {
+                setShowRegistrationForm(false)
+                setRegistrationPhone('')
+                setRegistrationError('')
+              }}
+              className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="p-8">
+              <div className="text-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-900 mb-2">Đăng ký tham gia</h2>
+                <p className="text-gray-600">Điền thông tin để nhận form đăng ký</p>
+              </div>
+
+              {registrationError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+                  {registrationError}
+                </div>
+              )}
+
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (!registrationPhone || registrationPhone.trim() === '') {
+                    setRegistrationError('Vui lòng nhập số điện thoại')
+                    return
+                  }
+                  if (!/^[0-9]{10,11}$/.test(registrationPhone.replace(/\s/g, ''))) {
+                    setRegistrationError('Số điện thoại không hợp lệ')
+                    return
+                  }
+                  // Download form logic here
+                  const link = document.createElement('a')
+                  link.href = '/registration-form.pdf' // Đường dẫn tới file form PDF
+                  link.download = 'form-dang-ky-skillar.pdf'
+                  document.body.appendChild(link)
+                  link.click()
+                  document.body.removeChild(link)
+                  
+                  setRegistrationError('')
+                  setRegistrationPhone('')
+                  setShowRegistrationForm(false)
+                }}
+                className="space-y-5"
+              >
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Số điện thoại <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                    <input
+                      type="tel"
+                      value={registrationPhone}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '')
+                        setRegistrationPhone(value)
+                        setRegistrationError('')
+                      }}
+                      placeholder="Nhập số điện thoại của bạn"
+                      className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 pl-12 pr-4 py-4 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 focus:outline-none transition-all"
+                      required
+                      maxLength={11}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Ví dụ: 0912345678</p>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRegistrationForm(false)
+                      setRegistrationPhone('')
+                      setRegistrationError('')
+                    }}
+                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-3 rounded-xl font-semibold transition-all duration-200"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 bg-primary-500 hover:bg-primary-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
+                  >
+                    <Download className="w-5 h-5" />
+                    <span>Tải form đăng ký</span>
+                  </button>
+                </div>
+              </form>
+
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <p className="text-xs text-gray-500 text-center">
+                  Bằng cách đăng ký, bạn đồng ý với <a href="#" className="text-primary-600 hover:underline">Điều khoản sử dụng</a> và <a href="#" className="text-primary-600 hover:underline">Chính sách bảo mật</a> của chúng tôi
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="relative z-10 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white py-12">

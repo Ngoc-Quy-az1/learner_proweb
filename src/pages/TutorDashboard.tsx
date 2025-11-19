@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import Layout from '../components/Layout'
 import TutorSidebar from '../components/TutorSidebar'
 import ChecklistTable, { ChecklistItem } from '../components/ChecklistTable'
-import { Users, Calendar, FileText, Plus, Clock, TrendingUp, UserCircle, Download, Award, Copy, ChevronRight, Upload, BookOpen, ChevronUp, ChevronDown, Star } from 'lucide-react'
+import MonthlyCalendar from '../components/MonthlyCalendar'
+import { ScheduleItem } from '../components/ScheduleWidget'
+import { Users, Calendar, FileText, Plus, Clock, TrendingUp, UserCircle, Download, Award, Copy, ChevronRight, Upload, BookOpen, ChevronUp, ChevronDown, Star, Mail, Phone, MapPin, MessageSquare, School, GraduationCap, Cake, Search, Filter } from 'lucide-react'
 import { format, isToday } from 'date-fns'
 
 interface TutorSchedule {
@@ -24,6 +26,7 @@ interface TutorChecklistDetail {
   solution: string
   note: string
   uploadedFile?: string
+  assignmentFileName?: string // File bài tập
 }
 
 interface HomeworkItem {
@@ -105,6 +108,17 @@ export default function TutorDashboard() {
   // State riêng cho home section (chỉ hiển thị hôm nay)
   const [expandedSubjectsHome, setExpandedSubjectsHome] = useState<Record<string, boolean>>({})
   const [selectedSubjectStudentsHome, setSelectedSubjectStudentsHome] = useState<Record<string, string[]>>({}) // subject -> studentIds
+  const [selectedPreviousTimeSlot, setSelectedPreviousTimeSlot] = useState<string | null>(null)
+  const [showTimeSlotDropdown, setShowTimeSlotDropdown] = useState(false)
+  const [selectedPreviousStudent, setSelectedPreviousStudent] = useState<string | null>(null)
+  const [expandedChecklistSubjects, setExpandedChecklistSubjects] = useState<Record<string, boolean>>({}) // subject -> expanded
+  // Bộ lọc cho checklist
+  const [checklistSearchQuery, setChecklistSearchQuery] = useState<string>('')
+  const [checklistDateRange, setChecklistDateRange] = useState<'all' | 'week' | 'month' | 'custom'>('all')
+  const [checklistCustomStartDate, setChecklistCustomStartDate] = useState<string>('')
+  const [checklistCustomEndDate, setChecklistCustomEndDate] = useState<string>('')
+  const [checklistSelectedStudent, setChecklistSelectedStudent] = useState<string>('all') // 'all' hoặc studentId
+  const [checklistSelectedTimeSlot, setChecklistSelectedTimeSlot] = useState<string>('all') // 'all' hoặc time slot
   
   // Đánh giá môn học theo studentId và subject
   const [subjectEvaluations, setSubjectEvaluations] = useState<Record<string, Record<string, SubjectEvaluation>>>({
@@ -561,6 +575,28 @@ export default function TutorDashboard() {
     [schedulesByDate]
   )
 
+  // Convert TutorSchedule to ScheduleItem for MonthlyCalendar
+  const calendarSchedules = useMemo<ScheduleItem[]>(() => {
+    return tutorSchedules.map((schedule): ScheduleItem => {
+      const status = getScheduleStatus(schedule)
+      const statusMap: Record<string, 'upcoming' | 'ongoing' | 'completed'> = {
+        'in_progress': 'ongoing',
+        'upcoming': 'upcoming',
+        'completed': 'completed',
+      }
+      return {
+        id: schedule.id,
+        subject: schedule.subject,
+        time: schedule.time,
+        date: schedule.date,
+        meetLink: schedule.meetLink,
+        tutor: schedule.student, // Display student name in calendar
+        note: `Học sinh: ${schedule.student}`,
+        status: statusMap[status] || 'upcoming',
+      }
+    })
+  }, [tutorSchedules, getScheduleStatus])
+
   const todayTutorSchedules = useMemo(
     () => tutorSchedules.filter(schedule => isToday(schedule.date)),
     [tutorSchedules]
@@ -570,6 +606,41 @@ export default function TutorDashboard() {
     () => students.filter((student) => todayStudentIds.has(student.id)),
     [students, todayStudentIds]
   )
+
+  const getScheduleStartDateTime = (schedule: TutorSchedule) => {
+    const [startRaw] = schedule.time.split(' - ')
+    const startDate = new Date(schedule.date)
+    if (startRaw) {
+      const [hours, minutes] = startRaw.split(':').map(Number)
+      startDate.setHours(hours || 0, minutes || 0, 0, 0)
+    }
+    return startDate
+  }
+
+  const upcomingSchedule = useMemo(() => {
+    const now = new Date()
+    const upcoming = tutorSchedules
+      .map((schedule) => ({ schedule, start: getScheduleStartDateTime(schedule) }))
+      .filter(({ start }) => start >= now)
+      .sort((a, b) => a.start.getTime() - b.start.getTime())[0]
+    return upcoming ? upcoming.schedule : null
+  }, [tutorSchedules])
+
+  const averageStudentProgress = useMemo(() => {
+    if (students.length === 0) return 0
+    const total = students.reduce((sum, student) => sum + (student.progress || 0), 0)
+    return Math.round(total / students.length)
+  }, [students])
+
+  const pendingChecklistCount = useMemo(() => {
+    return Object.values(checklistItemsByStudent).reduce((sum, items) => {
+      return sum + items.filter((item) => item.status !== 'done').length
+    }, 0)
+  }, [checklistItemsByStudent])
+
+  const uniqueSubjectsCount = useMemo(() => {
+    return new Set(tutorSchedules.map((schedule) => schedule.subject)).size
+  }, [tutorSchedules])
 
   const scheduleSlots = useMemo<ScheduleSlotGroup[]>(() => {
     const slotMap: Record<string, { id: string; time: string; meetLink?: string; subjects: Set<string>; schedules: TutorSchedule[] }> = {}
@@ -598,6 +669,20 @@ export default function TutorDashboard() {
       schedules: slot.schedules,
     }))
   }, [todayTutorSchedules])
+
+  // Đóng dropdown khi click bên ngoài
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('.time-slot-dropdown')) {
+        setShowTimeSlotDropdown(false)
+      }
+    }
+    if (showTimeSlotDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showTimeSlotDropdown])
 
   useEffect(() => {
     if (scheduleSlots.length === 0) {
@@ -988,7 +1073,7 @@ export default function TutorDashboard() {
                     <td className="px-4 py-3 min-w-[200px]">
                       {homework.studentSolutionFile ? (
                         <div className="flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-green-600 flex-shrink-0" />
+                          <FileText className="w-4 h-4 text-primary-600 flex-shrink-0" />
                           <span className="text-xs text-gray-700 break-all whitespace-normal flex-1">{homework.studentSolutionFile}</span>
                           <Download className="w-4 h-4 text-gray-500 hover:text-primary-600 cursor-pointer flex-shrink-0" />
                         </div>
@@ -1163,8 +1248,8 @@ export default function TutorDashboard() {
     )
 
     return (
-      <div className="mt-4 bg-white rounded-xl border-2 border-gray-200 p-4 space-y-4">
-        <h3 className="text-sm font-bold text-gray-900 mb-3">Đánh giá chi tiết môn học</h3>
+      <div className="bg-white rounded-xl border-2 border-gray-200 p-4 space-y-4">
+        <h3 className="text-sm font-bold text-gray-900 mb-3">{subject === 'general' ? 'Đánh giá chi tiết' : 'Đánh giá chi tiết môn học'}</h3>
         {evaluationCriteria.map((criterion) => (
           <div key={criterion.key} className="border-b border-gray-100 pb-4 last:border-b-0">
             <div className="flex items-start justify-between mb-2">
@@ -1184,16 +1269,6 @@ export default function TutorDashboard() {
             </div>
           </div>
         ))}
-        <div className="mt-4">
-          <label className="block text-sm font-semibold text-gray-900 mb-2">Đánh giá chung</label>
-          <textarea
-            value={evaluation.generalComment}
-            onChange={(e) => handleEvaluationChange(studentId, subject, 'generalComment', e.target.value)}
-            className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none bg-white text-sm text-gray-700"
-            rows={3}
-            placeholder="Nhập đánh giá chung về học sinh trong môn học này..."
-          />
-        </div>
       </div>
     )
   }
@@ -1217,6 +1292,19 @@ export default function TutorDashboard() {
     setChecklistForm((prev) => {
       const nextExercises = [...prev.exercises]
       nextExercises[index] = { ...nextExercises[index], [field]: value }
+      return { ...prev, exercises: nextExercises }
+    })
+  }
+
+  const adjustEstimatedTime = (index: number, delta: number) => {
+    setChecklistForm((prev) => {
+      const nextExercises = [...prev.exercises]
+      const currentValue = parseInt(nextExercises[index]?.estimatedTime?.toString() || '0', 10) || 0
+      const updatedValue = Math.max(0, currentValue + delta)
+      nextExercises[index] = {
+        ...nextExercises[index],
+        estimatedTime: updatedValue === 0 ? '' : `${updatedValue}`,
+      }
       return { ...prev, exercises: nextExercises }
     })
   }
@@ -1266,7 +1354,7 @@ export default function TutorDashboard() {
         {/* Main Layout - 2 Columns */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Left Column - Profile & Resources */}
-          <div className="lg:col-span-1 space-y-4 lg:sticky lg:top-6 self-start">
+          <div className="lg:col-span-1 space-y-4 lg:sticky lg:top-1 self-start">
             {/* Profile Card */}
             <div className="card-no-transition">
               <div className="text-center mb-6">
@@ -1292,13 +1380,55 @@ export default function TutorDashboard() {
                   const homeProgress = homeTotal > 0 ? Math.round((homeCompleted / homeTotal) * 100) : 0
                   
                   return (
-                    <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-3 text-center border border-green-200">
-                      <TrendingUp className="w-6 h-6 text-green-600 mx-auto mb-1" />
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-3 text-center border border-blue-200">
+                      <TrendingUp className="w-6 h-6 text-primary-600 mx-auto mb-1" />
                       <p className="text-xs text-gray-600 mb-1">Tiến độ</p>
                       <p className="text-xl font-bold text-gray-900">{homeProgress}%</p>
                     </div>
                   )
                 })()}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="rounded-xl border border-gray-100 bg-white/60 p-3 text-left shadow-sm">
+                  <p className="text-xs text-gray-500 mb-1 font-semibold">Buổi hôm nay</p>
+                  <p className="text-2xl font-extrabold text-gray-900">{todayTutorSchedules.length}</p>
+                  <p className="text-[11px] text-gray-500 mt-1">Tổng {tutorSchedules.length} buổi được lên lịch</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white/60 p-3 text-left shadow-sm">
+                  <p className="text-xs text-gray-500 mb-1 font-semibold">Nhiệm vụ đang mở</p>
+                  <p className="text-2xl font-extrabold text-gray-900">{pendingChecklistCount}</p>
+                  <p className="text-[11px] text-gray-500 mt-1">Checklist chưa hoàn thành</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="rounded-xl border border-gray-100 bg-gradient-to-br from-white to-blue-50 p-3">
+                  <p className="text-xs text-gray-500 mb-1 font-semibold">Tiến độ trung bình</p>
+                  <p className="text-2xl font-extrabold text-primary-600">{averageStudentProgress}%</p>
+                  <p className="text-[11px] text-gray-500 mt-1">Trên toàn bộ học sinh</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gradient-to-br from-white to-blue-50 p-3">
+                  <p className="text-xs text-gray-500 mb-1 font-semibold">Môn đang dạy</p>
+                  <p className="text-2xl font-extrabold text-primary-600">{uniqueSubjectsCount}</p>
+                  <p className="text-[11px] text-gray-500 mt-1">Theo lịch hiện tại</p>
+                </div>
+              </div>
+
+              <div className="border-2 border-dashed border-primary-200 rounded-2xl p-4 bg-gradient-to-br from-primary-50 to-blue-50 text-left">
+                <p className="text-xs font-semibold text-primary-600 mb-2">Buổi dạy sắp tới</p>
+                {upcomingSchedule ? (
+                  <>
+                    <p className="text-base font-bold text-gray-900">{upcomingSchedule.student}</p>
+                    <p className="text-sm text-gray-600 mb-2">{upcomingSchedule.subject}</p>
+                    <div className="flex items-center justify-between text-xs text-gray-600">
+                      <span>{format(upcomingSchedule.date, 'dd/MM/yyyy')}</span>
+                      <span className="font-semibold">{upcomingSchedule.time}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-600">Không có buổi nào sắp tới</p>
+                )}
               </div>
             </div>
 
@@ -1468,7 +1598,18 @@ export default function TutorDashboard() {
 
           {/* Quick Actions - Large Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="card-no-transition border-2 border-gray-200 hover:border-primary-400 hover:shadow-xl cursor-pointer group">
+            <div
+              className="card-no-transition border-2 border-gray-200 hover:border-primary-400 hover:shadow-xl cursor-pointer group"
+              onClick={() => setActiveSection('students')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setActiveSection('students')
+                }
+              }}
+            >
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <div className="w-20 h-20 bg-gradient-to-br from-primary-500 to-primary-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg">
                   <Users className="w-10 h-10 text-white" />
@@ -1492,23 +1633,521 @@ export default function TutorDashboard() {
             </div>
           </div>
 
-          {/* Checklist Section */}
+          {/* Khung giờ học trước - Checklist Section */}
           <div className="card-no-transition">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900 mb-1">Checklist bài học</h2>
-                <p className="text-sm text-gray-600">
-                  {selectedStudentData && `${selectedStudentData.name} - ${selectedStudentData.subject}`}
-                </p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button onClick={() => openChecklistForm(selectedStudent)} className="btn-secondary flex items-center space-x-2 text-sm">
-                  <Plus className="w-4 h-4" />
-                  <span>Thêm bài mới</span>
+            <div className="mb-6 pb-4 border-b-2 border-primary-200">
+              <h2 className="text-xl font-bold text-gray-900 mb-2">Khung giờ học trước</h2>
+              <p className="text-sm text-gray-600">Quản lý checklist bài học cho các buổi học trước</p>
+            </div>
+            
+            {/* Khung chọn khung giờ học */}
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Chọn khung giờ học:</label>
+              <div className="relative time-slot-dropdown">
+                <button
+                  onClick={() => setShowTimeSlotDropdown(!showTimeSlotDropdown)}
+                  className="w-full flex items-center justify-between px-4 py-3 border-2 border-gray-200 rounded-xl bg-white hover:border-primary-300 hover:bg-gray-50 transition-all text-left"
+                >
+                  <div className="flex items-center space-x-3">
+                    <Clock className="w-5 h-5 text-primary-600" />
+                    <span className="text-base font-semibold text-gray-900">
+                      {selectedPreviousTimeSlot || 'Chọn khung giờ học'}
+                    </span>
+                  </div>
+                  {showTimeSlotDropdown ? (
+                    <ChevronUp className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  )}
                 </button>
+                
+                {showTimeSlotDropdown && (
+                  <div className="absolute z-10 w-full mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                    {scheduleSlots.length > 0 ? (
+                      scheduleSlots.map((slot) => (
+                        <button
+                          key={slot.id}
+                          onClick={() => {
+                            setSelectedPreviousTimeSlot(slot.time)
+                            setShowTimeSlotDropdown(false)
+                          }}
+                          className={`w-full px-4 py-3 text-left hover:bg-primary-50 transition-colors border-b border-gray-100 last:border-b-0 ${
+                            selectedPreviousTimeSlot === slot.time
+                              ? 'bg-primary-50 border-l-4 border-l-primary-500'
+                              : ''
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-bold text-gray-900">{slot.time}</p>
+                              <p className="text-xs text-gray-600 mt-1">
+                                {slot.subjects.join(', ')} · {slot.schedules.length} học sinh
+                              </p>
+                            </div>
+                            {selectedPreviousTimeSlot === slot.time && (
+                              <div className="w-2 h-2 bg-primary-500 rounded-full"></div>
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                        Không có khung giờ học nào
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
+            
+            {selectedPreviousTimeSlot && (
+              <div className="space-y-4">
+                {/* Chọn học sinh */}
+                {!selectedPreviousStudent && (
+                  <div className="mb-6">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Chọn học sinh:</label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {(() => {
+                        const selectedSlot = scheduleSlots.find(slot => slot.time === selectedPreviousTimeSlot)
+                        if (!selectedSlot) return null
+                        return selectedSlot.schedules.map((schedule) => {
+                          const student = students.find(s => s.id === schedule.studentId)
+                          if (!student) return null
+                          return (
+                            <button
+                              key={schedule.studentId}
+                              onClick={() => setSelectedPreviousStudent(schedule.studentId)}
+                              className="p-4 border-2 border-gray-200 rounded-xl bg-white hover:border-primary-300 hover:bg-gray-50 transition-all text-left"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="font-bold text-sm text-gray-900">{student.name}</p>
+                                <UserCircle className="w-5 h-5 text-primary-600" />
+                              </div>
+                              <p className="text-xs text-gray-600">{schedule.subject}</p>
+                            </button>
+                          )
+                        })
+                      })()}
+                    </div>
+                  </div>
+                )}
 
+                {/* Hiển thị 3 phần khi đã chọn học sinh */}
+                {selectedPreviousStudent && (() => {
+                  const selectedSlot = scheduleSlots.find(slot => slot.time === selectedPreviousTimeSlot)
+                  if (!selectedSlot) return null
+                  const studentSchedules = selectedSlot.schedules.filter(s => s.studentId === selectedPreviousStudent)
+                  const student = students.find(s => s.id === selectedPreviousStudent)
+                  if (!student) return null
+
+                  return (
+                    <div className="space-y-6">
+                      {/* Header với nút quay lại */}
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <button
+                            onClick={() => setSelectedPreviousStudent(null)}
+                            className="text-sm text-primary-600 hover:text-primary-700 mb-2 flex items-center space-x-1"
+                          >
+                            <ChevronRight className="w-4 h-4 rotate-180" />
+                            <span>Chọn lại học sinh</span>
+                          </button>
+                          <h3 className="text-lg font-bold text-gray-900">{student.name}</h3>
+                          <p className="text-sm text-gray-600">Khung giờ: {selectedPreviousTimeSlot}</p>
+                        </div>
+                        <button onClick={() => openChecklistForm(selectedPreviousStudent)} className="btn-secondary flex items-center space-x-2 text-sm">
+                          <Plus className="w-4 h-4" />
+                          <span>Thêm bài mới</span>
+                        </button>
+                      </div>
+
+                      {/* PHẦN 1: CHECKLIST - Theo từng môn */}
+                      <div className="space-y-6">
+                        <h4 className="text-xl font-bold text-gray-900 mb-4">Checklist</h4>
+                        {studentSchedules.map((schedule) => {
+                          const subject = schedule.subject
+                          const studentData = subjectsDataToday
+                            .find(sd => sd.subject === subject)
+                            ?.students.find(s => s.studentId === selectedPreviousStudent)
+                          if (!studentData) return null
+
+                          const items = studentData.checklistItems
+                          const detailItems = studentData.detailItems
+                          const isExpanded = expandedChecklistSubjects[subject] ?? true
+
+                          return (
+                            <div key={subject} className="bg-white rounded-xl border-2 border-gray-200 p-6 space-y-6">
+                              {/* Subject Header với nút thu gọn/mở rộng */}
+                              <button
+                                onClick={() => setExpandedChecklistSubjects(prev => ({ ...prev, [subject]: !prev[subject] }))}
+                                className="w-full flex items-center justify-between pb-4 border-b border-gray-200"
+                              >
+                                <div className="flex items-center space-x-2">
+                                  <BookOpen className="w-5 h-5 text-primary-600" />
+                                  <h5 className="text-lg font-bold text-gray-900">{subject}</h5>
+                                </div>
+                                {isExpanded ? (
+                                  <ChevronUp className="w-5 h-5 text-gray-500" />
+                                ) : (
+                                  <ChevronDown className="w-5 h-5 text-gray-500" />
+                                )}
+                              </button>
+
+                              {/* Checklist Table */}
+                              {isExpanded && items.length > 0 ? (
+                                <div className="bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
+                                  <div className="overflow-x-auto">
+                                    <table className="min-w-full text-sm">
+                                      <thead className="bg-gray-100 border-b border-gray-200">
+                                        <tr>
+                                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Bài học</th>
+                                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Nhiệm vụ</th>
+                                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Trạng thái</th>
+                                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Ghi chú</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100 bg-white">
+                                        {items.map((item) => (
+                                          <tr key={item.id} className="hover:bg-gray-50">
+                                            <td className="px-4 py-2">
+                                              {editingField?.type === 'lesson' && editingField.itemId === item.id ? (
+                                                <input
+                                                  type="text"
+                                                  value={item.lesson}
+                                                  onChange={(e) => handleLessonChange(item.id, e.target.value)}
+                                                  onBlur={() => setEditingField(null)}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      setEditingField(null)
+                                                    }
+                                                  }}
+                                                  autoFocus
+                                                  className="text-xs font-semibold text-gray-900 w-full px-2 py-1 border-2 border-primary-500 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                                                  placeholder="Tên bài học"
+                                                />
+                                              ) : (
+                                                <div
+                                                  onClick={() => setEditingField({ type: 'lesson', itemId: item.id })}
+                                                  className="text-xs font-semibold text-gray-900 px-2 py-1 rounded-lg cursor-pointer hover:bg-gray-100 min-h-[28px] flex items-center"
+                                                >
+                                                  {item.lesson || <span className="text-gray-400">Tên bài học</span>}
+                                                </div>
+                                              )}
+                                            </td>
+                                            <td className="px-4 py-2">
+                                              {editingField?.type === 'task' && editingField.itemId === item.id ? (
+                                                <input
+                                                  type="text"
+                                                  value={item.task}
+                                                  onChange={(e) => handleTaskChange(item.id, e.target.value)}
+                                                  onBlur={() => setEditingField(null)}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      setEditingField(null)
+                                                    }
+                                                  }}
+                                                  autoFocus
+                                                  className="text-xs text-gray-600 w-full px-2 py-1 border-2 border-primary-500 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                                                  placeholder="Nhiệm vụ"
+                                                />
+                                              ) : (
+                                                <div
+                                                  onClick={() => setEditingField({ type: 'task', itemId: item.id })}
+                                                  className="text-xs text-gray-600 px-2 py-1 rounded-lg cursor-pointer hover:bg-gray-100 min-h-[28px] flex items-center"
+                                                >
+                                                  {item.task || <span className="text-gray-400">Nhiệm vụ</span>}
+                                                </div>
+                                              )}
+                                            </td>
+                                            <td className="px-4 py-2">
+                                              <select
+                                                value={item.status}
+                                                onChange={(e) =>
+                                                  handleStatusChange(item.id, e.target.value as ChecklistItem['status'])
+                                                }
+                                                className={`text-xs px-2 py-1 rounded-lg border-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all cursor-pointer ${
+                                                  item.status === 'done'
+                                                    ? 'bg-green-50 text-green-700 border-green-200'
+                                                    : item.status === 'in_progress'
+                                                      ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                                      : 'bg-gray-50 text-gray-600 border-gray-200'
+                                                }`}
+                                              >
+                                                <option value="not_done">Chưa xong</option>
+                                                <option value="in_progress">Đang làm</option>
+                                                <option value="done">Đã xong</option>
+                                              </select>
+                                            </td>
+                                            <td className="px-4 py-2">
+                                              {editingField?.type === 'note' && editingField.itemId === item.id ? (
+                                                <input
+                                                  type="text"
+                                                  value={item.note || ''}
+                                                  onChange={(e) => handleNoteChange(item.id, e.target.value)}
+                                                  onBlur={() => setEditingField(null)}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      setEditingField(null)
+                                                    }
+                                                  }}
+                                                  autoFocus
+                                                  className="text-xs text-gray-600 w-full px-2 py-1 border-2 border-primary-500 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                                                  placeholder="—"
+                                                />
+                                              ) : (
+                                                <div
+                                                  onClick={() => setEditingField({ type: 'note', itemId: item.id })}
+                                                  className="text-xs text-gray-600 px-2 py-1 rounded-lg cursor-pointer hover:bg-gray-100 min-h-[28px] flex items-center"
+                                                >
+                                                  {item.note || <span className="text-gray-400">—</span>}
+                                                </div>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              ) : isExpanded ? (
+                                <p className="text-sm text-gray-500 italic">Chưa có checklist cho môn này.</p>
+                              ) : null}
+
+                              {/* Chi tiết bài tập */}
+                              {isExpanded && detailItems.length > 0 && (
+                                <div className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+                                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-white">
+                                    <p className="text-sm font-semibold text-gray-900">Chi tiết bài tập</p>
+                                    <div className="flex items-center space-x-2">
+                                      <button className="text-xs font-semibold text-primary-600 hover:text-primary-700">
+                                        Upload bài làm
+                                      </button>
+                                      <button className="text-xs font-semibold text-primary-600 hover:text-primary-700">
+                                        Thêm bài tập
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="min-w-[1000px] w-full text-sm text-left">
+                                      <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                                        <tr>
+                                          <th className="px-4 py-2 font-semibold min-w-[200px]">Bài tập</th>
+                                          <th className="px-4 py-2 font-semibold min-w-[150px] whitespace-nowrap">Thời gian (ước/thực)</th>
+                                          <th className="px-4 py-2 font-semibold min-w-[200px]">File bài tập</th>
+                                          <th className="px-4 py-2 font-semibold min-w-[250px]">Upload bài làm</th>
+                                          <th className="px-4 py-2 font-semibold min-w-[250px]">Lời giải</th>
+                                          <th className="px-4 py-2 font-semibold min-w-[150px]">Kết quả</th>
+                                          <th className="px-4 py-2 font-semibold min-w-[200px]">Nhận xét</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100 bg-white">
+                                        {detailItems.map((detail) => (
+                                          <tr key={detail.id} className="hover:bg-gray-50">
+                                            <td className="px-4 py-3 min-w-[200px]">
+                                              <input
+                                                type="text"
+                                                value={detail.lesson}
+                                                onChange={(e) => handleDetailChange(selectedPreviousStudent, subject, detail.id, 'lesson', e.target.value)}
+                                                className="font-semibold text-gray-900 w-full min-w-[180px] px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                                                placeholder="Nhập tên bài tập"
+                                              />
+                                            </td>
+                                            <td className="px-4 py-3 min-w-[150px] whitespace-nowrap">
+                                              <div className="flex items-center gap-1.5">
+                                                {/* Ước tính */}
+                                                <div className="flex flex-col items-center border border-gray-300 rounded bg-white">
+                                                  <button
+                                                    onClick={() => {
+                                                      const current = parseInt(detail.estimatedTime.replace(/\D/g, '')) || 0
+                                                      const newValue = current + 1
+                                                      handleDetailChange(selectedPreviousStudent, subject, detail.id, 'estimatedTime', `${newValue} phút`)
+                                                    }}
+                                                    className="w-full px-1.5 py-0.5 hover:bg-gray-100 rounded-t border-b border-gray-200 transition-colors"
+                                                  >
+                                                    <ChevronUp className="w-3 h-3 text-gray-600 mx-auto" />
+                                                  </button>
+                                                  <div className="px-2 py-0.5 bg-white w-full text-center border-y border-gray-200 min-w-[24px]">
+                                                    <span className="text-xs font-semibold text-gray-900">
+                                                      {parseInt(detail.estimatedTime.replace(/\D/g, '')) || 0}
+                                                    </span>
+                                                  </div>
+                                                  <button
+                                                    onClick={() => {
+                                                      const current = parseInt(detail.estimatedTime.replace(/\D/g, '')) || 0
+                                                      const newValue = Math.max(0, current - 1)
+                                                      handleDetailChange(selectedPreviousStudent, subject, detail.id, 'estimatedTime', `${newValue} phút`)
+                                                    }}
+                                                    className="w-full px-1.5 py-0.5 hover:bg-gray-100 rounded-b border-t border-gray-200 transition-colors"
+                                                  >
+                                                    <ChevronDown className="w-3 h-3 text-gray-600 mx-auto" />
+                                                  </button>
+                                                </div>
+                                                <span className="text-xs text-gray-400 font-medium">/</span>
+                                                {/* Thực tế */}
+                                                <div className="flex flex-col items-center border border-gray-300 rounded bg-white">
+                                                  <button
+                                                    onClick={() => {
+                                                      const current = parseInt(detail.actualTime.replace(/\D/g, '')) || 0
+                                                      const newValue = current + 1
+                                                      handleDetailChange(selectedPreviousStudent, subject, detail.id, 'actualTime', `${newValue} phút`)
+                                                    }}
+                                                    className="w-full px-1.5 py-0.5 hover:bg-gray-100 rounded-t border-b border-gray-200 transition-colors"
+                                                  >
+                                                    <ChevronUp className="w-3 h-3 text-gray-600 mx-auto" />
+                                                  </button>
+                                                  <div className="px-2 py-0.5 bg-white w-full text-center border-y border-gray-200 min-w-[24px]">
+                                                    <span className="text-xs font-semibold text-gray-900">
+                                                      {parseInt(detail.actualTime.replace(/\D/g, '')) || 0}
+                                                    </span>
+                                                  </div>
+                                                  <button
+                                                    onClick={() => {
+                                                      const current = parseInt(detail.actualTime.replace(/\D/g, '')) || 0
+                                                      const newValue = Math.max(0, current - 1)
+                                                      handleDetailChange(selectedPreviousStudent, subject, detail.id, 'actualTime', `${newValue} phút`)
+                                                    }}
+                                                    className="w-full px-1.5 py-0.5 hover:bg-gray-100 rounded-b border-t border-gray-200 transition-colors"
+                                                  >
+                                                    <ChevronDown className="w-3 h-3 text-gray-600 mx-auto" />
+                                                  </button>
+                                                </div>
+                                                <span className="text-xs text-gray-500 font-medium ml-0.5">phút</span>
+                                              </div>
+                                            </td>
+                                            <td className="px-4 py-3 min-w-[200px]">
+                                              {detail.assignmentFileName ? (
+                                                <div className="flex items-center gap-2 text-blue-600">
+                                                  <FileText className="w-4 h-4 flex-shrink-0" />
+                                                  <span className="text-xs font-semibold truncate max-w-[150px]">{detail.assignmentFileName}</span>
+                                                  <Download className="w-4 h-4 cursor-pointer hover:text-blue-700 flex-shrink-0" />
+                                                </div>
+                                              ) : (
+                                                <span className="text-xs text-gray-400">—</span>
+                                              )}
+                                            </td>
+                                            <td className="px-4 py-3 min-w-[250px]">
+                                              {detail.uploadedFile ? (
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                  <FileText className="w-4 h-4 text-primary-600 flex-shrink-0" />
+                                                  <span className="text-xs text-gray-700 break-all whitespace-normal">{detail.uploadedFile}</span>
+                                                  <Download className="w-4 h-4 text-gray-500 hover:text-primary-600 cursor-pointer flex-shrink-0" />
+                                                  <button className="text-xs px-2 py-1 bg-primary-100 text-primary-700 rounded hover:bg-primary-200 whitespace-nowrap flex-shrink-0">
+                                                    Cập nhật
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <button className="text-primary-600 hover:text-primary-700 text-xs font-semibold flex items-center space-x-1 whitespace-nowrap">
+                                                  <Upload className="w-3 h-3" />
+                                                  <span>Tải bài làm</span>
+                                                </button>
+                                              )}
+                                            </td>
+                                            <td className="px-4 py-3 min-w-[250px]">
+                                              <div className="space-y-2">
+                                                <textarea
+                                                  value={detail.solution}
+                                                  onChange={(e) => handleDetailChange(selectedPreviousStudent, subject, detail.id, 'solution', e.target.value)}
+                                                  className="text-sm text-gray-700 w-full min-w-[220px] px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none bg-white"
+                                                  rows={2}
+                                                  placeholder="Nhập lời giải"
+                                                />
+                                                {detail.solution ? (
+                                                  <button className="text-primary-600 hover:text-primary-700 text-xs font-semibold flex items-center space-x-1 whitespace-nowrap">
+                                                    <Upload className="w-3 h-3" />
+                                                    <span>Cập nhật</span>
+                                                  </button>
+                                                ) : (
+                                                  <button className="text-primary-600 hover:text-primary-700 text-xs font-semibold flex items-center space-x-1 whitespace-nowrap">
+                                                    <Upload className="w-3 h-3" />
+                                                    <span>Thêm lời giải</span>
+                                                  </button>
+                                                )}
+                                              </div>
+                                            </td>
+                                            <td className="px-4 py-3 min-w-[150px]">
+                                              <select
+                                                value={detail.result}
+                                                onChange={(e) => handleDetailChange(selectedPreviousStudent, subject, detail.id, 'result', e.target.value)}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border-2 cursor-pointer w-full ${
+                                                  detail.result === 'completed'
+                                                    ? 'bg-green-100 text-green-700 border-green-300'
+                                                    : detail.result === 'incorrect'
+                                                      ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
+                                                      : detail.result === 'in_progress'
+                                                        ? 'bg-blue-100 text-blue-700 border-blue-300'
+                                                        : 'bg-red-100 text-red-600 border-red-300'
+                                                } focus:ring-2 focus:ring-primary-500`}
+                                              >
+                                                <option value="completed">Hoàn thành</option>
+                                                <option value="incorrect">Chưa chính xác</option>
+                                                <option value="in_progress">Đang làm</option>
+                                                <option value="not_done">Chưa xong</option>
+                                              </select>
+                                            </td>
+                                            <td className="px-4 py-3 min-w-[200px]">
+                                              <input
+                                                type="text"
+                                                value={detail.note}
+                                                onChange={(e) => handleDetailChange(selectedPreviousStudent, subject, detail.id, 'note', e.target.value)}
+                                                className="text-sm text-gray-700 w-full min-w-[180px] px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                                                placeholder="Nhập nhận xét"
+                                              />
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Giao bài tập về nhà */}
+                              {isExpanded && renderHomeworkSection(selectedPreviousStudent, subject)}
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* PHẦN 2: ĐÁNH GIÁ CHI TIẾT - 1 phần chung cho học sinh */}
+                      <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
+                        <h4 className="text-xl font-bold text-gray-900 mb-4">Đánh giá chi tiết</h4>
+                        {renderSubjectEvaluation(selectedPreviousStudent, 'general')}
+                      </div>
+
+                      {/* PHẦN 3: ĐÁNH GIÁ CHUNG - Theo từng môn */}
+                      <div className="space-y-6">
+                        <h4 className="text-xl font-bold text-gray-900 mb-4">Đánh giá chung</h4>
+                        {studentSchedules.map((schedule) => {
+                          const subject = schedule.subject
+                          const evaluation = subjectEvaluations[selectedPreviousStudent]?.[subject] || {
+                            generalComment: ''
+                          }
+
+                          return (
+                            <div key={subject} className="bg-white rounded-xl border-2 border-gray-200 p-6">
+                              <div className="flex items-center space-x-2 mb-4 pb-4 border-b border-gray-200">
+                                <BookOpen className="w-5 h-5 text-primary-600" />
+                                <h5 className="text-lg font-bold text-gray-900">{subject}</h5>
+                              </div>
+                              <textarea
+                                value={evaluation.generalComment || ''}
+                                onChange={(e) => handleEvaluationChange(selectedPreviousStudent, subject, 'generalComment', e.target.value)}
+                                className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none bg-white text-sm text-gray-700"
+                                rows={4}
+                                placeholder="Nhập đánh giá chung về học sinh trong môn học này..."
+                              />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+
+            {/* Phần cũ - ẩn đi */}
+            {false && (
             <div className="space-y-4">
               {subjectsDataToday.map((subjectData) => {
                 const { subject, students: subjectStudents } = subjectData
@@ -1881,7 +2520,7 @@ export default function TutorDashboard() {
                                             <td className="px-4 py-3 min-w-[250px]">
                                   {detail.uploadedFile ? (
                                                 <div className="flex items-center gap-2 flex-wrap">
-                                                  <FileText className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                                  <FileText className="w-4 h-4 text-primary-600 flex-shrink-0" />
                                                   <span className="text-xs text-gray-700 break-all whitespace-normal">{detail.uploadedFile}</span>
                                                   <Download className="w-4 h-4 text-gray-500 hover:text-primary-600 cursor-pointer flex-shrink-0" />
                                                   <button className="text-xs px-2 py-1 bg-primary-100 text-primary-700 rounded hover:bg-primary-200 whitespace-nowrap flex-shrink-0">
@@ -1956,9 +2595,6 @@ export default function TutorDashboard() {
 
                           {/* Giao bài tập về nhà */}
                           {renderHomeworkSection(studentId, subject)}
-
-                          {/* Đánh giá môn học */}
-                          {renderSubjectEvaluation(studentId, subject)}
                 </div>
               )
             })}
@@ -1968,6 +2604,7 @@ export default function TutorDashboard() {
                 )
               })}
             </div>
+            )}
 
             {/* Tổng kết tiến độ cho tất cả môn học hôm nay */}
             {(() => {
@@ -2007,139 +2644,257 @@ export default function TutorDashboard() {
     );
   }
 
+  const getSubjectColor = (subject: string) => {
+    const colors: Record<string, { bg: string; text: string; badge: string }> = {
+      'Toán': { bg: 'bg-blue-50', text: 'text-blue-700', badge: 'bg-blue-500' },
+      'Lý': { bg: 'bg-purple-50', text: 'text-purple-700', badge: 'bg-purple-500' },
+      'Hóa': { bg: 'bg-green-50', text: 'text-green-700', badge: 'bg-green-500' },
+      'Sinh': { bg: 'bg-emerald-50', text: 'text-emerald-700', badge: 'bg-emerald-500' },
+      'Anh': { bg: 'bg-yellow-50', text: 'text-yellow-700', badge: 'bg-yellow-500' },
+      'Sử': { bg: 'bg-amber-50', text: 'text-amber-700', badge: 'bg-amber-500' },
+      'Địa': { bg: 'bg-teal-50', text: 'text-teal-700', badge: 'bg-teal-500' },
+    }
+    return colors[subject] || { bg: 'bg-gray-50', text: 'text-gray-700', badge: 'bg-gray-500' }
+  }
+
   const renderStudentsSection = () => (
     <div className="h-full overflow-hidden">
-      <div className="grid grid-cols-1 xl:grid-cols-[55%_45%] gap-4 h-full">
-        <div className="card-no-transition space-y-5 overflow-y-auto">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <h2 className="text-xl font-bold text-gray-900">Quản lý học sinh</h2>
-            <p className="text-sm text-gray-500">
-              Trang {studentPage}/{studentPages} · {students.length} học sinh
-            </p>
+      <div className="grid grid-cols-1 xl:grid-cols-[55%_45%] gap-6 h-full">
+        {/* Left: Student List */}
+        <div className="card space-y-4 overflow-y-auto">
+          <div className="flex items-center justify-between border-b border-gray-200 pb-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-1">Quản lý học sinh</h2>
+              <p className="text-sm text-gray-500">
+                Trang {studentPage}/{studentPages} · {students.length} học sinh
+              </p>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {paginatedStudents.map((student) => (
-              <button
-                key={student.id}
-                onClick={() => setSelectedStudent(student.id)}
-                className={`text-left border-2 rounded-2xl p-4 ${
-                  selectedStudent === student.id
-                    ? 'border-primary-500 bg-gradient-to-r from-primary-50 to-blue-50 shadow-lg'
-                    : 'border-gray-200 hover:border-primary-200 hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h3 className={`font-bold ${selectedStudent === student.id ? 'text-primary-700' : 'text-gray-900'}`}>
-                      {student.name}
-                    </h3>
-                    <p className="text-sm text-gray-600">{student.subject}</p>
+            {paginatedStudents.map((student) => {
+              const subjectColors = getSubjectColor(student.subject)
+              const isSelected = selectedStudent === student.id
+              return (
+                <button
+                  key={student.id}
+                  onClick={() => setSelectedStudent(student.id)}
+                  className={`text-left rounded-xl p-4 transition-all duration-200 ${
+                    isSelected
+                      ? 'bg-gradient-to-br from-primary-50 to-blue-50 border-2 border-primary-500 shadow-lg ring-2 ring-primary-100'
+                      : 'bg-white border-2 border-gray-200 hover:border-primary-300 hover:shadow-md'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1 min-w-0">
+                      <h3 className={`text-lg font-bold mb-1 truncate ${
+                        isSelected ? 'text-primary-700' : 'text-gray-900'
+                      }`}>
+                        {student.name}
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold text-white ${subjectColors.badge}`}>
+                          {student.subject}
+                        </span>
+                      </div>
+                    </div>
+                    <div className={`ml-3 w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      isSelected
+                        ? 'bg-gradient-to-br from-primary-500 to-primary-600 shadow-md'
+                        : 'bg-gradient-to-br from-gray-100 to-gray-200'
+                    }`}>
+                      <UserCircle className={`w-6 h-6 ${isSelected ? 'text-white' : 'text-gray-500'}`} />
+                    </div>
                   </div>
-                  <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center text-white">
-                    <Users className="w-6 h-6" />
+                  
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between text-xs font-medium text-gray-600 mb-2">
+                      <span>Tiến độ</span>
+                      <span className={`font-bold ${isSelected ? 'text-primary-600' : 'text-gray-900'}`}>
+                        {student.progress}%
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          isSelected
+                            ? 'bg-gradient-to-r from-primary-500 to-primary-600'
+                            : 'bg-gradient-to-r from-gray-400 to-gray-500'
+                        }`}
+                        style={{ width: `${student.progress}%` }}
+                      ></div>
+                    </div>
                   </div>
-                </div>
-                <div className="mt-2">
-                  <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                    <span>Tiến độ</span>
-                    <span className="font-semibold">{student.progress}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-primary-500 to-primary-600 rounded-full transition-all duration-300"
-                      style={{ width: `${student.progress}%` }}
-                    ></div>
-                  </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              )
+            })}
           </div>
 
-          <div className="flex items-center justify-between pt-2">
+          {/* Pagination */}
+          <div className="flex items-center justify-between pt-4 border-t border-gray-200">
             <button
               onClick={() => setStudentPage((page) => Math.max(1, page - 1))}
               disabled={studentPage === 1}
-              className="px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
+              <ChevronRight className="w-4 h-4 rotate-180" />
               Trang trước
             </button>
-            <div className="flex items-center space-x-2 text-sm font-semibold text-gray-600">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
               <span>Trang</span>
-              <span className="w-8 text-center text-gray-900">{studentPage}</span>
+              <span className="w-10 text-center bg-gray-100 rounded-lg py-1 text-gray-900">{studentPage}</span>
               <span>/ {studentPages}</span>
             </div>
             <button
               onClick={() => setStudentPage((page) => Math.min(studentPages, page + 1))}
               disabled={studentPage === studentPages}
-              className="px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Trang sau
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        <div className="card-no-transition overflow-y-auto">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Thông tin chi tiết học sinh</h3>
+        {/* Right: Student Details */}
+        <div className="card overflow-y-auto">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 pb-4 border-b border-gray-200">
+            Thông tin chi tiết học sinh
+          </h3>
           {selectedStudentDetail ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Học sinh</p>
-                  <p className="text-xl font-bold text-gray-900">{selectedStudentDetail.name}</p>
-                  <p className="text-sm text-gray-600">{selectedStudentDetail.subject}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Tiến độ</p>
-                  <p className="text-3xl font-bold text-primary-600">{selectedStudentDetail.progress}%</p>
+            <div className="space-y-5">
+              {/* Header with Name and Progress */}
+              <div className="bg-gradient-to-r from-primary-50 to-blue-50 rounded-xl p-5 border border-primary-100">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-primary-600 uppercase tracking-wide mb-1">
+                      Học sinh
+                    </p>
+                    <h4 className="text-2xl font-bold text-gray-900 mb-1">
+                      {selectedStudentDetail.name}
+                    </h4>
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold text-white ${getSubjectColor(selectedStudentDetail.subject).badge}`}>
+                      {selectedStudentDetail.subject}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-semibold text-primary-600 uppercase tracking-wide mb-1">
+                      Tiến độ
+                    </p>
+                    <p className="text-4xl font-extrabold text-primary-600">{selectedStudentDetail.progress}%</p>
+                    <div className="w-20 h-2 bg-white rounded-full overflow-hidden mt-2 shadow-inner">
+                      <div
+                        className="h-full bg-gradient-to-r from-primary-500 to-primary-600 rounded-full"
+                        style={{ width: `${selectedStudentDetail.progress}%` }}
+                      ></div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3">
-                <div className="border border-gray-100 rounded-xl p-3 bg-gray-50">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Tuổi</p>
-                  <p className="text-sm font-semibold text-gray-900">{(selectedStudentDetail as any).age || 'Chưa có thông tin'}</p>
-                </div>
+              {/* Personal Information */}
+              <div className="space-y-3">
+                <h5 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Thông tin cá nhân</h5>
+                
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Cake className="w-5 h-5 text-primary-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Tuổi</p>
+                      <p className="text-sm font-semibold text-gray-900">{(selectedStudentDetail as any).age || 'Chưa có thông tin'}</p>
+                    </div>
+                  </div>
 
-                <div className="border border-gray-100 rounded-xl p-3 bg-gray-50">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Ngày tháng năm sinh</p>
-                  <p className="text-sm font-semibold text-gray-900">{(selectedStudentDetail as any).dateOfBirth || 'Chưa có thông tin'}</p>
-                </div>
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Calendar className="w-5 h-5 text-primary-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Ngày tháng năm sinh</p>
+                      <p className="text-sm font-semibold text-gray-900">{(selectedStudentDetail as any).dateOfBirth || 'Chưa có thông tin'}</p>
+                    </div>
+                  </div>
 
-                <div className="border border-gray-100 rounded-xl p-3 bg-gray-50">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Trường</p>
-                  <p className="text-sm font-semibold text-gray-900">{(selectedStudentDetail as any).school || 'Chưa có thông tin'}</p>
-                </div>
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <School className="w-5 h-5 text-primary-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Trường</p>
+                      <p className="text-sm font-semibold text-gray-900">{(selectedStudentDetail as any).school || 'Chưa có thông tin'}</p>
+                    </div>
+                  </div>
 
-                <div className="border border-gray-100 rounded-xl p-3 bg-gray-50">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Lớp</p>
-                  <p className="text-sm font-semibold text-gray-900">{(selectedStudentDetail as any).grade || 'Chưa có thông tin'}</p>
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <GraduationCap className="w-5 h-5 text-primary-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Lớp</p>
+                      <p className="text-sm font-semibold text-gray-900">{(selectedStudentDetail as any).grade || 'Chưa có thông tin'}</p>
+                    </div>
+                  </div>
                 </div>
+              </div>
 
-                <div className="border border-gray-100 rounded-xl p-3 bg-gray-50">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Phụ huynh</p>
-                  <p className="text-sm font-semibold text-gray-900">{selectedStudentDetail.parent}</p>
-                </div>
+              {/* Contact Information */}
+              <div className="space-y-3 pt-2">
+                <h5 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Thông tin liên hệ</h5>
+                
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <UserCircle className="w-5 h-5 text-primary-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Phụ huynh</p>
+                      <p className="text-sm font-semibold text-gray-900">{selectedStudentDetail.parent}</p>
+                    </div>
+                  </div>
 
-                <div className="border border-gray-100 rounded-xl p-3 bg-gray-50 space-y-1">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Liên hệ</p>
-                  <p className="text-sm text-gray-900">{selectedStudentDetail.contact}</p>
-                  <p className="text-sm text-gray-600">{selectedStudentDetail.email}</p>
-                </div>
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Phone className="w-5 h-5 text-primary-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Liên hệ</p>
+                      <p className="text-sm text-gray-900 mb-1">{selectedStudentDetail.contact}</p>
+                      <p className="text-sm text-gray-600 flex items-center gap-1">
+                        <Mail className="w-3.5 h-3.5" />
+                        {selectedStudentDetail.email}
+                      </p>
+                    </div>
+                  </div>
 
-                <div className="border border-gray-100 rounded-xl p-3 bg-gray-50">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Địa chỉ</p>
-                  <p className="text-sm text-gray-900">{selectedStudentDetail.address}</p>
-                </div>
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <MapPin className="w-5 h-5 text-primary-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Địa chỉ</p>
+                      <p className="text-sm font-semibold text-gray-900">{selectedStudentDetail.address}</p>
+                    </div>
+                  </div>
 
-                <div className="border border-gray-100 rounded-xl p-3 bg-gray-50">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Kênh ưu tiên</p>
-                  <p className="text-sm text-gray-900">{selectedStudentDetail.preferredChannel}</p>
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <MessageSquare className="w-5 h-5 text-primary-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Kênh ưu tiên</p>
+                      <p className="text-sm font-semibold text-gray-900">{selectedStudentDetail.preferredChannel}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           ) : (
-            <p className="text-sm text-gray-500">Chọn học sinh trong danh sách để xem chi tiết.</p>
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <UserCircle className="w-16 h-16 text-gray-300 mb-4" />
+              <p className="text-sm font-medium text-gray-500">Chọn học sinh trong danh sách để xem chi tiết.</p>
+            </div>
           )}
         </div>
       </div>
@@ -2147,130 +2902,12 @@ export default function TutorDashboard() {
   )
 
   const renderScheduleSection = () => (
-    <div className="h-full overflow-y-auto space-y-4">
-      <div className="card-no-transition">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-2">
-            <Calendar className="w-6 h-6 text-primary-600" />
-            <h2 className="text-xl font-bold text-gray-900">Lịch dạy</h2>
-          </div>
-          <p className="text-sm text-gray-500">{tutorSchedules.length} buổi đã được lên lịch</p>
-        </div>
-        <div className="space-y-4">
-          {scheduleDates.map((dateKey) => {
-            const dateObj = new Date(dateKey)
-            const dailySchedules = schedulesByDate[dateKey]
-            const isTodayDate = isToday(dateObj)
-
-            return (
-              <div
-                key={dateKey}
-                className="border-2 border-gray-200 rounded-2xl p-4 bg-gradient-to-br from-white to-gray-50"
-              >
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <div>
-                    <p className={`text-lg font-bold ${isTodayDate ? 'text-primary-600' : 'text-gray-900'}`}>
-                      {isTodayDate ? 'Hôm nay' : format(dateObj, 'EEEE, dd/MM/yyyy')}
-                    </p>
-                    <p className="text-sm text-gray-500">{dailySchedules.length} buổi</p>
-                  </div>
-                  <div className="flex items-center space-x-2 text-xs text-gray-600">
-                    <div className="flex items-center space-x-1">
-                      <span className="w-3 h-3 rounded-full bg-green-500"></span>
-                      <span>Đang dạy</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
-                      <span>Sắp dạy</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <span className="w-3 h-3 rounded-full bg-gray-400"></span>
-                      <span>Đã xong</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  {dailySchedules.map((schedule) => {
-                    const status = getScheduleStatus(schedule)
-                    const statusConfig = {
-                      in_progress: { label: 'Đang dạy', className: 'bg-green-100 text-green-700' },
-                      upcoming: { label: 'Sắp dạy', className: 'bg-yellow-100 text-yellow-700' },
-                      completed: { label: 'Đã xong', className: 'bg-gray-100 text-gray-600' },
-                    }[status]
-
-                    return (
-                      <div
-                        key={schedule.id}
-                        className="border border-gray-200 rounded-xl p-4 bg-white hover:border-primary-300 hover:shadow-md"
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1">
-                            <div className="flex items-center flex-wrap gap-3 mb-2">
-                              <span className={`px-3 py-1 rounded-lg text-sm font-bold ${
-                                schedule.subject === 'Toán' ? 'bg-blue-500 text-white' :
-                                schedule.subject === 'Hóa' ? 'bg-green-500 text-white' :
-                                'bg-purple-500 text-white'
-                              }`}>
-                                {schedule.subject}
-                              </span>
-                              <span className="text-sm font-semibold text-gray-700">{schedule.time}</span>
-                            </div>
-                            <p className="text-sm font-semibold text-gray-900">{schedule.student}</p>
-                          </div>
-                          <div className="flex flex-col items-end space-y-2">
-                            <div className="flex items-center gap-2">
-                              {schedule.meetLink && (
-                                <button
-                                  onClick={() => handleJoinSchedule(schedule.id)}
-                                  className="btn-primary text-sm px-4 py-2 whitespace-nowrap"
-                                >
-                                  Vào lớp
-                                </button>
-                              )}
-                              {statusConfig && (
-                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusConfig.className}`}>
-                                  {statusConfig.label}
-                                </span>
-                              )}
-                            </div>
-                            {schedule.meetLink && (
-                              <div className="flex items-center space-x-2 bg-gray-50 rounded-lg px-3 py-1.5 border border-gray-200 group">
-                                <input
-                                  type="text"
-                                  value={schedule.meetLink}
-                                  readOnly
-                                  className="text-xs text-gray-600 bg-transparent border-none outline-none w-32 truncate"
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    navigator.clipboard.writeText(schedule.meetLink || '')
-                                    setCopiedScheduleLink(schedule.id)
-                                    setTimeout(() => setCopiedScheduleLink(null), 2000)
-                                  }}
-                                  className="text-gray-500 hover:text-primary-600 transition-colors"
-                                  title="Copy link"
-                                >
-                                  {copiedScheduleLink === schedule.id ? (
-                                    <Clock className="w-4 h-4 text-green-500" />
-                                  ) : (
-                                    <Copy className="w-4 h-4" />
-                                  )}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+    <div className="h-full overflow-hidden">
+      <div className="h-full flex flex-col bg-white rounded-2xl shadow-lg overflow-hidden">
+        <MonthlyCalendar
+          schedules={calendarSchedules}
+          onJoinClass={handleJoinSchedule}
+        />
       </div>
     </div>
   )
@@ -2372,13 +3009,50 @@ export default function TutorDashboard() {
   }, [todayStudentsForHome, checklistItemsByStudent, tutorDetailItemsByStudentAndSubject, homeworkItemsByStudentAndSubject, subjectEvaluations])
 
   const renderChecklistSection = () => {
+    // Lọc subjectsData dựa trên bộ lọc
+    const getFilteredSubjectsData = () => {
+      let filtered = [...subjectsData]
+      
+      // Lọc theo học sinh
+      if (checklistSelectedStudent !== 'all') {
+        filtered = filtered.map(subjectData => ({
+          ...subjectData,
+          students: subjectData.students.filter(s => s.studentId === checklistSelectedStudent)
+        })).filter(subjectData => subjectData.students.length > 0)
+      }
+      
+      // Lọc theo tìm kiếm
+      if (checklistSearchQuery.trim()) {
+        const query = checklistSearchQuery.toLowerCase()
+        filtered = filtered.map(subjectData => ({
+          ...subjectData,
+          students: subjectData.students.map(studentData => ({
+            ...studentData,
+            checklistItems: studentData.checklistItems.filter(item =>
+              item.lesson.toLowerCase().includes(query) ||
+              item.task.toLowerCase().includes(query) ||
+              (item.note && item.note.toLowerCase().includes(query))
+            )
+          })).filter(studentData => studentData.checklistItems.length > 0)
+        })).filter(subjectData => subjectData.students.length > 0)
+      }
+      
+      return filtered
+    }
+    
+    const filteredSubjectsData = getFilteredSubjectsData()
+    
+    // Lấy danh sách học sinh và khung giờ cho dropdown
+    const allStudents = students
+    const allTimeSlots = Array.from(new Set(scheduleSlots.map(slot => slot.time))).sort()
+    
     return (
       <div className="h-full overflow-y-auto space-y-4">
         <div className="card-no-transition space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-bold text-gray-900 mb-1">Checklist bài học</h2>
-              <p className="text-sm text-gray-600">Khung giờ 14:00 - 15:30</p>
+              <p className="text-sm text-gray-600">Lịch sử checklist</p>
             </div>
             <div className="flex items-center space-x-2">
               <button onClick={() => openChecklistForm()} className="btn-secondary flex items-center space-x-2 text-sm">
@@ -2388,8 +3062,101 @@ export default function TutorDashboard() {
             </div>
           </div>
 
+          {/* Bộ lọc */}
+          <div className="mb-4 space-y-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
+            {/* Tìm kiếm */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm theo bài học, nhiệm vụ, ghi chú..."
+                value={checklistSearchQuery}
+                onChange={(e) => setChecklistSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+              />
+            </div>
+            
+            {/* Các bộ lọc khác */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Mốc thời gian */}
+              <div className="flex flex-col">
+                <label className="text-xs font-semibold text-gray-700 mb-1 flex items-center space-x-1">
+                  <Filter className="w-3 h-3" />
+                  <span>Mốc thời gian</span>
+                </label>
+                <select
+                  value={checklistDateRange}
+                  onChange={(e) => setChecklistDateRange(e.target.value as 'all' | 'week' | 'month' | 'custom')}
+                  className="px-3 py-1.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                >
+                  <option value="all">Tất cả</option>
+                  <option value="week">7 ngày qua</option>
+                  <option value="month">30 ngày qua</option>
+                  <option value="custom">Tùy chọn</option>
+                </select>
+                {checklistDateRange === 'custom' && (
+                  <div className="mt-2 space-y-2">
+                    <input
+                      type="date"
+                      value={checklistCustomStartDate}
+                      onChange={(e) => setChecklistCustomStartDate(e.target.value)}
+                      className="w-full px-2 py-1 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-xs"
+                      placeholder="Từ ngày"
+                    />
+                    <input
+                      type="date"
+                      value={checklistCustomEndDate}
+                      onChange={(e) => setChecklistCustomEndDate(e.target.value)}
+                      className="w-full px-2 py-1 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-xs"
+                      placeholder="Đến ngày"
+                    />
+                  </div>
+                )}
+              </div>
+              
+              {/* Chọn học sinh */}
+              <div className="flex flex-col">
+                <label className="text-xs font-semibold text-gray-700 mb-1 flex items-center space-x-1">
+                  <UserCircle className="w-3 h-3" />
+                  <span>Học sinh</span>
+                </label>
+                <select
+                  value={checklistSelectedStudent}
+                  onChange={(e) => setChecklistSelectedStudent(e.target.value)}
+                  className="px-3 py-1.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                >
+                  <option value="all">Tất cả học sinh</option>
+                  {allStudents.map(student => (
+                    <option key={student.id} value={student.id}>{student.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Chọn khung giờ */}
+              <div className="flex flex-col">
+                <label className="text-xs font-semibold text-gray-700 mb-1 flex items-center space-x-1">
+                  <Clock className="w-3 h-3" />
+                  <span>Khung giờ</span>
+                </label>
+                <select
+                  value={checklistSelectedTimeSlot}
+                  onChange={(e) => setChecklistSelectedTimeSlot(e.target.value)}
+                  className="px-3 py-1.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                >
+                  <option value="all">Tất cả khung giờ</option>
+                  {allTimeSlots.map(timeSlot => (
+                    <option key={timeSlot} value={timeSlot}>{timeSlot}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
         <div className="space-y-4">
-          {subjectsData.map((subjectData) => {
+          {filteredSubjectsData.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">Không tìm thấy checklist nào phù hợp với bộ lọc.</p>
+          ) : (
+            filteredSubjectsData.map((subjectData) => {
             const { subject, students: subjectStudents } = subjectData
             const isExpanded = expandedSubjects[subject] ?? false
             
@@ -2845,7 +3612,7 @@ export default function TutorDashboard() {
                 )}
               </div>
             )
-          })}
+          }))}
         </div>
 
         {/* Tổng kết tiến độ cho tất cả môn học */}
@@ -2896,8 +3663,14 @@ export default function TutorDashboard() {
 
 
       {showChecklistForm && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setShowChecklistForm(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-2xl font-bold text-gray-900">Tạo checklist mới</h3>
@@ -2920,7 +3693,7 @@ export default function TutorDashboard() {
                 >
                   {students.map((student) => (
                     <option key={student.id} value={student.id}>
-                      {student.name} - {student.subject}
+                      {student.name}
                     </option>
                   ))}
                 </select>
@@ -3009,12 +3782,35 @@ export default function TutorDashboard() {
                         </div>
                         <div>
                           <label className="block text-xs font-semibold text-gray-600 mb-1">Thời gian dự kiến</label>
-                          <input
-                            value={exercise.estimatedTime}
-                            onChange={(e) => handleChecklistExerciseChange(idx, 'estimatedTime', e.target.value)}
-                            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                            placeholder="Ví dụ: 20 phút"
-                          />
+                          <div className="flex items-center border border-gray-200 rounded-xl bg-white overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500">
+                            <input
+                              type="number"
+                              min={0}
+                              value={exercise.estimatedTime || ''}
+                              onChange={(e) => handleChecklistExerciseChange(idx, 'estimatedTime', e.target.value)}
+                              className="flex-1 px-3 py-2 text-sm outline-none"
+                              placeholder="20"
+                            />
+                            <div className="flex flex-col border-l border-gray-200">
+                              <button
+                                type="button"
+                                onClick={() => adjustEstimatedTime(idx, 1)}
+                                className="px-2 py-1 hover:bg-gray-100 focus:outline-none"
+                              >
+                                <ChevronUp className="w-4 h-4 text-gray-600" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => adjustEstimatedTime(idx, -1)}
+                                className="px-2 py-1 hover:bg-gray-100 focus:outline-none"
+                              >
+                                <ChevronDown className="w-4 h-4 text-gray-600" />
+                              </button>
+                            </div>
+                            <div className="px-3 text-xs font-semibold text-gray-500 border-l border-gray-200 h-full flex items-center">
+                              phút
+                            </div>
+                          </div>
                         </div>
                       </div>
                       <div>

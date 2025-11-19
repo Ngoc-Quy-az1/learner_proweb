@@ -9,6 +9,7 @@ export interface ScheduleItem {
   meetLink?: string
   tutor?: string
   note?: string
+  status?: 'upcoming' | 'ongoing' | 'completed'
 }
 
 interface ScheduleWidgetProps {

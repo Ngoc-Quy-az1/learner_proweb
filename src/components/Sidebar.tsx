@@ -28,13 +28,14 @@ export default function Sidebar({ activeSection, onSectionChange, isCollapsed = 
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:flex fixed left-0 top-0 h-screen ${isCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-gray-200 z-40 flex-col transition-all duration-300`}>
         <div className={`border-b border-gray-200 bg-white flex items-center ${isCollapsed ? 'px-3' : 'px-6'} justify-between py-5`}>
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold">S</span>
-            </div>
+          <div className="flex items-center space-x-2">
+            <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-10 w-auto" />
             {!isCollapsed && (
               <div>
-                <p className="text-lg font-bold text-gray-900 leading-tight">SKILLAR</p>
+                <p className="text-lg font-semibold leading-tight font-display">
+                  <span style={{ color: '#528fcd' }}>skillar</span>
+                  <span style={{ color: '#032757' }}>Tutor</span>
+                </p>
                 <p className="text-xs text-gray-500">Dashboard</p>
               </div>
             )}

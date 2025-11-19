@@ -3,10 +3,11 @@ import Layout from '../components/Layout'
 import Sidebar from '../components/Sidebar'
 import { ScheduleItem } from '../components/ScheduleWidget'
 import WeeklyCalendar from '../components/WeeklyCalendar'
+import MonthlyCalendar from '../components/MonthlyCalendar'
 import ChecklistTable, { ChecklistItem } from '../components/ChecklistTable'
 
 import { TaskItem } from '../components/TaskTable'
-import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, Clock, Copy, Upload, FileText, AlertTriangle, Star, Eye, Download } from 'lucide-react'
+import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, Upload, FileText, AlertTriangle, Star, Eye, Download, Search, Filter } from 'lucide-react'
 import { format, isToday } from 'date-fns'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
@@ -23,6 +24,7 @@ interface ChecklistDetailItem {
   solutionFileName?: string
   solutionPreview?: string
   uploadedFileName?: string
+  assignmentFileName?: string
 }
 
 // Interface cho chi tiết bài tập về nhà
@@ -39,6 +41,7 @@ interface HomeworkDetailItem {
   solutionFileName?: string
   solutionPreview?: string
   uploadedFileName?: string
+  assignmentFileName?: string
 }
 
 const checklistResultConfig: Record<
@@ -64,6 +67,7 @@ interface DailyReport {
   date: Date
   tutor: string
   summary: string
+  generalComment?: string
   criteria: {
     id: string
     metric: string
@@ -119,6 +123,7 @@ const ChecklistDetailTable = ({
               <tr className="text-xs uppercase tracking-wider text-gray-500">
                 <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Bài tập</th>
                 <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Thời gian ước lượng</th>
+                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">File bài tập</th>
                 <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Thời gian thực tế</th>
                 <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Upload bài làm</th>
                 <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Lời giải</th>
@@ -131,6 +136,17 @@ const ChecklistDetailTable = ({
                 <tr key={item.id} className="hover:bg-gray-50">
                   <td className="px-2 sm:px-3 py-2 font-semibold text-gray-900 min-w-[120px]">{item.lesson}</td>
                   <td className="px-2 sm:px-3 py-2 text-gray-600 whitespace-nowrap">{item.estimatedTime} phút</td>
+                  <td className="px-2 sm:px-3 py-2 min-w-[140px]">
+                    {item.assignmentFileName ? (
+                      <div className="flex items-center gap-1 sm:gap-2 text-blue-600">
+                        <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                        <span className="text-xs font-semibold truncate max-w-[100px] sm:max-w-[120px]">{item.assignmentFileName}</span>
+                        <Download className="w-3 h-3 cursor-pointer hover:text-blue-700 flex-shrink-0" />
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
+                  </td>
                   <td className="px-2 sm:px-3 py-2 text-gray-900 font-medium whitespace-nowrap">{item.actualTime} phút</td>
                   <td className="px-2 sm:px-3 py-2 min-w-[140px]">
                     {item.uploadedFileName ? (
@@ -253,6 +269,7 @@ const HomeworkDetailTable = ({
               <tr className="text-xs uppercase tracking-wider text-gray-500">
                 <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Bài tập</th>
                 <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Thời gian ước lượng</th>
+                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">File bài tập</th>
                 <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Thời gian thực tế</th>
                 <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Upload nộp bài</th>
                 <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Lời giải</th>
@@ -268,6 +285,17 @@ const HomeworkDetailTable = ({
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="px-2 sm:px-3 py-2 font-semibold text-gray-900 min-w-[120px]">{item.task}</td>
                     <td className="px-2 sm:px-3 py-2 text-gray-600 whitespace-nowrap">{item.estimatedTime} phút</td>
+                    <td className="px-2 sm:px-3 py-2 min-w-[140px]">
+                      {item.assignmentFileName ? (
+                        <div className="flex items-center gap-1 sm:gap-2 text-blue-600">
+                          <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                          <span className="text-xs font-semibold truncate max-w-[100px] sm:max-w-[120px]">{item.assignmentFileName}</span>
+                          <Download className="w-3 h-3 cursor-pointer hover:text-blue-700 flex-shrink-0" />
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
                     <td className="px-2 sm:px-3 py-2 text-gray-900 font-medium whitespace-nowrap">
                       {item.actualTime ? `${item.actualTime} phút` : '—'}
                     </td>
@@ -351,6 +379,12 @@ export default function StudentDashboard() {
   const [expandedChecklistDate, setExpandedChecklistDate] = useState<string | null>(null)
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
   const [showChecklistOverlay, setShowChecklistOverlay] = useState(false)
+  const [selectedTutorSchedule, setSelectedTutorSchedule] = useState<string | null>(null) // ID của schedule được chọn để xem chi tiết tutor
+  // Bộ lọc cho checklist
+  const [checklistSearchQuery, setChecklistSearchQuery] = useState<string>('')
+  const [checklistDateRange, setChecklistDateRange] = useState<'all' | 'week' | 'month' | 'custom'>('all')
+  const [checklistCustomStartDate, setChecklistCustomStartDate] = useState<string>('')
+  const [checklistCustomEndDate, setChecklistCustomEndDate] = useState<string>('')
 
   useEffect(() => {
     if (activeSection !== 'home' && showChecklistOverlay) {
@@ -435,6 +469,7 @@ export default function StudentDashboard() {
       meetLink: 'https://meet.google.com/abc-defg-hij',
       tutor: 'Tutor B',
       note: 'Ôn tập kiểm tra chương 2, chuẩn bị câu hỏi khó.',
+      status: 'completed',
     },
     {
       id: '2',
@@ -444,6 +479,7 @@ export default function StudentDashboard() {
       meetLink: 'https://meet.google.com/xyz-uvw-rst',
       tutor: 'Tutor C',
       note: 'Mang sổ thí nghiệm để tutor kiểm tra.',
+      status: 'ongoing',
     },
     {
       id: '3',
@@ -453,6 +489,7 @@ export default function StudentDashboard() {
       meetLink: 'https://meet.google.com/abc-123',
       tutor: 'Tutor D',
       note: 'Ôn lại phần sóng cơ để thuyết trình.',
+      status: 'upcoming',
     },
     // Tomorrow - Multiple classes
     {
@@ -563,6 +600,46 @@ export default function StudentDashboard() {
     console.log('Update status:', id, status)
   }
 
+  // Dữ liệu chi tiết tutor
+  const tutorDetails = {
+    'Tutor B': {
+      name: 'Tutor B',
+      email: 'tutorb@learnerpro.com',
+      phone: '0901 234 567',
+      subjects: ['Toán'],
+      experience: '5 năm kinh nghiệm dạy Toán',
+      education: 'Thạc sĩ Toán học - Đại học Bách Khoa',
+      rating: 4.8,
+      totalStudents: 45,
+      specialties: ['Toán 10-12', 'Ôn thi Đại học', 'Toán nâng cao'],
+      bio: 'Giáo viên nhiệt tình, có kinh nghiệm lâu năm trong việc dạy Toán cho học sinh THPT. Chuyên về luyện thi Đại học và Toán nâng cao.',
+    },
+    'Tutor C': {
+      name: 'Tutor C',
+      email: 'tutorc@learnerpro.com',
+      phone: '0902 345 678',
+      subjects: ['Hóa'],
+      experience: '7 năm kinh nghiệm dạy Hóa',
+      education: 'Thạc sĩ Hóa học - Đại học Khoa học Tự nhiên',
+      rating: 4.9,
+      totalStudents: 52,
+      specialties: ['Hóa 10-12', 'Hóa vô cơ', 'Hóa hữu cơ'],
+      bio: 'Giáo viên chuyên về Hóa học, từng đạt giải cao trong các kỳ thi Olympic Hóa học. Có phương pháp giảng dạy dễ hiểu, giúp học sinh nắm vững kiến thức.',
+    },
+    'Tutor D': {
+      name: 'Tutor D',
+      email: 'tutord@learnerpro.com',
+      phone: '0903 456 789',
+      subjects: ['Lý'],
+      experience: '6 năm kinh nghiệm dạy Vật lý',
+      education: 'Thạc sĩ Vật lý - Đại học Sư phạm',
+      rating: 4.7,
+      totalStudents: 38,
+      specialties: ['Vật lý 10-12', 'Cơ học', 'Điện học'],
+      bio: 'Giáo viên tận tâm, có phương pháp giảng dạy hiện đại, sử dụng nhiều ví dụ thực tế để giúp học sinh hiểu rõ các khái niệm Vật lý.',
+    },
+  }
+
   const [detailItemsBySubject, setDetailItemsBySubject] = useState<Record<string, ChecklistDetailItem[]>>({
     Toán: [
       {
@@ -575,6 +652,7 @@ export default function StudentDashboard() {
         solutionType: 'text',
         solutionText: 'Áp dụng phương pháp thế, trình bày từng bước.',
         uploadedFileName: 'bai_3_giai_he_phuong_trinh.pdf',
+        assignmentFileName: 'bai_tap_3_giai_he_phuong_phap_the.pdf',
       },
       {
         id: 'math-2',
@@ -586,6 +664,7 @@ export default function StudentDashboard() {
         solutionType: 'text',
         solutionText: 'Nhắc lại quy tắc cộng đại số và kiểm tra dấu.',
         uploadedFileName: 'bai_4_cong_dai_so.pdf',
+        assignmentFileName: 'bai_tap_4_cong_dai_so.pdf',
       },
       {
         id: 'math-3',
@@ -596,6 +675,7 @@ export default function StudentDashboard() {
         qualityNote: 'Cần luyện thêm phần rút gọn',
         solutionType: 'text',
         solutionText: 'Đề xuất luyện thêm 3 bài tương tự với tutor.',
+        assignmentFileName: 'bai_tap_5_nang_cao.pdf',
       },
     ],
     Hóa: [
@@ -610,6 +690,7 @@ export default function StudentDashboard() {
         solutionText: 'Liệt kê 3 phản ứng minh họa chuẩn xác.',
         uploadedFileName: 'bai_1_oxi_hoa_khu.pdf',
         solutionFileName: 'loi_giai_bai_1.pdf',
+        assignmentFileName: 'bai_tap_1_nhan_biet_oxi_hoa_khu.pdf',
       },
       {
         id: 'chem-2',
@@ -622,6 +703,7 @@ export default function StudentDashboard() {
         solutionText: 'Áp dụng phương pháp thăng bằng electron.',
         uploadedFileName: 'bai_2_can_bang_pthh.pdf',
         solutionFileName: 'loi_giai_bai_2.pdf',
+        assignmentFileName: 'bai_tap_2_can_bang_pthh.pdf',
       },
       {
         id: 'chem-3',
@@ -634,6 +716,7 @@ export default function StudentDashboard() {
         solutionText: 'Nêu 2 ví dụ phản ứng thực tế và giải thích.',
         uploadedFileName: 'bai_3_ung_dung_thuc_te.pdf',
         solutionFileName: 'loi_giai_bai_3.pdf',
+        assignmentFileName: 'bai_tap_3_ung_dung_thuc_te.pdf',
       },
     ],
   })
@@ -753,6 +836,7 @@ export default function StudentDashboard() {
         comment: 'Hoàn thành tốt',
         uploadedFileName: 'bai_tap_toan_chuong_2.pdf',
         solutionFileName: 'loi_giai_toan_chuong_2.pdf',
+        assignmentFileName: 'bai_tap_toan_chuong_2_goc.pdf',
       },
     ],
     'y2': [
@@ -765,6 +849,7 @@ export default function StudentDashboard() {
         result: 'completed',
         comment: 'Đã nộp đúng hạn',
         uploadedFileName: 'on_tap_hoa_chuong_1.pdf',
+        assignmentFileName: 'on_tap_hoa_chuong_1_goc.pdf',
       },
     ],
     // Today sessions
@@ -779,6 +864,7 @@ export default function StudentDashboard() {
         comment: 'Làm đúng, trình bày rõ ràng',
         solutionType: 'text',
         solutionText: 'Áp dụng phương pháp thế, trình bày từng bước.',
+        assignmentFileName: 'bai_4_sgk_trang_33.pdf',
       },
       {
         id: '2',
@@ -789,6 +875,7 @@ export default function StudentDashboard() {
         result: 'not_completed',
         comment: 'Cần luyện thêm phần rút gọn',
         solutionFileName: 'loi_giai_bai_nang_cao.pdf',
+        assignmentFileName: 'bai_nang_cao_azota.pdf',
       },
       {
         id: '3',
@@ -895,6 +982,7 @@ export default function StudentDashboard() {
       date: new Date(),
       tutor: 'Tutor B',
       summary: 'Ôn luyện chương 3, tập trung vào bài nâng cao.',
+      generalComment: 'Học sinh phần tính nhẩm hơi yếu, anh chị nhắc nhở cháu thôi.',
       criteria: [
         {
           id: 'r1',
@@ -939,6 +1027,7 @@ export default function StudentDashboard() {
       date: new Date(),
       tutor: 'Tutor C',
       summary: 'Luyện tập phần phản ứng oxi hoá khử.',
+      generalComment: 'Cháu làm bài tốt, nhưng cần chú ý hơn phần cân bằng phương trình.',
       criteria: [
         {
           id: 'r1',
@@ -977,12 +1066,58 @@ export default function StudentDashboard() {
         },
       ],
     },
+    {
+      id: 'report-physics-today',
+      subject: 'Lý',
+      date: new Date(),
+      tutor: 'Tutor D',
+      summary: 'Ôn lại phần sóng cơ để thuyết trình.',
+      generalComment: 'Học sinh cần luyện thêm phần vẽ đồ thị sóng, phần này quan trọng cho bài kiểm tra sắp tới.',
+      criteria: [
+        {
+          id: 'r1',
+          metric: 'Mức độ tập trung',
+          description: 'Học sinh có duy trì sự chú ý suốt buổi học.',
+          rating: 4,
+          note: 'Tập trung tốt.',
+        },
+        {
+          id: 'r2',
+          metric: 'Hiểu nội dung bài học',
+          description: 'Hiểu khái niệm, nắm được cách làm bài.',
+          rating: 3,
+          note: 'Cần ôn lại phần cơ bản.',
+        },
+        {
+          id: 'r3',
+          metric: 'Hoàn thành nhiệm vụ',
+          description: 'Làm đủ, đúng thời gian và yêu cầu.',
+          rating: 4,
+          note: 'Hoàn thành đúng hạn.',
+        },
+        {
+          id: 'r4',
+          metric: 'Thái độ & tinh thần học',
+          description: 'Chủ động hỏi, hợp tác, tôn trọng giờ học.',
+          rating: 4,
+          note: 'Thái độ tốt.',
+        },
+        {
+          id: 'r5',
+          metric: 'Kỹ năng trình bày & tư duy',
+          description: 'Trình bày rõ ràng, biết giải thích lại bài.',
+          rating: 3,
+          note: 'Cần cải thiện phần vẽ đồ thị.',
+        },
+      ],
+    },
   ]
 
 const todayReports = reportSummaries.filter((report) => format(report.date, 'yyyy-MM-dd') === todayDateKey)
 const [activeReportId, setActiveReportId] = useState<string>(todayReports[0]?.id || '')
   const [previewReport, setPreviewReport] = useState<DailyReport | null>(null)
   const [showReportPreview, setShowReportPreview] = useState(false)
+  const [isDetailedReviewExpanded, setIsDetailedReviewExpanded] = useState<boolean>(true)
 
 useEffect(() => {
   if (todayReports.length === 0) {
@@ -1023,6 +1158,8 @@ useEffect(() => {
   }
 
   const getScheduleStatus = (schedule: ScheduleItem) => {
+    if (schedule.status) return schedule.status
+
     const scheduleDate = schedule.date
     const [startTimeRaw, endTimeRaw] = schedule.time.split(' - ')
     if (!startTimeRaw || !endTimeRaw) {
@@ -1040,7 +1177,7 @@ useEffect(() => {
     const endTime = toDateTime(endTimeRaw)
     const now = new Date()
 
-    if (now >= startTime && now <= endTime) return 'in_progress'
+    if (now >= startTime && now <= endTime) return 'ongoing'
     if (now < startTime) return 'upcoming'
     return 'completed'
   }
@@ -1056,20 +1193,63 @@ useEffect(() => {
   // Group checklist by date
   const checklistByDate = groupByDate(checklistItems)
   
-  // Get sorted date keys - chỉ hiển thị 3 ngày: hôm qua, hôm nay, ngày mai
-  const today = new Date()
-  const yesterday = new Date(today.getTime() - 1 * 24 * 60 * 60 * 1000)
-  const tomorrow = new Date(today.getTime() + 1 * 24 * 60 * 60 * 1000)
+  // Lọc checklist dựa trên bộ lọc
+  const getFilteredChecklistItems = () => {
+    let filtered = [...checklistItems]
+    
+    // Lọc theo tìm kiếm
+    if (checklistSearchQuery.trim()) {
+      const query = checklistSearchQuery.toLowerCase()
+      filtered = filtered.filter(item => 
+        item.lesson.toLowerCase().includes(query) ||
+        item.task.toLowerCase().includes(query) ||
+        item.subject.toLowerCase().includes(query) ||
+        (item.note && item.note.toLowerCase().includes(query))
+      )
+    }
+    
+    // Lọc theo mốc thời gian
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    if (checklistDateRange === 'week') {
+      const weekAgo = new Date(today)
+      weekAgo.setDate(weekAgo.getDate() - 7)
+      filtered = filtered.filter(item => {
+        const itemDate = new Date(item.date)
+        itemDate.setHours(0, 0, 0, 0)
+        return itemDate >= weekAgo && itemDate <= today
+      })
+    } else if (checklistDateRange === 'month') {
+      const monthAgo = new Date(today)
+      monthAgo.setMonth(monthAgo.getMonth() - 1)
+      filtered = filtered.filter(item => {
+        const itemDate = new Date(item.date)
+        itemDate.setHours(0, 0, 0, 0)
+        return itemDate >= monthAgo && itemDate <= today
+      })
+    } else if (checklistDateRange === 'custom' && checklistCustomStartDate && checklistCustomEndDate) {
+      const startDate = new Date(checklistCustomStartDate)
+      startDate.setHours(0, 0, 0, 0)
+      const endDate = new Date(checklistCustomEndDate)
+      endDate.setHours(23, 59, 59, 999)
+      filtered = filtered.filter(item => {
+        const itemDate = new Date(item.date)
+        return itemDate >= startDate && itemDate <= endDate
+      })
+    }
+    // 'all' không lọc gì
+    
+    return filtered
+  }
   
-  const allDates = Object.keys(checklistByDate).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
-  const checklistDates = allDates.filter(dateKey => {
-    const date = new Date(dateKey)
-    const dateStr = format(date, 'yyyy-MM-dd')
-    const todayStr = format(today, 'yyyy-MM-dd')
-    const yesterdayStr = format(yesterday, 'yyyy-MM-dd')
-    const tomorrowStr = format(tomorrow, 'yyyy-MM-dd')
-    return dateStr === todayStr || dateStr === yesterdayStr || dateStr === tomorrowStr
-  }).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+  const filteredChecklistItems = getFilteredChecklistItems()
+  const filteredChecklistByDate = groupByDate(filteredChecklistItems)
+  
+  // Get sorted date keys - hiển thị tất cả ngày sau khi lọc
+  const today = new Date()
+  const allDates = Object.keys(filteredChecklistByDate).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+  const checklistDates = allDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime()) // Sắp xếp mới nhất trước
   
   // Get selected date details
   const selectedChecklistDetails = selectedDate && selectedDateType === 'checklist' ? checklistByDate[selectedDate] : []
@@ -1177,6 +1357,21 @@ useEffect(() => {
     setPreviewReport(null)
   }
 
+  // Helper function to get subject color
+  const getSubjectColor = (subject: string) => {
+    const colors: Record<string, { bg: string; text: string }> = {
+      'Toán': { bg: 'bg-blue-500', text: 'text-white' },
+      'Lý': { bg: 'bg-green-500', text: 'text-white' },
+      'Hóa': { bg: 'bg-purple-500', text: 'text-white' },
+    }
+    return colors[subject] || { bg: 'bg-gray-500', text: 'text-white' }
+  }
+
+  // Helper function to get tutor avatar initial
+  const getTutorInitial = (tutorName: string) => {
+    return tutorName.charAt(tutorName.length - 1).toUpperCase()
+  }
+
   const handleExportSubjectReport = (report: DailyReport) => {
     const stats = getSubjectChecklistStats(report.subject)
     const checklistContent = stats.items
@@ -1218,6 +1413,65 @@ useEffect(() => {
     const link = document.createElement('a')
     link.href = url
     link.setAttribute('download', `bao-cao-${report.subject}-${format(report.date, 'yyyy-MM-dd')}.pdf`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  // Export combined report for all subjects
+  const handleExportCombinedReport = () => {
+    if (todayReports.length === 0) return
+
+    const allReportsContent = todayReports.map((report) => {
+      const stats = getSubjectChecklistStats(report.subject)
+      const checklistContent = stats.items
+        .map(
+          (item, index) =>
+            `${index + 1}. ${item.lesson} - ${item.status === 'done' ? 'Hoàn thành' : 'Chưa hoàn thành'}`
+        )
+        .join('\n')
+      const detailContent = stats.detailItems
+        .map((item, index) => {
+          const badge = checklistResultConfig[item.result]
+          return `${index + 1}. ${item.lesson} | Ước lượng: ${item.estimatedTime} phút | Thực tế: ${item.actualTime} phút | Kết quả: ${badge.label} | Nhận xét: ${item.qualityNote || '—'}`
+        })
+        .join('\n')
+      const criteriaContent = report.criteria
+        .map((criteria, index) => `${index + 1}. ${criteria.metric}: ${criteria.rating}/5 - ${criteria.note}`)
+        .join('\n')
+
+      return [
+        `\n========== ${report.subject.toUpperCase()} ==========`,
+        `Tutor: ${report.tutor}`,
+        '',
+        'Checklist học sinh đã thực hiện:',
+        checklistContent || 'Chưa có checklist cho môn này.',
+        '',
+        'Chi tiết bài tập:',
+        detailContent || 'Chưa có chi tiết bài tập.',
+        '',
+        'Nhận xét & đánh giá từ tutor:',
+        criteriaContent,
+        '',
+        `Tổng kết: ${report.summary}`,
+        report.generalComment ? `Đánh giá chung: ${report.generalComment}` : '',
+        `Tiến độ checklist: ${stats.completed}/${stats.total} (${stats.percentage}%)`,
+      ].filter(Boolean).join('\n')
+    })
+
+    const pdfContent = [
+      'BÁO CÁO TỔNG HỢP BUỔI HỌC',
+      `Ngày: ${format(todayReports[0].date, 'dd/MM/yyyy')}`,
+      '',
+      ...allReportsContent,
+    ].join('\n')
+
+    const blob = new Blob([pdfContent], { type: 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `bao-cao-tong-hop-${format(todayReports[0].date, 'yyyy-MM-dd')}.pdf`)
     document.body.appendChild(link)
     link.click()
     link.remove()
@@ -1347,9 +1601,9 @@ useEffect(() => {
   }
 
   const renderHomeSection = () => (
-    <div className="h-full flex flex-col lg:flex-row gap-4 lg:gap-6 overflow-hidden">
+    <div className="h-full flex flex-col lg:flex-row gap-3 lg:gap-4 overflow-hidden">
       {/* Main Layout - 2 Columns */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 min-w-0">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-4 min-w-0">
         {/* Left Column - Profile & Quick Actions (Fixed, No Scroll) */}
         <div className="lg:col-span-1 flex-shrink-0 h-full overflow-hidden">
           <div className="h-full flex flex-col">
@@ -1434,7 +1688,7 @@ useEffect(() => {
         </div>
 
         {/* Right Column - Main Content (Scrollable) */}
-        <div className="lg:col-span-2 h-full overflow-y-auto space-y-4 sm:space-y-6 pr-0 sm:pr-2">
+        <div className="lg:col-span-2 h-full overflow-y-auto space-y-3 sm:space-y-4">
           
           {/* 🚀 UPLOAD DOCUMENTS (ĐÃ CHUYỂN LÊN ĐẦU) 🚀 */}
           <div className="card hover:shadow-xl transition-shadow duration-300">
@@ -1539,7 +1793,7 @@ useEffect(() => {
                 {todaySchedules.map((schedule) => {
                   const status = getScheduleStatus(schedule)
                   const statusConfig = {
-                    in_progress: { label: 'Đang diễn ra', className: 'bg-green-100 text-green-700' },
+                    ongoing: { label: 'Đang diễn ra', className: 'bg-green-100 text-green-700' },
                     upcoming: { label: 'Sắp diễn ra', className: 'bg-yellow-100 text-yellow-700' },
                     completed: { label: 'Đã kết thúc', className: 'bg-gray-100 text-gray-600' },
                   }[status]
@@ -1547,7 +1801,8 @@ useEffect(() => {
                   return (
                     <div
                       key={schedule.id}
-                      className="border-2 border-gray-200 rounded-xl p-4 hover:border-primary-300 hover:shadow-md transition-all bg-gradient-to-br from-white to-gray-50"
+                      onClick={() => schedule.tutor && setSelectedTutorSchedule(schedule.id)}
+                      className="border-2 border-gray-200 rounded-xl p-4 hover:border-primary-300 hover:shadow-md transition-all bg-gradient-to-br from-white to-gray-50 cursor-pointer"
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
@@ -1569,7 +1824,10 @@ useEffect(() => {
                           <div className="flex items-center gap-2">
                             {schedule.meetLink && (
                               <button
-                                onClick={() => handleJoinClass(schedule.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleJoinClass(schedule.id)
+                                }}
                                 className="btn-primary text-sm px-4 py-2 whitespace-nowrap"
                               >
                                 Vào lớp
@@ -1617,6 +1875,115 @@ useEffect(() => {
             )}
           </div>
 
+          {/* Modal chi tiết Tutor */}
+          {selectedTutorSchedule && (() => {
+            const schedule = todaySchedules.find(s => s.id === selectedTutorSchedule)
+            if (!schedule || !schedule.tutor) return null
+            const tutorDetail = tutorDetails[schedule.tutor as keyof typeof tutorDetails]
+            if (!tutorDetail) return null
+
+            return (
+              <div 
+                className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+                onClick={() => setSelectedTutorSchedule(null)}
+              >
+                <div 
+                  className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+                    <h2 className="text-xl font-bold text-gray-900">Thông tin chi tiết Tutor</h2>
+                    <button
+                      onClick={() => setSelectedTutorSchedule(null)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <span className="text-2xl">&times;</span>
+                    </button>
+                  </div>
+
+                  <div className="p-6 space-y-6">
+                    {/* Header với thông tin buổi học */}
+                    <div className="border-b border-gray-200 pb-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className={`px-3 py-1 rounded-lg text-sm font-bold ${
+                          schedule.subject === 'Toán' ? 'bg-blue-500 text-white' :
+                          schedule.subject === 'Hóa' ? 'bg-green-500 text-white' :
+                          'bg-gray-500 text-white'
+                        }`}>
+                          {schedule.subject}
+                        </span>
+                        <span className="text-sm font-semibold text-gray-700">{schedule.time}</span>
+                      </div>
+                      <p className="text-sm text-gray-600">{format(schedule.date, 'EEEE, dd/MM/yyyy')}</p>
+                    </div>
+
+                    {/* Thông tin Tutor */}
+                    <div className="space-y-4">
+                      <div className="flex items-start gap-4">
+                        <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center text-white text-xl font-bold shadow-lg">
+                          {tutorDetail.name.charAt(tutorDetail.name.length - 1)}
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-2xl font-bold text-gray-900 mb-1">{tutorDetail.name}</h3>
+                          <p className="text-sm text-gray-600">{tutorDetail.experience}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`w-5 h-5 ${star <= Math.floor(tutorDetail.rating) ? 'text-yellow-400 fill-yellow-400' : star <= tutorDetail.rating ? 'text-yellow-400 fill-yellow-200' : 'text-gray-300'}`}
+                              />
+                            ))}
+                            <span className="text-sm font-semibold text-gray-700 ml-1">{tutorDetail.rating}/5.0</span>
+                            <span className="text-xs text-gray-500">({tutorDetail.totalStudents} học sinh)</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Thông tin liên hệ */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+                          <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Email</p>
+                          <p className="text-sm text-gray-900">{tutorDetail.email}</p>
+                        </div>
+                        <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+                          <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Số điện thoại</p>
+                          <p className="text-sm text-gray-900">{tutorDetail.phone}</p>
+                        </div>
+                      </div>
+
+                      {/* Học vấn */}
+                      <div className="border border-gray-200 rounded-xl p-4 bg-gradient-to-r from-blue-50 to-blue-100">
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Học vấn</p>
+                        <p className="text-sm font-semibold text-gray-900">{tutorDetail.education}</p>
+                      </div>
+
+                      {/* Chuyên môn */}
+                      <div>
+                        <p className="text-sm font-bold text-gray-900 mb-3">Chuyên môn</p>
+                        <div className="flex flex-wrap gap-2">
+                          {tutorDetail.specialties.map((specialty, idx) => (
+                            <span
+                              key={idx}
+                              className="px-3 py-1.5 bg-primary-100 text-primary-700 rounded-lg text-xs font-semibold"
+                            >
+                              {specialty}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Giới thiệu */}
+                      <div>
+                        <p className="text-sm font-bold text-gray-900 mb-2">Giới thiệu</p>
+                        <p className="text-sm text-gray-700 leading-relaxed">{tutorDetail.bio}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Today's Checklist by Subject (Vị trí mới: thứ ba) */}
           <div className="card hover:shadow-xl transition-shadow duration-300">
             <div className="flex items-center justify-between mb-6">
@@ -1637,131 +2004,146 @@ useEffect(() => {
             {renderTodayChecklistGroups()}
           </div>
 
-          {/* Recent Reports (Vị trí mới: thứ tư) */}
-          <div className="card hover:shadow-xl transition-shadow duration-300">
-            <div className="flex items-center space-x-2 mb-6">
-              <MessageSquare className="w-5 h-5 text-primary-600" />
-              <h2 className="text-xl font-bold text-gray-900">Báo cáo buổi học hôm nay</h2>
+          {/* Đánh giá chi tiết */}
+          {todayReports.length > 0 && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center space-x-2">
+                  <MessageSquare className="w-5 h-5 text-primary-600" />
+                  <h2 className="text-2xl font-bold text-gray-900">Đánh giá chi tiết</h2>
+                </div>
+                <button
+                  onClick={() => setIsDetailedReviewExpanded(!isDetailedReviewExpanded)}
+                  className="flex items-center space-x-2 text-gray-600 hover:text-primary-600 transition-colors"
+                >
+                  <span className="text-sm font-medium">
+                    {isDetailedReviewExpanded ? 'Thu gọn' : 'Mở rộng'}
+                  </span>
+                  {isDetailedReviewExpanded ? (
+                    <ChevronUp className="w-5 h-5" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
+              {isDetailedReviewExpanded && todayReports.length > 0 && (
+                <div className="grid grid-cols-1 gap-3">
+                  {todayReports[0].criteria.map((criteria) => (
+                    <div
+                      key={criteria.id}
+                      className="border border-gray-200 rounded-xl p-4 bg-white"
+                    >
+                      <div className="flex items-center justify-between gap-4 flex-wrap mb-2">
+                        <div className="flex-1">
+                          <p className="text-lg font-bold text-gray-900 mb-1">{criteria.metric}</p>
+                          <p className="text-sm text-gray-600">{criteria.description}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={`${criteria.id}-preview-star-${star}`}
+                              className={`w-5 h-5 ${star <= criteria.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'}`}
+                            />
+                          ))}
+                          <span className="text-lg font-bold text-gray-900 ml-2">{criteria.rating}/5</span>
+                        </div>
+                      </div>
+                      <div className="bg-primary-50 text-primary-800 text-sm font-semibold px-3 py-2 rounded-lg">
+                        {criteria.note}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            {todayReports.length === 0 ? (
-              <p className="text-sm text-gray-500">Chưa có buổi học nào cần báo cáo hôm nay.</p>
-            ) : (
+          )}
+
+          {/* Đánh giá chung - Tổng hợp cho tất cả môn */}
+          {todayReports.length > 0 && (
+            <div className="card">
+              <div className="flex items-center space-x-2 mb-6">
+                <MessageSquare className="w-5 h-5 text-primary-600" />
+                <h2 className="text-2xl font-bold text-gray-900">Đánh giá chung</h2>
+              </div>
               <div className="space-y-4">
                 {todayReports.map((report) => {
-                  const isActive = report.id === activeReportId
-                  const stats = getSubjectChecklistStats(report.subject)
-                  const { completed, total, percentage } = stats
+                  const subjectColor = getSubjectColor(report.subject)
                   return (
-                    <div key={report.id} className="border border-gray-200 rounded-2xl p-4 bg-gradient-to-br from-white to-gray-50 shadow-sm">
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-500">{format(report.date, 'dd/MM/yyyy')}</p>
-                          <h3 className="text-lg font-bold text-gray-900">Buổi học {report.subject}</h3>
-                          <p className="text-sm text-gray-600">Tutor: {report.tutor}</p>
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{report.summary}</p>
+                    <div key={report.id} className="border border-gray-200 rounded-xl p-5 bg-white">
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className={`px-3 py-1.5 rounded-lg text-base font-bold ${subjectColor.bg} ${subjectColor.text}`}>
+                          {report.subject}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <img 
+                            src="https://www.paratime.vn/wp-content/uploads/2020/02/TIME-Studio-headshot-3-elements.jpg" 
+                            alt={report.tutor}
+                            className="w-10 h-10 rounded-full object-cover shadow-lg border-2 border-gray-200"
+                          />
+                          <p className="text-base font-semibold text-gray-700">{report.tutor}</p>
                         </div>
-                        <button
-                          onClick={() => setActiveReportId(isActive ? '' : report.id)}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-primary-500 text-primary-600 font-semibold hover:bg-primary-50 transition-colors"
-                        >
-                          <Eye className="w-4 h-4" />
-                          {isActive ? 'Thu gọn' : 'Xem đánh giá'}
-                        </button>
                       </div>
-                      {isActive && (
-                        <div className="mt-5 space-y-5">
-                          <div>
-                            <div className="flex items-center justify-between mb-3">
-                              <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Đánh giá chi tiết</h4>
-                              <span className="text-xs text-gray-500">{report.criteria.length} tiêu chí</span>
-                            </div>
-                            <div className="grid grid-cols-1 gap-3">
-                              {report.criteria.map((criteria) => (
-                                <div
-                                  key={`${report.id}-${criteria.id}`}
-                                  className="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm hover:shadow-md transition-shadow"
-                                >
-                                  <div className="flex items-center justify-between gap-4 flex-wrap mb-2">
-                                    <div>
-                                      <p className="text-sm font-bold text-gray-900">{criteria.metric}</p>
-                                      <p className="text-xs text-gray-500">{criteria.description}</p>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      {[1, 2, 3, 4, 5].map((star) => (
-                                        <Star
-                                          key={`${criteria.id}-preview-star-${star}`}
-                                          className={`w-4 h-4 ${star <= criteria.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'}`}
-                                        />
-                                      ))}
-                                      <span className="text-xs font-semibold text-gray-600 ml-1">{criteria.rating}/5</span>
-                                    </div>
-                                  </div>
-                                  <div className="bg-primary-50/70 text-primary-700 text-xs font-medium px-3 py-2 rounded-xl">
-                                    {criteria.note}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="p-4 rounded-2xl border border-blue-100 bg-blue-50/70 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="text-sm font-bold text-gray-900">Đánh giá chung</p>
-                                <p className="text-sm text-gray-600">{report.summary}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-xs text-gray-500 font-semibold">Tiến độ checklist</p>
-                                <p className="text-lg font-bold text-blue-600">
-                                  {completed}/{total} ({percentage}%)
-                                </p>
-                              </div>
-                            </div>
-                            <div className="w-full h-2 bg-white rounded-full overflow-hidden shadow-inner">
-                              <div
-                                className="h-full bg-gradient-to-r from-primary-500 to-primary-600 rounded-full transition-all duration-500"
-                                style={{ width: `${percentage}%` }}
-                              ></div>
-                            </div>
-                          </div>
-
-                          <div className="p-4 border-2 border-gray-200 rounded-2xl bg-white flex items-center justify-between flex-wrap gap-3">
-                            <div>
-                              <p className="text-sm font-bold text-gray-900">Xuất báo cáo</p>
-                              <p className="text-xs text-gray-500">Xem báo cáo demo trước khi tải xuống.</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleOpenReportPreview(report)}
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-500 text-white text-sm font-semibold hover:bg-primary-600 transition-colors"
-                              >
-                                <Eye className="w-4 h-4" />
-                                Xem báo cáo mẫu
-                              </button>
-                              <button
-                                onClick={() => handleExportSubjectReport(report)}
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-primary-500 text-primary-600 text-sm font-semibold hover:bg-primary-50 transition-colors"
-                              >
-                                <Download className="w-4 h-4" />
-                                Tải báo cáo
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                      <p className="text-lg font-bold text-gray-900 leading-relaxed">
+                        {report.generalComment || report.summary}
+                      </p>
                     </div>
                   )
                 })}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {/* Xuất báo cáo */}
+          {todayReports.length > 0 && (
+            <div className="card">
+              <div className="flex items-center space-x-2 mb-6">
+                <Download className="w-5 h-5 text-primary-600" />
+                <h2 className="text-2xl font-bold text-gray-900">Xuất báo cáo</h2>
+              </div>
+              <div className="border-2 border-gray-200 rounded-xl p-6 bg-white">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div className="flex-1">
+                    <p className="text-lg font-bold text-gray-900 mb-2">
+                      Báo cáo tổng hợp tất cả môn học hôm nay
+                    </p>
+                    <p className="text-sm text-gray-600 mb-3">
+                      Bao gồm: {todayReports.map(r => r.subject).join(', ')}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      Xem báo cáo demo trước khi tải xuống.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        if (todayReports.length > 0) {
+                          handleOpenReportPreview(todayReports[0])
+                        }
+                      }}
+                      className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary-500 text-white text-base font-bold hover:bg-primary-600 transition-colors"
+                    >
+                      <Eye className="w-5 h-5" />
+                      Xem báo cáo mẫu
+                    </button>
+                    <button
+                      onClick={handleExportCombinedReport}
+                      className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border-2 border-primary-500 text-primary-600 text-base font-bold hover:bg-primary-50 transition-colors"
+                    >
+                      <Download className="w-5 h-5" />
+                      Tải báo cáo tổng hợp
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   )
 
   const renderAnalyticsSection = () => (
-    <div className="h-full overflow-y-auto space-y-4 sm:space-y-6 px-2 sm:px-0">
+    <div className="h-full overflow-y-auto space-y-3 sm:space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="card hover:shadow-xl transition-shadow duration-300">
           <div className="flex flex-col space-y-2">
@@ -1808,7 +2190,7 @@ useEffect(() => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         <div className="card hover:shadow-xl transition-shadow duration-300">
           <div className="flex items-center space-x-2 mb-3 sm:mb-4">
             <Target className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
@@ -1876,7 +2258,7 @@ useEffect(() => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="card hover:shadow-xl transition-shadow duration-300">
           <div className="flex items-center space-x-2 mb-3 sm:mb-4">
             <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
@@ -1979,45 +2361,12 @@ useEffect(() => {
 
   const renderScheduleSection = () => (
     <div className="h-full overflow-hidden">
-      <div className="card hover:shadow-xl transition-shadow duration-300 p-0 overflow-hidden h-full flex flex-col">
-        {/* Sticky Header */}
-        <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Calendar className="w-6 h-6 text-primary-600" />
-              <h2 className="text-2xl font-bold text-gray-900">Lịch học</h2>
-            </div>
-            
-            {/* Legend */}
-            <div className="hidden md:flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-blue-500 rounded"></div>
-                <span className="text-xs text-gray-600">Toán</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-green-500 rounded"></div>
-                <span className="text-xs text-gray-600">Hóa</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-purple-500 rounded"></div>
-                <span className="text-xs text-gray-600">Lý</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-yellow-500 rounded"></div>
-                <span className="text-xs text-gray-600">Anh</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Scrollable Calendar View - Scroll inside calendar component */}
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <WeeklyCalendar
-            schedules={schedules}
-            onJoinClass={handleJoinClass}
-            onViewChecklist={handleViewChecklist}
-          />
-        </div>
+      <div className="h-full flex flex-col bg-white rounded-2xl shadow-lg overflow-hidden">
+        <MonthlyCalendar
+          schedules={schedules}
+          onJoinClass={handleJoinClass}
+          onViewChecklist={handleViewChecklist}
+        />
       </div>
     </div>
   )
@@ -2042,7 +2391,7 @@ useEffect(() => {
     }
 
     return (
-      <div className="h-full overflow-y-auto space-y-4 sm:space-y-6 px-2 sm:px-0">
+      <div className="h-full overflow-y-auto space-y-3 sm:space-y-4">
         {/* Checklist list by date with expand/collapse */}
         <div className="card hover:shadow-xl transition-shadow duration-300">
           <div className="flex items-center space-x-2 mb-4 sm:mb-6">
@@ -2050,10 +2399,66 @@ useEffect(() => {
             <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Checklist</h2>
           </div>
           
+          {/* Bộ lọc */}
+          <div className="mb-4 space-y-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
+            {/* Tìm kiếm */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm theo bài học, nhiệm vụ, môn học..."
+                value={checklistSearchQuery}
+                onChange={(e) => setChecklistSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+              />
+            </div>
+            
+            {/* Mốc thời gian */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center space-x-2">
+                <Filter className="w-4 h-4 text-gray-500" />
+                <span className="text-sm font-semibold text-gray-700">Mốc thời gian:</span>
+              </div>
+              <select
+                value={checklistDateRange}
+                onChange={(e) => setChecklistDateRange(e.target.value as 'all' | 'week' | 'month' | 'custom')}
+                className="px-3 py-1.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+              >
+                <option value="all">Tất cả</option>
+                <option value="week">7 ngày qua</option>
+                <option value="month">30 ngày qua</option>
+                <option value="custom">Tùy chọn</option>
+              </select>
+              
+              {checklistDateRange === 'custom' && (
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="date"
+                    value={checklistCustomStartDate}
+                    onChange={(e) => setChecklistCustomStartDate(e.target.value)}
+                    className="px-3 py-1.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                    placeholder="Từ ngày"
+                  />
+                  <span className="text-gray-500">đến</span>
+                  <input
+                    type="date"
+                    value={checklistCustomEndDate}
+                    onChange={(e) => setChecklistCustomEndDate(e.target.value)}
+                    className="px-3 py-1.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                    placeholder="Đến ngày"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+          
           <div className="space-y-2 sm:space-y-3">
-            {checklistDates.map((dateKey) => {
-              const dateObj = new Date(dateKey)
-              const dayChecklist = checklistByDate[dateKey] || []
+            {checklistDates.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-8">Không tìm thấy checklist nào phù hợp với bộ lọc.</p>
+            ) : (
+              checklistDates.map((dateKey) => {
+                const dateObj = new Date(dateKey)
+                const dayChecklist = filteredChecklistByDate[dateKey] || []
               const isTodayDate = isToday(dateObj)
               const isExpanded = expandedChecklistDate === dateKey
               const stats = getChecklistStats(dayChecklist)
@@ -2184,7 +2589,7 @@ useEffect(() => {
                   )}
                 </div>
               )
-            })}
+            }))}
           </div>
         </div>
       </div>
@@ -2244,7 +2649,7 @@ useEffect(() => {
     }
     
     return (
-      <div className="h-full overflow-y-auto space-y-4 sm:space-y-6 px-2 sm:px-0">
+      <div className="h-full overflow-y-auto space-y-3 sm:space-y-4">
         <div className="card hover:shadow-xl transition-shadow duration-300">
           <div className="flex items-center space-x-2 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-gray-200">
             <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
@@ -2381,7 +2786,7 @@ useEffect(() => {
           <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <div>
-                <h3 className="text-2xl font-bold text-gray-900">Báo cáo môn {previewReport.subject}</h3>
+                <h3 className="text-2xl font-bold text-gray-900">Báo buổi học</h3>
                 <p className="text-sm text-gray-500">
                   Ngày {format(previewReport.date, 'dd/MM/yyyy')} · Tutor {previewReport.tutor}
                 </p>
@@ -2446,8 +2851,8 @@ useEffect(() => {
                           <tr className="text-xs uppercase tracking-wider text-gray-500">
                             <th className="px-3 py-2 text-left font-semibold">Bài tập</th>
                             <th className="px-3 py-2 text-left font-semibold">Ước lượng</th>
+                            <th className="px-3 py-2 text-left font-semibold">File bài tập</th>
                             <th className="px-3 py-2 text-left font-semibold">Thực tế</th>
-                            {/* <th className="px-3 py-2 text-left font-semibold">Upload</th> */}
                             <th className="px-3 py-2 text-left font-semibold">Lời giải</th>
                             <th className="px-3 py-2 text-left font-semibold">Kết quả</th>
                             <th className="px-3 py-2 text-left font-semibold">Nhận xét</th>
@@ -2460,10 +2865,18 @@ useEffect(() => {
                               <tr key={item.id}>
                                 <td className="px-3 py-2 font-semibold text-gray-900">{item.lesson}</td>
                                 <td className="px-3 py-2 text-gray-600">{item.estimatedTime} phút</td>
+                                <td className="px-3 py-2 text-gray-600">
+                                  {item.assignmentFileName ? (
+                                    <div className="flex items-center gap-1 text-blue-600">
+                                      <FileText className="w-3 h-3 flex-shrink-0" />
+                                      <span className="text-xs font-semibold truncate max-w-[100px]">{item.assignmentFileName}</span>
+                                      <Download className="w-3 h-3 cursor-pointer hover:text-blue-700 flex-shrink-0" />
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">—</span>
+                                  )}
+                                </td>
                                 <td className="px-3 py-2 text-gray-900 font-medium">{item.actualTime} phút</td>
-                                {/* <td className="px-3 py-2 text-gray-600">
-                                  {item.uploadedFileName ? item.uploadedFileName : '—'}
-                                </td> */}
                                 <td className="px-3 py-2 text-gray-600 space-y-1">
                                   {item.solutionText && <p className="text-xs text-gray-700">{item.solutionText}</p>}
                                   {item.solutionFileName && (
