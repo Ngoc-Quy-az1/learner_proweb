@@ -36,7 +36,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden" style={{ backgroundColor: '#0066ff' }}>
+    <div className="min-h-screen relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #4A90E2 0%, #B0B0B0 100%)' }}>
       {/* Navbar - Hidden on login page for cleaner look */}
       
       <div className="relative z-10 min-h-screen flex items-center justify-center px-4 py-8">
@@ -44,20 +44,20 @@ export default function LoginPage() {
           {/* Login Form */}
           <div className="bg-white rounded-3xl p-10 shadow-2xl">
             {/* Logo inside form */}
-            <div className="text-center mb-8 sm:mb-10">
+            <div className="text-center mb-6 sm:mb-8">
               <Link to="/" className="inline-block">
-                <div className="flex items-center justify-center space-x-3 sm:space-x-4 md:space-x-5 mb-2 flex-wrap">
+                <div className="flex items-center justify-center space-x-2 sm:space-x-3 mb-2">
                   <img 
                     src="/skillar-favicon.svg" 
                     alt="SKILLAR Logo" 
-                    className="h-16 sm:h-20 md:h-24 lg:h-28 xl:h-32 w-auto flex-shrink-0" 
+                    className="h-10 sm:h-12 md:h-14 lg:h-16 w-auto flex-shrink-0 object-contain" 
                   />
                   <h1 
-                    className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold flex-shrink-0" 
-                    style={{ fontFamily: 'Ubuntu, sans-serif', fontWeight: 900 }}
+                    className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold flex-shrink-0 whitespace-nowrap" 
+                    style={{ fontFamily: 'Ubuntu, sans-serif', fontWeight: 900, lineHeight: '1' }}
                   >
-                    <span style={{ color: '#528fcd' }}>skillar</span>
-                    <span style={{ color: '#032757' }}>Tutor</span>
+                    <span style={{ color: '#032757' }}>skillar</span>
+                    <span style={{ color: '#528fcd' }}>Tutor</span>
                   </h1>
                 </div>
               </Link>

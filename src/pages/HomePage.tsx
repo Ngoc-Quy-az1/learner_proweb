@@ -46,9 +46,9 @@ export default function HomePage() {
             <div className="flex items-center flex-shrink-0">
               <Link to="/" className="flex items-center space-x-3 min-w-0">
                 <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-14 w-auto flex-shrink-0" />
-                <span className="text-4xl flex-shrink-0 whitespace-nowrap" style={{ fontFamily: "'Ubuntu', sans-serif", fontWeight: 900 }}>
-                  <span style={{ color: '#528fcd' }}>skillar</span>
-                  <span style={{ color: '#032757' }}>Tutor</span>
+                <span className="text-2xl sm:text-3xl md:text-4xl flex-shrink-0 whitespace-nowrap" style={{ fontFamily: "'Ubuntu', sans-serif", fontWeight: 900 }}>
+                  <span style={{ color: '#032757' }}>skillar</span>
+                  <span style={{ color: '#528fcd' }}>Tutor</span>
                 </span>
               </Link>
             </div>
@@ -163,14 +163,14 @@ export default function HomePage() {
       </nav>
 
         {/* Hero Section */}
-        <HeroSection onGetStarted={() => navigate('/pricing')} />
+        <HeroSection onGetStarted={() => navigate('/login')} />
 
 
       {/* Tutoring Section */}
       <TutoringSection onGetTutor={() => navigate('/pricing')} />
 
       {/* Performance Section */}
-      <PerformanceSection onGetStarted={() => navigate('/pricing')} />
+      <PerformanceSection onGetStarted={() => navigate('/login')} />
 
       {/* Testimonials Section */}
       <TestimonialsSection testimonials={testimonials} />

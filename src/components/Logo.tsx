@@ -61,8 +61,8 @@ export default function Logo({ className = '', showTagline = true, size = 'md', 
     <Link to="/" className={`flex items-center ${classes.container} ${className} min-w-0`}>
       <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className={`${logoSize} flex-shrink-0`} />
       <span className={`${textSize} flex-shrink-0 whitespace-nowrap`} style={{ fontFamily: "'Ubuntu', sans-serif", fontWeight: 700 }}>
-        <span style={{ color: '#528fcd' }}>skillar</span>
-        <span style={{ color: '#032757' }}>Tutor</span>
+        <span style={{ color: '#032757' }}>skillar</span>
+        <span style={{ color: '#528fcd' }}>Tutor</span>
       </span>
       {showTagline && (
         <span className={`font-light tracking-wide ${getTaglineColor()} ${classes.tagline} flex-shrink-0 hidden sm:inline whitespace-nowrap`}>

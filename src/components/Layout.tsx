@@ -80,9 +80,9 @@ export default function Layout({ children, sidebar }: LayoutProps) {
                 )}
                 <div className="flex items-center space-x-2">
                   <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-12 w-auto" />
-                  <span className="text-4xl" style={{ fontFamily: 'Ubuntu, sans-serif', fontWeight: 700 }}>
-                    <span style={{ color: '#528fcd' }}>skillar</span>
-                    <span style={{ color: '#032757' }}>Tutor</span>
+                  <span className="text-2xl sm:text-3xl md:text-4xl" style={{ fontFamily: 'Ubuntu, sans-serif', fontWeight: 700 }}>
+                    <span style={{ color: '#032757' }}>skillar</span>
+                    <span style={{ color: '#528fcd' }}>Tutor</span>
                   </span>
                 </div>
               </div>

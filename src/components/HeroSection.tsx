@@ -81,7 +81,7 @@ export default function HeroSection({ onGetStarted }: HeroSectionProps) {
             <div className="relative lg:-ml-48 w-full max-w-[700px] h-[300px] sm:h-[380px] md:h-[420px] lg:h-[480px]">
 
               {/* GIRL - Confident (Left, Lower) */}
-              <div className="absolute bottom-3 sm:bottom-6 left-0 w-[140px] sm:w-[200px] md:w-[260px] lg:w-[320px]">
+              <div className="absolute bottom-3 sm:bottom-6 left-0 sm:left-2 md:left-0 w-[140px] sm:w-[200px] md:w-[260px] lg:w-[320px]">
                 {/* Yellow frame background */}
                 <div className="absolute -left-1 sm:-left-2 -top-1 sm:-top-2 w-full h-[calc(100%+0.5rem)] sm:h-[calc(100%+1rem)] bg-yellow-400 rounded-xl sm:rounded-2xl transform -rotate-2 shadow-2xl"></div>
 
@@ -113,7 +113,7 @@ export default function HeroSection({ onGetStarted }: HeroSectionProps) {
 
 
               {/* BOY - Brilliant (Right, Upper) */}
-              <div className="absolute top-0 right-0 w-[140px] sm:w-[200px] md:w-[260px] lg:w-[320px]">
+              <div className="absolute top-0 right-0 sm:right-2 md:right-0 w-[140px] sm:w-[200px] md:w-[260px] lg:w-[320px]">
                 {/* Turquoise frame background */}
                 <div className="absolute -right-1 sm:-right-2 -top-1 sm:-top-2 w-full h-[calc(100%+0.5rem)] sm:h-[calc(100%+1rem)] rounded-xl sm:rounded-2xl transform rotate-2 shadow-2xl" style={{ backgroundColor: '#40E0D0' }}></div>
 

@@ -41,9 +41,9 @@ export default function Sidebar({
             <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-10 w-auto" />
             {!isCollapsed && (
               <div>
-                <p className="text-3xl leading-tight" style={{ fontFamily: 'Ubuntu, sans-serif', fontWeight: 700 }}>
-                  <span style={{ color: '#528fcd' }}>skillar</span>
-                  <span style={{ color: '#032757' }}>Tutor</span>
+                <p className="text-xl sm:text-2xl md:text-3xl leading-tight" style={{ fontFamily: 'Ubuntu, sans-serif', fontWeight: 700 }}>
+                  <span style={{ color: '#032757' }}>skillar</span>
+                  <span style={{ color: '#528fcd' }}>Tutor</span>
                 </p>
                 <p className="text-xs text-gray-500">Dashboard</p>
               </div>

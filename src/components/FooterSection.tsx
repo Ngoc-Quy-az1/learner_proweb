@@ -2,7 +2,7 @@ export default function FooterSection() {
   return (
     <footer className="relative z-10 text-white py-16" style={{ backgroundColor: '#1A202C' }}>
       <div className="max-w-10xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid md:grid-cols-3 gap-12 mb-10">
+        <div className="flex flex-col md:flex-row justify-between items-start gap-12 mb-10">
           <div>
             <div className="mb-6">
               <div className="inline-block bg-white p-4 sm:p-6 rounded-xl shadow-2xl mb-4">
@@ -17,20 +17,12 @@ export default function FooterSection() {
               <p className="text-white text-base sm:text-lg font-medium">Where Growth Begins</p>
             </div>
           </div>
-          <div>
-            <h4 className="font-bold mb-6 text-white text-2xl">Liên kết nhanh</h4>
-            <ul className="space-y-4 text-white text-lg">
-              <li><a href="#home" className="hover:text-blue-400 transition-colors">Đăng nhập</a></li>
-              <li><a href="#about" className="hover:text-blue-400 transition-colors">Về chúng tôi</a></li>
-              <li><a href="#contact" className="hover:text-blue-400 transition-colors">Liên hệ</a></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="font-bold mb-6 text-white text-2xl">Hỗ trợ</h4>
-            <ul className="space-y-4 text-white text-lg">
-              <li><a href="#" className="hover:text-blue-400 transition-colors">Hướng dẫn sử dụng</a></li>
-              <li><a href="#" className="hover:text-blue-400 transition-colors">Câu hỏi thường gặp</a></li>
-              <li><a href="#" className="hover:text-blue-400 transition-colors">Chính sách bảo mật</a></li>
+          <div className="text-left">
+            <h4 className="font-bold mb-6 text-white text-3xl sm:text-4xl">Liên kết nhanh</h4>
+            <ul className="space-y-4 sm:space-y-5 text-white text-xl sm:text-2xl">
+              <li><a href="#home" className="hover:text-blue-400 transition-colors font-semibold">Đăng nhập</a></li>
+              <li><a href="#about" className="hover:text-blue-400 transition-colors font-semibold">Về chúng tôi</a></li>
+              <li><a href="#contact" className="hover:text-blue-400 transition-colors font-semibold">Liên hệ</a></li>
             </ul>
           </div>
         </div>
