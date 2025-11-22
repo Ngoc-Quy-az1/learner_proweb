@@ -19,7 +19,7 @@ export default function Logo({ className = '', showTagline = true, size = 'md', 
       logo: 'text-3xl tracking-[0.4em]',
       tagline: 'text-xs',
       dot: 'w-2 h-2 -bottom-1',
-      container: 'space-x-3'
+      container: 'space-x-2 sm:space-x-3'
     },
     lg: {
       logo: 'text-4xl tracking-[0.55em]',
@@ -44,28 +44,28 @@ export default function Logo({ className = '', showTagline = true, size = 'md', 
   }
 
   const logoSize = {
-    sm: 'h-8 w-auto',
-    md: 'h-10 w-auto',
-    lg: 'h-12 w-auto',
-    xl: 'h-16 md:h-20 w-auto',
+    sm: 'h-6 sm:h-8 w-auto',
+    md: 'h-8 sm:h-10 md:h-12 w-auto',
+    lg: 'h-12 sm:h-14 w-auto',
+    xl: 'h-14 sm:h-16 md:h-20 w-auto',
   }[size]
 
   const textSize = {
-    sm: 'text-lg',
-    md: 'text-xl',
-    lg: 'text-2xl',
-    xl: 'text-3xl md:text-4xl',
+    sm: 'text-base sm:text-lg',
+    md: 'text-lg sm:text-xl md:text-2xl',
+    lg: 'text-2xl sm:text-3xl',
+    xl: 'text-2xl sm:text-3xl md:text-4xl',
   }[size]
 
   return (
-    <Link to="/" className={`flex items-center ${classes.container} ${className}`}>
-      <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className={logoSize} />
-      <span className={`font-semibold ${textSize} font-display`}>
+    <Link to="/" className={`flex items-center ${classes.container} ${className} min-w-0`}>
+      <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className={`${logoSize} flex-shrink-0`} />
+      <span className={`${textSize} flex-shrink-0 whitespace-nowrap`} style={{ fontFamily: "'Ubuntu', sans-serif", fontWeight: 700 }}>
         <span style={{ color: '#528fcd' }}>skillar</span>
         <span style={{ color: '#032757' }}>Tutor</span>
       </span>
       {showTagline && (
-        <span className={`font-light tracking-wide ${getTaglineColor()} ${classes.tagline}`}>
+        <span className={`font-light tracking-wide ${getTaglineColor()} ${classes.tagline} flex-shrink-0 hidden sm:inline whitespace-nowrap`}>
           Where Growth Begins
         </span>
       )}

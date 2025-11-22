@@ -448,6 +448,7 @@ const INITIAL_SCHEDULE_SESSIONS: ScheduleSession[] = [
 
 export default function AdminDashboard() {
   const [activeSection, setActiveSection] = useState<AdminSection>('user-management')
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [showAddUserModal, setShowAddUserModal] = useState(false)
   const [users, setUsers] = useState<User[]>(INITIAL_USERS)
   const [currentPage, setCurrentPage] = useState(1)
@@ -955,15 +956,15 @@ export default function AdminDashboard() {
   )
 
   const renderStudentManagementSection = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2">
+    <div className="h-full overflow-hidden">
+      <div className="flex flex-col gap-2 mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Hồ sơ học sinh</h2>
         <p className="text-sm text-gray-600">Theo dõi thông tin chung và chi tiết theo yêu cầu phụ huynh</p>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="card h-full flex flex-col">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full">
+        <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
+          <div className="flex items-center justify-between gap-3 flex-wrap border-b border-gray-200 pb-4">
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Danh sách học sinh</p>
               <h3 className="text-lg font-semibold text-gray-900">Tổng quan lớp học · {studentList.length} học sinh</h3>
@@ -985,71 +986,78 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="mt-5 space-y-3 flex-1 overflow-y-auto pr-3">
-            {displayedStudents.map((student) => {
-              const isActive = student.id === selectedStudentId
-              return (
-                <button
-                  key={student.id}
-                  onClick={() => setSelectedStudentId(student.id)}
-                  className={`w-full rounded-3xl border p-4 text-left transition shadow-sm ${
-                    isActive ? 'border-primary-300 bg-primary-50 ring-2 ring-primary-200' : 'border-gray-100 hover:border-primary-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <img src={student.avatar} alt={student.name} className="w-10 h-10 rounded-2xl object-cover" />
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">{student.name}</p>
-                        <p className="text-xs text-gray-500">{student.grade}</p>
+          <div className="flex-1 overflow-y-auto pr-1 mt-5">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {displayedStudents.map((student) => {
+                const isActive = student.id === selectedStudentId
+                return (
+                  <button
+                    key={student.id}
+                    onClick={() => setSelectedStudentId(student.id)}
+                    className={`text-left rounded-xl p-4 transition-all duration-200 ${
+                      isActive
+                        ? 'bg-gradient-to-br from-primary-50 to-blue-50 border-2 border-primary-500 shadow-lg ring-2 ring-primary-100'
+                        : 'bg-white border-2 border-gray-200 hover:border-primary-300 hover:shadow-md'
+                    }`}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-200">
+                        <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" loading="lazy" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className={`text-lg font-bold truncate ${isActive ? 'text-primary-700' : 'text-gray-900'}`}>
+                          {student.name}
+                        </h3>
+                        <p className="text-sm text-gray-500 mt-1">{student.grade}</p>
+                        <p className="text-xs text-gray-400 mt-1 truncate">{student.address}</p>
                       </div>
                     </div>
-                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-white border border-gray-200 text-gray-600 max-w-[160px] truncate">
-                      {student.address}
-                    </span>
-                  </div>
-                </button>
-              )
-            })}
+                  </button>
+                )
+              })}
+            </div>
             {displayedStudents.length === 0 && <div className="py-6 text-center text-sm text-gray-500">Không tìm thấy học sinh phù hợp.</div>}
           </div>
 
-          <div className="mt-4 text-xs text-gray-500 font-semibold">Danh sách hiển thị toàn bộ học sinh</div>
+          <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500 font-semibold">Danh sách hiển thị toàn bộ học sinh</div>
         </div>
 
-        <div className="card h-full flex flex-col space-y-6">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Thông tin chi tiết</p>
-              <h3 className="text-xl font-semibold text-gray-900">{selectedStudent.name}</h3>
-              <div className="flex items-center gap-2 mt-1">
-                <span className={`px-3 py-0.5 text-xs font-semibold rounded-full ${selectedStudent.subjectColor}`}>{selectedStudent.subject}</span>
-                <span className="text-xs text-gray-500">{selectedStudent.status}</span>
+        <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
+          <div>
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-6 pb-4 border-b border-gray-200">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Thông tin chi tiết</p>
+                <h3 className="text-xl font-semibold text-gray-900">{selectedStudent.name}</h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`px-3 py-0.5 text-xs font-semibold rounded-full ${selectedStudent.subjectColor}`}>{selectedStudent.subject}</span>
+                  <span className="text-xs text-gray-500">{selectedStudent.status}</span>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {isStudentEditing ? (
-                <>
-                  <button onClick={handleStudentSave} className="btn-primary text-sm px-4 py-2">
-                    Lưu
+              <div className="flex items-center gap-2">
+                {isStudentEditing ? (
+                  <>
+                    <button onClick={handleStudentSave} className="btn-primary text-sm px-4 py-2">
+                      Lưu
+                    </button>
+                    <button onClick={cancelStudentEditing} className="btn-secondary text-sm px-4 py-2">
+                      Hủy
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={startStudentEditing} className="btn-primary text-sm px-4 py-2">
+                    Chỉnh sửa
                   </button>
-                  <button onClick={cancelStudentEditing} className="btn-secondary text-sm px-4 py-2">
-                    Hủy
-                  </button>
-                </>
-              ) : (
-                <button onClick={startStudentEditing} className="btn-primary text-sm px-4 py-2">
-                  Chỉnh sửa
-                </button>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="w-full rounded-3xl border border-gray-100 bg-gray-50/70 p-5 flex items-center gap-5 shadow-inner">
-            <div className="w-24 h-24 rounded-3xl overflow-hidden border-4 border-white shadow-lg">
-              <img src={selectedStudent.avatar} alt={selectedStudent.name} className="w-full h-full object-cover" />
-            </div>
-            <div>
+          <div className="flex-1 overflow-y-auto pr-1 space-y-5">
+            <div className="w-full rounded-3xl border border-gray-100 bg-gray-50/70 p-5 flex flex-col gap-4 md:flex-row md:items-center md:gap-5 shadow-inner">
+              <div className="w-24 h-24 rounded-3xl overflow-hidden border-4 border-white shadow-lg flex-shrink-0">
+                <img src={selectedStudent.avatar} alt={selectedStudent.name} className="w-full h-full object-cover" />
+              </div>
+              <div className="flex-1">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Học sinh</p>
               {isStudentEditing ? (
                 <div className="space-y-2">
@@ -1161,9 +1169,9 @@ export default function AdminDashboard() {
                 )}
               </div>
             </div>
-          </div>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-3">
               <div className="p-5 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Trình độ hiện tại</p>
@@ -1242,9 +1250,9 @@ export default function AdminDashboard() {
                 )}
               </div>
             </div>
-          </div>
+            </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {[
               { title: 'Điểm mạnh', items: selectedStudent.strengths, icon: <Heart className="w-4 h-4 text-pink-500" /> },
               { title: 'Cần cải thiện', items: selectedStudent.improvements, icon: <ClipboardList className="w-4 h-4 text-amber-500" /> },
@@ -1262,17 +1270,18 @@ export default function AdminDashboard() {
                 </ul>
               </div>
             ))}
-          </div>
+            </div>
 
-          <div className="p-5 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Ghi chú tổng quan</p>
-            <p className="text-sm text-gray-700 leading-relaxed">{selectedStudent.notes}</p>
-            <div className="flex flex-wrap gap-2">
-              {selectedStudent.favoriteSubjects.map((subject) => (
-                <span key={subject} className="px-3 py-1 text-xs font-semibold rounded-full bg-primary-50 text-primary-600">
-                  {subject}
-                </span>
-              ))}
+            <div className="p-5 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Ghi chú tổng quan</p>
+              <p className="text-sm text-gray-700 leading-relaxed">{selectedStudent.notes}</p>
+              <div className="flex flex-wrap gap-2">
+                {selectedStudent.favoriteSubjects.map((subject) => (
+                  <span key={subject} className="px-3 py-1 text-xs font-semibold rounded-full bg-primary-50 text-primary-600">
+                    {subject}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -1281,15 +1290,15 @@ export default function AdminDashboard() {
   )
 
   const renderTutorManagementSection = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2">
+    <div className="h-full overflow-hidden">
+      <div className="flex flex-col gap-2 mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Quản lý tutor</h2>
         <p className="text-sm text-gray-600">Theo dõi hồ sơ tutor và cập nhật nhanh CV, thông tin liên hệ</p>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="card h-full flex flex-col">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full">
+        <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
+          <div className="flex items-center justify-between gap-3 flex-wrap border-b border-gray-200 pb-4">
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Danh sách tutor</p>
               <h3 className="text-lg font-semibold text-gray-900">{displayedTutors.length} tutor đang hiển thị</h3>
@@ -1305,72 +1314,86 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="mt-5 space-y-3 flex-1 overflow-y-auto pr-3">
-            {displayedTutors.map((tutor) => {
-              const isActive = tutor.id === selectedTutorId
-              return (
-                <button
-                  key={tutor.id}
-                  onClick={() => setSelectedTutorId(tutor.id)}
-                  className={`w-full rounded-3xl border p-4 text-left transition shadow-sm ${
-                    isActive ? 'border-purple-300 bg-purple-50 ring-2 ring-purple-200' : 'border-gray-100 hover:border-purple-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <img src={tutor.avatar} alt={tutor.name} className="w-10 h-10 rounded-2xl object-cover" />
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">{tutor.name}</p>
-                        <p className="text-xs text-gray-500">{tutor.headline}</p>
+          <div className="flex-1 overflow-y-auto pr-1 mt-5">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {displayedTutors.map((tutor) => {
+                const isActive = tutor.id === selectedTutorId
+                return (
+                  <button
+                    key={tutor.id}
+                    onClick={() => setSelectedTutorId(tutor.id)}
+                    className={`text-left rounded-xl p-4 transition-all duration-200 ${
+                      isActive
+                        ? 'bg-gradient-to-br from-purple-50 to-blue-50 border-2 border-purple-500 shadow-lg ring-2 ring-purple-100'
+                        : 'bg-white border-2 border-gray-200 hover:border-purple-300 hover:shadow-md'
+                    }`}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-200">
+                        <img src={tutor.avatar} alt={tutor.name} className="w-full h-full object-cover" loading="lazy" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className={`text-lg font-bold truncate ${isActive ? 'text-purple-700' : 'text-gray-900'}`}>
+                          {tutor.name}
+                        </h3>
+                        <p className="text-sm text-gray-500 mt-1 truncate">{tutor.headline}</p>
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {tutor.subjects.slice(0, 2).map((subject) => (
+                            <span key={subject} className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 text-gray-600">
+                              {subject}
+                            </span>
+                          ))}
+                          {tutor.subjects.length > 2 && (
+                            <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 text-gray-600">
+                              +{tutor.subjects.length - 2}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div className="flex flex-wrap justify-end gap-2">
-                      {tutor.subjects.map((subject) => (
-                        <span key={subject} className="px-2 py-1 text-[11px] font-semibold rounded-full bg-white border border-gray-200 text-gray-600">
-                          {subject}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
+                  </button>
+                )
+              })}
+            </div>
             {displayedTutors.length === 0 && <div className="py-6 text-center text-sm text-gray-500">Không tìm thấy tutor phù hợp.</div>}
           </div>
         </div>
 
-        <div className="card h-full flex flex-col space-y-6">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Hồ sơ tutor</p>
-              <h3 className="text-xl font-semibold text-gray-900">{selectedTutor.name}</h3>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="px-3 py-0.5 text-xs font-semibold rounded-full bg-white border border-gray-200 text-gray-700">{selectedTutor.status}</span>
+        <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
+          <div>
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-6 pb-4 border-b border-gray-200">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Hồ sơ tutor</p>
+                <h3 className="text-xl font-semibold text-gray-900">{selectedTutor.name}</h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="px-3 py-0.5 text-xs font-semibold rounded-full bg-white border border-gray-200 text-gray-700">{selectedTutor.status}</span>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {isTutorEditing ? (
-                <>
-                  <button onClick={handleTutorSave} className="btn-primary text-sm px-4 py-2">
-                    Lưu
+              <div className="flex items-center gap-2">
+                {isTutorEditing ? (
+                  <>
+                    <button onClick={handleTutorSave} className="btn-primary text-sm px-4 py-2">
+                      Lưu
+                    </button>
+                    <button onClick={cancelTutorEditing} className="btn-secondary text-sm px-4 py-2">
+                      Hủy
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={startTutorEditing} className="btn-primary text-sm px-4 py-2">
+                    Chỉnh sửa
                   </button>
-                  <button onClick={cancelTutorEditing} className="btn-secondary text-sm px-4 py-2">
-                    Hủy
-                  </button>
-                </>
-              ) : (
-                <button onClick={startTutorEditing} className="btn-primary text-sm px-4 py-2">
-                  Chỉnh sửa
-                </button>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="w-full rounded-3xl border border-gray-100 bg-gray-50/70 p-5 flex items-center gap-5 shadow-inner">
-            <div className="w-24 h-24 rounded-3xl overflow-hidden border-4 border-white shadow-lg">
-              <img src={selectedTutor.avatar} alt={selectedTutor.name} className="w-full h-full object-cover" />
-            </div>
-            <div className="flex-1">
+          <div className="flex-1 overflow-y-auto pr-1 space-y-5">
+            <div className="w-full rounded-3xl border border-gray-100 bg-gray-50/70 p-5 flex flex-col gap-4 md:flex-row md:items-center md:gap-5 shadow-inner">
+              <div className="w-24 h-24 rounded-3xl overflow-hidden border-4 border-white shadow-lg flex-shrink-0">
+                <img src={selectedTutor.avatar} alt={selectedTutor.name} className="w-full h-full object-cover" />
+              </div>
+              <div className="flex-1">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Tutor</p>
               {isTutorEditing ? (
                 <>
@@ -1387,20 +1410,20 @@ export default function AdminDashboard() {
                   <p className="text-sm text-gray-500">{selectedTutor.qualification}</p>
                 </>
               )}
+              </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
-              <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Kinh nghiệm</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
+                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Kinh nghiệm</p>
               {isTutorEditing ? (
                 <textarea className="input text-sm" value={tutorEditData?.experience ?? ''} onChange={(e) => handleTutorFieldChange('experience', e.target.value)} />
               ) : (
                 <p className="text-sm font-semibold text-gray-900 leading-relaxed">{selectedTutor.experience}</p>
               )}
-            </div>
-            <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60 space-y-2">
-              <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Liên hệ</p>
+              </div>
+              <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60 space-y-2">
+                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Liên hệ</p>
               {isTutorEditing ? (
                 <div className="space-y-2">
                   <input className="input text-sm" value={tutorEditData?.email ?? ''} onChange={(e) => handleTutorFieldChange('email', e.target.value)} placeholder="Email" />
@@ -1412,12 +1435,12 @@ export default function AdminDashboard() {
                   <p className="text-sm text-gray-600">{selectedTutor.phone}</p>
                 </>
               )}
+              </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
-              <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Môn phụ trách</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
+                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Môn phụ trách</p>
               {isTutorEditing ? (
                 <input
                   className="input text-sm"
@@ -1434,9 +1457,9 @@ export default function AdminDashboard() {
                   ))}
                 </div>
               )}
-            </div>
-            <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
-              <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Hồ sơ & CV</p>
+              </div>
+              <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
+                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Hồ sơ & CV</p>
               {isTutorEditing ? (
                 <input className="input text-sm" value={tutorEditData?.cvUrl ?? ''} onChange={(e) => handleTutorFieldChange('cvUrl', e.target.value)} placeholder="Link CV (Drive, PDF...)" />
               ) : selectedTutor.cvUrl ? (
@@ -1447,16 +1470,17 @@ export default function AdminDashboard() {
               ) : (
                 <p className="text-sm text-gray-500">Chưa cập nhật CV</p>
               )}
+              </div>
             </div>
-          </div>
 
-          <div className="p-5 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Giới thiệu</p>
-            {isTutorEditing ? (
-              <textarea className="input text-sm" value={tutorEditData?.bio ?? ''} onChange={(e) => handleTutorFieldChange('bio', e.target.value)} />
-            ) : (
-              <p className="text-sm text-gray-700 leading-relaxed">{selectedTutor.bio}</p>
-            )}
+            <div className="p-5 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Giới thiệu</p>
+              {isTutorEditing ? (
+                <textarea className="input text-sm" value={tutorEditData?.bio ?? ''} onChange={(e) => handleTutorFieldChange('bio', e.target.value)} />
+              ) : (
+                <p className="text-sm text-gray-700 leading-relaxed">{selectedTutor.bio}</p>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1817,7 +1841,16 @@ export default function AdminDashboard() {
   }
 
   return (
-    <Layout title="Dashboard Admin" sidebar={<AdminSidebar activeSection={activeSection} onSectionChange={setActiveSection} />}>
+    <Layout 
+      sidebar={
+        <AdminSidebar 
+          activeSection={activeSection} 
+          onSectionChange={setActiveSection}
+          isMobileMenuOpen={isMobileMenuOpen}
+          onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
+        />
+      }
+    >
       <div className="h-full overflow-hidden">
         <div className="h-full overflow-y-auto px-2 sm:px-3 lg:px-6 py-2">{renderSection()}</div>
       </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
 import { ChevronLeft, ChevronRight, Filter, Play } from 'lucide-react'
 import { ScheduleItem } from './ScheduleWidget'
@@ -9,9 +9,12 @@ interface MonthlyCalendarProps {
   onViewChecklist?: (scheduleId: string) => void
 }
 
+const SCHEDULES_PER_DAY = 5
+
 export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date())
+  const [schedulePages, setSchedulePages] = useState<Record<string, number>>({})
 
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
@@ -78,8 +81,21 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
+  useEffect(() => {
+    if (!selectedDate) return
+    const key = format(selectedDate, 'yyyy-MM-dd')
+    const schedulesForDay = getSelectedDateSchedules()
+    const totalPages = Math.max(1, Math.ceil(schedulesForDay.length / SCHEDULES_PER_DAY))
+    setSchedulePages((prev) => {
+      const current = prev[key] || 1
+      const next = Math.min(current, totalPages)
+      if (current === next) return prev
+      return { ...prev, [key]: next }
+    })
+  }, [selectedDate, schedules])
+
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full min-h-[900px] bg-white">
       {/* Header */}
       <div className="bg-primary-600 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center space-x-3">
@@ -93,9 +109,9 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
         </div>
       </div>
 
-      <div className="flex-1 flex gap-4 p-4 min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4 min-h-0 overflow-hidden">
         {/* Left: Calendar */}
-        <div className="w-80 flex-shrink-0 flex flex-col border-r border-gray-200 pr-4">
+        <div className="w-full lg:w-80 flex-shrink-0 flex flex-col border-b lg:border-b-0 lg:border-r border-gray-200 pb-4 lg:pb-0 lg:pr-4">
           {/* Calendar Grid */}
           <div className="flex-1 min-h-0">
             {/* Month Navigation */}
@@ -164,15 +180,31 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
         </div>
 
         {/* Right: Details */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="flex-1 overflow-y-auto min-h-[780px] mt-2 lg:mt-0 flex flex-col">
           {selectedDate ? (
             <div>
               <h4 className="text-base font-bold text-gray-900 mb-3">
                 Ngày {format(selectedDate, 'dd')} tháng {format(selectedDate, 'MM')}
               </h4>
               <div className="space-y-2">
-                {getSelectedDateSchedules().length > 0 ? (
-                  getSelectedDateSchedules().map((schedule) => {
+                {getSelectedDateSchedules().length > 0 ? (() => {
+                  const schedulesForDay = getSelectedDateSchedules()
+                  const key = format(selectedDate, 'yyyy-MM-dd')
+                  const totalPages = Math.max(1, Math.ceil(schedulesForDay.length / SCHEDULES_PER_DAY))
+                  const currentPage = Math.min(schedulePages[key] || 1, totalPages)
+                  const startIndex = (currentPage - 1) * SCHEDULES_PER_DAY
+                  const paginatedSchedules = schedulesForDay.slice(startIndex, startIndex + SCHEDULES_PER_DAY)
+
+                  const handleChangePage = (newPage: number) => {
+                    setSchedulePages((prev) => ({
+                      ...prev,
+                      [key]: Math.max(1, Math.min(totalPages, newPage)),
+                    }))
+                  }
+
+                  return (
+                    <>
+                      {paginatedSchedules.map((schedule) => {
                     const statusInfo = getScheduleStatus(schedule, selectedDate)
                     return (
                       <div
@@ -218,8 +250,34 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
                         </div>
                       </div>
                     )
-                  })
-                ) : (
+                  })}
+
+                      {schedulesForDay.length > SCHEDULES_PER_DAY && (
+                        <div className="sticky bottom-0 bg-white pt-3 mt-3 border-t border-gray-200 flex items-center justify-between text-xs font-semibold text-gray-700">
+                          <button
+                            onClick={() => handleChangePage(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            Trước
+                          </button>
+                          <span>
+                            Trang {currentPage}/{totalPages}
+                          </span>
+                          <button
+                            onClick={() => handleChangePage(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Sau
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )
+                })() : (
                   <div className="text-center py-6 text-gray-500 text-sm">
                     Không có lịch học trong ngày này
                   </div>

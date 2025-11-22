@@ -2745,7 +2745,6 @@ useEffect(() => {
 
   return (
     <Layout 
-      title="Dashboard Học Sinh"
       sidebar={<Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />}
     >
       {renderContent()}

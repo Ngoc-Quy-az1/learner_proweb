@@ -76,9 +76,14 @@ type ScheduleSlotGroup = {
   schedules: TutorSchedule[]
 }
 
+const SCHEDULE_STUDENTS_PER_PAGE = 5
+
 export default function TutorDashboard() {
   const [activeSection, setActiveSection] = useState('home')
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState<string>('1')
+  const [studentSearch, setStudentSearch] = useState('')
+  const [subjectFilter, setSubjectFilter] = useState<'all' | string>('all')
   const [showChecklistForm, setShowChecklistForm] = useState(false)
   const [checklistForm, setChecklistForm] = useState({
     studentId: '1',
@@ -101,6 +106,7 @@ export default function TutorDashboard() {
   const [expandedChecklistSubject, setExpandedChecklistSubject] = useState<string | null>(null)
   const [showStudentAttachmentCard, setShowStudentAttachmentCard] = useState(true)
   const [selectedScheduleSlotId, setSelectedScheduleSlotId] = useState<string | null>(null)
+  const [scheduleStudentPage, setScheduleStudentPage] = useState<Record<string, number>>({})
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null)
   const [editingField, setEditingField] = useState<{ type: 'lesson' | 'task' | 'note'; itemId: string } | null>(null)
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({})
@@ -331,9 +337,25 @@ export default function TutorDashboard() {
   ])
 
   const [studentPage, setStudentPage] = useState(1)
-  const studentsPerPage = 20
-  const studentPages = Math.ceil(students.length / studentsPerPage)
-  const paginatedStudents = students.slice(
+  const studentsPerPage = 12
+  const subjectOptions = useMemo(
+    () => Array.from(new Set(students.map((student) => student.subject))).sort(),
+    [students]
+  )
+  const filteredStudents = useMemo(() => {
+    const normalizedQuery = studentSearch.trim().toLowerCase()
+    return students.filter((student) => {
+      const matchesName = student.name.toLowerCase().includes(normalizedQuery)
+      const matchesSubject =
+        subjectFilter === 'all' ? true : student.subject === subjectFilter
+      return matchesName && matchesSubject
+    })
+  }, [students, studentSearch, subjectFilter])
+  useEffect(() => {
+    setStudentPage(1)
+  }, [studentSearch, subjectFilter])
+  const studentPages = Math.max(1, Math.ceil(filteredStudents.length / studentsPerPage))
+  const paginatedStudents = filteredStudents.slice(
     (studentPage - 1) * studentsPerPage,
     studentPage * studentsPerPage
   )
@@ -701,6 +723,20 @@ export default function TutorDashboard() {
     () => scheduleSlots.find((slot) => slot.id === selectedScheduleSlotId) || null,
     [scheduleSlots, selectedScheduleSlotId]
   )
+
+  useEffect(() => {
+    if (!selectedScheduleSlot) return
+    setScheduleStudentPage((prev) => {
+      const totalPages = Math.max(
+        1,
+        Math.ceil(selectedScheduleSlot.schedules.length / SCHEDULE_STUDENTS_PER_PAGE)
+      )
+      const current = prev[selectedScheduleSlot.id] || 1
+      const next = Math.min(current, totalPages)
+      if (current === next) return prev
+      return { ...prev, [selectedScheduleSlot.id]: next }
+    })
+  }, [selectedScheduleSlot])
 
   const studentAttachments: Record<string, { id: string; name: string; uploadedAt: string }[]> = useMemo(() => ({
     '1': [
@@ -1488,7 +1524,31 @@ export default function TutorDashboard() {
                 {/* Students list for selected slot */}
                 {selectedScheduleSlot && (
                   <div className="mt-6 max-h-[450px] overflow-y-auto space-y-3">
-                    {selectedScheduleSlot.schedules.map((schedule) => {
+                    {(() => {
+                      const totalSlotPages = Math.max(
+                        1,
+                        Math.ceil(selectedScheduleSlot.schedules.length / SCHEDULE_STUDENTS_PER_PAGE)
+                      )
+                      const currentSlotPage = Math.min(
+                        scheduleStudentPage[selectedScheduleSlot.id] || 1,
+                        totalSlotPages
+                      )
+                      const startIndex = (currentSlotPage - 1) * SCHEDULE_STUDENTS_PER_PAGE
+                      const paginatedSchedules = selectedScheduleSlot.schedules.slice(
+                        startIndex,
+                        startIndex + SCHEDULE_STUDENTS_PER_PAGE
+                      )
+
+                      const handleScheduleSlotPageChange = (newPage: number) => {
+                        setScheduleStudentPage((prev) => ({
+                          ...prev,
+                          [selectedScheduleSlot.id]: Math.max(1, Math.min(totalSlotPages, newPage)),
+                        }))
+                      }
+
+                      return (
+                        <>
+                          {paginatedSchedules.map((schedule) => {
                       const status = getScheduleStatus(schedule)
                       const statusConfig = {
                         in_progress: { label: 'Đang dạy', className: 'bg-green-100 text-green-700' },
@@ -1589,7 +1649,34 @@ export default function TutorDashboard() {
                           )}
                         </div>
                       )
-                    })}
+                          })}
+
+                          {selectedScheduleSlot.schedules.length > SCHEDULE_STUDENTS_PER_PAGE && (
+                            <div className="sticky bottom-0 bg-white py-3 border-t border-gray-200 flex items-center justify-between">
+                              <button
+                                onClick={() => handleScheduleSlotPageChange(currentSlotPage - 1)}
+                                disabled={currentSlotPage === 1}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <ChevronRight className="w-4 h-4 rotate-180" />
+                                Trước
+                              </button>
+                              <div className="text-xs font-semibold text-gray-700">
+                                Trang {currentSlotPage}/{totalSlotPages}
+                              </div>
+                              <button
+                                onClick={() => handleScheduleSlotPageChange(currentSlotPage + 1)}
+                                disabled={currentSlotPage === totalSlotPages}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              >
+                                Sau
+                                <ChevronRight className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )
+                    })()}
                   </div>
                 )}
               </>
@@ -2657,11 +2744,17 @@ export default function TutorDashboard() {
     return colors[subject] || { bg: 'bg-gray-50', text: 'text-gray-700', badge: 'bg-gray-500' }
   }
 
-  const renderStudentsSection = () => (
+const getStudentAvatar = (studentId: string) => {
+  const numericId = parseInt(studentId, 10)
+  const avatarIndex = isNaN(numericId) ? 1 : (numericId % 70) + 1
+  return `https://i.pravatar.cc/150?img=${avatarIndex}`
+}
+
+const renderStudentsSection = () => (
     <div className="h-full overflow-hidden">
       <div className="grid grid-cols-1 xl:grid-cols-[55%_45%] gap-6 h-full">
         {/* Left: Student List */}
-        <div className="card space-y-4 overflow-y-auto">
+        <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
           <div className="flex items-center justify-between border-b border-gray-200 pb-4">
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-1">Quản lý học sinh</h2>
@@ -2671,76 +2764,56 @@ export default function TutorDashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {paginatedStudents.map((student) => {
-              const subjectColors = getSubjectColor(student.subject)
-              const isSelected = selectedStudent === student.id
-              return (
-                <button
-                  key={student.id}
-                  onClick={() => setSelectedStudent(student.id)}
-                  className={`text-left rounded-xl p-4 transition-all duration-200 ${
-                    isSelected
-                      ? 'bg-gradient-to-br from-primary-50 to-blue-50 border-2 border-primary-500 shadow-lg ring-2 ring-primary-100'
-                      : 'bg-white border-2 border-gray-200 hover:border-primary-300 hover:shadow-md'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0">
-                      <h3 className={`text-lg font-bold mb-1 truncate ${
-                        isSelected ? 'text-primary-700' : 'text-gray-900'
-                      }`}>
-                        {student.name}
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold text-white ${subjectColors.badge}`}>
-                          {student.subject}
-                        </span>
+          <div className="flex-1 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {paginatedStudents.map((student) => {
+                const isSelected = selectedStudent === student.id
+                return (
+                  <button
+                    key={student.id}
+                    onClick={() => setSelectedStudent(student.id)}
+                    className={`text-left rounded-xl p-4 transition-all duration-200 ${
+                      isSelected
+                        ? 'bg-gradient-to-br from-primary-50 to-blue-50 border-2 border-primary-500 shadow-lg ring-2 ring-primary-100'
+                        : 'bg-white border-2 border-gray-200 hover:border-primary-300 hover:shadow-md'
+                    }`}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-200">
+                        <img
+                          src={getStudentAvatar(student.id)}
+                          alt={student.name}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3
+                          className={`text-lg font-bold truncate ${
+                            isSelected ? 'text-primary-700' : 'text-gray-900'
+                          }`}
+                        >
+                          {student.name}
+                        </h3>
                       </div>
                     </div>
-                    <div className={`ml-3 w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      isSelected
-                        ? 'bg-gradient-to-br from-primary-500 to-primary-600 shadow-md'
-                        : 'bg-gradient-to-br from-gray-100 to-gray-200'
-                    }`}>
-                      <UserCircle className={`w-6 h-6 ${isSelected ? 'text-white' : 'text-gray-500'}`} />
-                    </div>
-                  </div>
-                  
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between text-xs font-medium text-gray-600 mb-2">
-                      <span>Tiến độ</span>
-                      <span className={`font-bold ${isSelected ? 'text-primary-600' : 'text-gray-900'}`}>
-                        {student.progress}%
-                      </span>
-                    </div>
-                    <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          isSelected
-                            ? 'bg-gradient-to-r from-primary-500 to-primary-600'
-                            : 'bg-gradient-to-r from-gray-400 to-gray-500'
-                        }`}
-                        style={{ width: `${student.progress}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+          <div className="flex flex-wrap items-center gap-3 justify-between pt-4 border-t border-gray-200 mt-4">
             <button
               onClick={() => setStudentPage((page) => Math.max(1, page - 1))}
               disabled={studentPage === 1}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-1 sm:flex-auto"
             >
               <ChevronRight className="w-4 h-4 rotate-180" />
               Trang trước
             </button>
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+            <div className="flex items-center justify-center gap-2 text-sm font-semibold text-gray-700 flex-none">
               <span>Trang</span>
               <span className="w-10 text-center bg-gray-100 rounded-lg py-1 text-gray-900">{studentPage}</span>
               <span>/ {studentPages}</span>
@@ -2748,7 +2821,7 @@ export default function TutorDashboard() {
             <button
               onClick={() => setStudentPage((page) => Math.min(studentPages, page + 1))}
               disabled={studentPage === studentPages}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-1 sm:flex-auto"
             >
               Trang sau
               <ChevronRight className="w-4 h-4" />
@@ -2757,36 +2830,51 @@ export default function TutorDashboard() {
         </div>
 
         {/* Right: Student Details */}
-        <div className="card overflow-y-auto">
-          <h3 className="text-xl font-bold text-gray-900 mb-6 pb-4 border-b border-gray-200">
-            Thông tin chi tiết học sinh
-          </h3>
+        <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
+          <div>
+            <h3 className="text-xl font-bold text-gray-900 mb-6 pb-4 border-b border-gray-200">
+              Thông tin chi tiết học sinh
+            </h3>
+          </div>
           {selectedStudentDetail ? (
-            <div className="space-y-5">
+            <div className="flex-1 overflow-y-auto pr-1 space-y-5">
               {/* Header with Name and Progress */}
               <div className="bg-gradient-to-r from-primary-50 to-blue-50 rounded-xl p-5 border border-primary-100">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <p className="text-xs font-semibold text-primary-600 uppercase tracking-wide mb-1">
-                      Học sinh
-                    </p>
-                    <h4 className="text-2xl font-bold text-gray-900 mb-1">
-                      {selectedStudentDetail.name}
-                    </h4>
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold text-white ${getSubjectColor(selectedStudentDetail.subject).badge}`}>
-                      {selectedStudentDetail.subject}
-                    </span>
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
+                  <div className="flex items-start gap-4 flex-1">
+                    <div className="w-16 h-16 rounded-full overflow-hidden border border-primary-200 bg-white flex-shrink-0">
+                      <img
+                        src={getStudentAvatar(selectedStudentDetail.id)}
+                        alt={selectedStudentDetail.name}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-primary-600 uppercase tracking-wide mb-1">
+                        Học sinh
+                      </p>
+                      <h4 className="text-2xl font-bold text-gray-900 mb-2">
+                        {selectedStudentDetail.name}
+                      </h4>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs font-semibold text-primary-600 uppercase tracking-wide mb-1">
-                      Tiến độ
-                    </p>
-                    <p className="text-4xl font-extrabold text-primary-600">{selectedStudentDetail.progress}%</p>
-                    <div className="w-20 h-2 bg-white rounded-full overflow-hidden mt-2 shadow-inner">
-                      <div
-                        className="h-full bg-gradient-to-r from-primary-500 to-primary-600 rounded-full"
-                        style={{ width: `${selectedStudentDetail.progress}%` }}
-                      ></div>
+                  <div className="text-right flex-shrink-0 space-y-2">
+                    <div>
+                      <p className="text-xs font-semibold text-primary-600 uppercase tracking-wide mb-1">
+                        Địa chỉ
+                      </p>
+                      <p className="text-lg font-bold text-gray-900">
+                        {selectedStudentDetail.address || 'Chưa cập nhật'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-primary-600 uppercase tracking-wide mb-1">
+                        Số điện thoại
+                      </p>
+                      <p className="text-2xl font-extrabold text-primary-600">
+                        {selectedStudentDetail.contact || 'Chưa có thông tin'}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -3654,8 +3742,14 @@ export default function TutorDashboard() {
 
   return (
     <Layout 
-      title="Dashboard Tutor"
-      sidebar={<TutorSidebar activeSection={activeSection} onSectionChange={setActiveSection} />}
+      sidebar={
+        <TutorSidebar 
+          activeSection={activeSection} 
+          onSectionChange={setActiveSection}
+          isMobileMenuOpen={isMobileMenuOpen}
+          onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
+        />
+      }
     >
       <div className="h-full overflow-hidden">
         {renderContent()}

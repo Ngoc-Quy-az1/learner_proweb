@@ -13,6 +13,8 @@ interface AdminSidebarProps {
   onSectionChange: (section: AdminSection) => void
   isCollapsed?: boolean
   onToggleCollapse?: () => void
+  isMobileMenuOpen?: boolean
+  onCloseMobileMenu?: () => void
 }
 
 interface MenuItem {
@@ -34,6 +36,8 @@ export default function AdminSidebar({
   onSectionChange,
   isCollapsed = false,
   onToggleCollapse,
+  isMobileMenuOpen = false,
+  onCloseMobileMenu,
 }: AdminSidebarProps) {
   return (
     <>
@@ -45,7 +49,7 @@ export default function AdminSidebar({
             <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-10 w-auto" />
             {!isCollapsed && (
               <div>
-                <p className="text-lg font-semibold leading-tight font-display">
+                <p className="text-3xl leading-tight" style={{ fontFamily: 'Ubuntu, sans-serif', fontWeight: 700 }}>
                   <span style={{ color: '#528fcd' }}>skillar</span>
                   <span style={{ color: '#032757' }}>Tutor</span>
                 </p>
@@ -84,25 +88,49 @@ export default function AdminSidebar({
         </nav>
       </aside>
 
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 z-40 shadow-lg">
-        <nav className="flex justify-around items-center px-2 py-2">
+      {/* Mobile Sidebar Drawer */}
+      <aside
+        className={`lg:hidden fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200 shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ${
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200">
+          <div className="flex items-center space-x-2">
+            <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-10 w-auto" />
+            <span className="text-2xl font-bold" style={{ fontFamily: 'Ubuntu, sans-serif' }}>
+              Admin Menu
+            </span>
+          </div>
+          <button
+            onClick={onCloseMobileMenu}
+            className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-600 hover:text-primary-600 hover:border-primary-300 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+        <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto">
           {menuItems.map(({ id, label, icon: Icon }) => {
             const isActive = activeSection === id
             return (
               <button
                 key={id}
-                onClick={() => onSectionChange(id)}
-                className={`flex flex-col items-center justify-center px-3 py-2 rounded-lg transition-all duration-200 ${
-                  isActive ? 'bg-primary-500 text-white shadow-md' : 'text-gray-600 hover:text-primary-600'
+                onClick={() => {
+                  onSectionChange(id)
+                  onCloseMobileMenu && onCloseMobileMenu()
+                }}
+                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl border transition-all duration-200 ${
+                  isActive
+                    ? 'bg-primary-500 border-primary-500 text-white shadow-lg'
+                    : 'bg-gray-50 border-gray-200 text-gray-700 hover:text-primary-600 hover:border-primary-200'
                 }`}
               >
-                <Icon className={`w-5 h-5 mb-1 ${isActive ? 'text-white' : 'text-gray-500'}`} />
-                <span className={`text-xs font-medium ${isActive ? 'text-white' : 'text-gray-600'}`}>{label}</span>
+                <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-gray-500'}`} />
+                <span className="font-semibold text-base">{label}</span>
               </button>
             )
           })}
         </nav>
-      </div>
+      </aside>
     </>
   )
 }

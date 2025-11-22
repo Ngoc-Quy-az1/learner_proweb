@@ -1,9 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { LogIn, Mail, Lock } from 'lucide-react'
-import VideoBackground from '../components/VideoBackground'
-import Navbar from '../components/Navbar'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -39,111 +36,87 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Video Background */}
-      <VideoBackground />
-
-      {/* Navbar */}
-      <Navbar variant="home" showSearch={false} showNavLinks={true} />
-
-      <div className="relative z-10 min-h-[calc(100vh-80px)] flex items-center justify-center px-4 py-8">
-        <div className="max-w-md w-full">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <Link to="/" className="inline-block transform hover:scale-105 transition-transform duration-200">
-            <div className="flex items-center justify-center space-x-3 mb-4">
-              <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-20 w-auto shadow-2xl animate-float" />
-              <h1 className="text-4xl font-semibold drop-shadow-lg font-display">
-                <span style={{ color: '#528fcd' }}>skillar</span>
-                <span style={{ color: '#032757' }}>Tutor</span>
-              </h1>
+    <div className="min-h-screen relative overflow-hidden" style={{ backgroundColor: '#0066ff' }}>
+      {/* Navbar - Hidden on login page for cleaner look */}
+      
+      <div className="relative z-10 min-h-screen flex items-center justify-center px-4 py-8">
+        <div className="max-w-xl w-full">
+          {/* Login Form */}
+          <div className="bg-white rounded-3xl p-10 shadow-2xl">
+            {/* Logo inside form */}
+            <div className="text-center mb-10">
+              <Link to="/" className="inline-block">
+                <div className="flex items-center justify-center space-x-5 mb-2">
+                  <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-24 w-auto" />
+                  <h1 className="text-6xl font-bold" style={{ fontFamily: 'Ubuntu, sans-serif', fontWeight: 700 }}>
+                    <span style={{ color: '#528fcd' }}>skillar</span>
+                    <span style={{ color: '#032757' }}>Tutor</span>
+                  </h1>
+                </div>
+              </Link>
             </div>
-          </Link>
-          <p className="text-white/90 font-medium drop-shadow-md">Where Growth Begins</p>
-        </div>
 
-        {/* Login Form */}
-        <div className="bg-gray-900/90 backdrop-blur-lg rounded-2xl p-6 lg:p-8 shadow-2xl border border-white/10">
-          <div className="w-full bg-white text-primary-600 px-6 py-3 rounded-lg font-bold mb-6 text-center">
-            Đăng nhập
-          </div>
-          
-          {error && (
-            <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-2.5 rounded-lg mb-4 text-sm">
-              {error}
-            </div>
-          )}
+            <h2 className="text-3xl font-bold text-gray-900 mb-6">Đăng nhập</h2>
+            
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+                {error}
+              </div>
+            )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <div className="relative">
-                <Mail className="absolute left-0 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nhập địa chỉ email của bạn
+                </label>
                 <input
-                  type="text"
+                  type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Tên đăng nhập"
-                  className="w-full bg-transparent border-b-2 border-gray-600 text-white placeholder-white/60 pl-8 pr-4 py-3 focus:border-primary-500 focus:outline-none transition-colors"
+                  placeholder="email@example.com"
+                  className="w-full bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                   required
                 />
               </div>
-            </div>
 
-            <div>
-              <div className="relative">
-                <Lock className="absolute left-0 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nhập mật khẩu của bạn
+                </label>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Mật khẩu"
-                  className="w-full bg-transparent border-b-2 border-gray-600 text-white placeholder-white/60 pl-8 pr-4 py-3 focus:border-primary-500 focus:outline-none transition-colors"
+                  placeholder="••••••••"
+                  className="w-full bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                   required
                 />
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-primary-500 hover:bg-primary-600 text-white px-6 py-3 rounded-lg font-semibold text-center transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 mt-4"
-            >
-              {loading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Đang đăng nhập...</span>
-                </>
-              ) : (
-                <>
-                  <LogIn className="w-5 h-5" />
-                  <span>Đăng nhập</span>
-                </>
-              )}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3.5 rounded-lg font-bold text-center transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed mt-6"
+              >
+                {loading ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Đang đăng nhập...</span>
+                  </div>
+                ) : (
+                  'Đăng nhập'
+                )}
+              </button>
+            </form>
 
-          <div className="mt-8 pt-6 border-t border-gray-700">
-            <p className="text-sm text-white/80 text-center mb-3 font-medium">Demo Accounts:</p>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {['student@skillar.com', 'tutor@skillar.com', 'admin@skillar.com'].map((email) => (
-                <button
-                  key={email}
-                  onClick={() => setEmail(email)}
-                  className="text-xs bg-white/10 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg hover:bg-white/20 transition-all duration-200 border border-white/20"
-                >
-                  {email.split('@')[0]}
-                </button>
-              ))}
-            </div>
           </div>
-        </div>
 
-        <div className="text-center mt-6">
-          <Link to="/" className="text-white/90 hover:text-white text-sm font-medium inline-flex items-center space-x-1 group drop-shadow-md">
-            <span>←</span>
-            <span className="group-hover:underline">Quay lại trang chủ</span>
-          </Link>
-        </div>
+          <div className="text-center mt-6">
+            <Link to="/" className="text-white hover:text-white/80 text-sm font-medium inline-flex items-center space-x-1 group">
+              <span>←</span>
+              <span className="group-hover:underline">Quay lại trang chủ</span>
+            </Link>
+          </div>
         </div>
       </div>
     </div>

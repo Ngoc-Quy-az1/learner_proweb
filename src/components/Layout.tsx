@@ -5,14 +5,14 @@ import { LogOut, Menu, User } from 'lucide-react'
 
 interface LayoutProps {
   children: React.ReactNode
-  title: string
   sidebar?: React.ReactNode
 }
 
-export default function Layout({ children, title, sidebar }: LayoutProps) {
+export default function Layout({ children, sidebar }: LayoutProps) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   const handleLogout = () => {
     logout()
@@ -34,6 +34,8 @@ export default function Layout({ children, title, sidebar }: LayoutProps) {
     ? cloneElement(sidebar as ReactElement<any>, {
         isCollapsed: isSidebarCollapsed,
         onToggleCollapse: () => setIsSidebarCollapsed(prev => !prev),
+        isMobileMenuOpen,
+        onCloseMobileMenu: () => setIsMobileMenuOpen(false),
       })
     : sidebar
 
@@ -45,6 +47,14 @@ export default function Layout({ children, title, sidebar }: LayoutProps) {
     <div className="min-h-screen bg-gray-50">
       {/* Sidebar */}
       {sidebarWithProps}
+
+      {/* Mobile overlay for menu */}
+      {isMobileMenuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/40 z-40"
+          onClick={() => setIsMobileMenuOpen(false)}
+        ></div>
+      )}
       
       {/* Container for header and main content */}
       <div>
@@ -55,16 +65,22 @@ export default function Layout({ children, title, sidebar }: LayoutProps) {
               <div className="flex items-center space-x-2">
                 {sidebar && (
                   <button
-                    onClick={() => setIsSidebarCollapsed(prev => !prev)}
+                    onClick={() => {
+                      if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                        setIsMobileMenuOpen(prev => !prev)
+                      } else {
+                        setIsSidebarCollapsed(prev => !prev)
+                      }
+                    }}
                     className="w-11 h-11 rounded-2xl border border-gray-200 flex items-center justify-center text-gray-600 hover:text-primary-600 hover:border-primary-300 transition-colors -ml-2"
                     aria-label={isSidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
                   >
                     <Menu className={`w-5 h-5 transition-transform ${isSidebarCollapsed ? 'scale-110' : ''}`} />
                   </button>
                 )}
-                <div className="flex items-center space-x-1.5">
-                  <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-20 w-auto -ml-1" />
-                  <span className="font-semibold text-2xl font-display">
+                <div className="flex items-center space-x-2">
+                  <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-12 w-auto" />
+                  <span className="text-4xl" style={{ fontFamily: 'Ubuntu, sans-serif', fontWeight: 700 }}>
                     <span style={{ color: '#528fcd' }}>skillar</span>
                     <span style={{ color: '#032757' }}>Tutor</span>
                   </span>
@@ -93,12 +109,9 @@ export default function Layout({ children, title, sidebar }: LayoutProps) {
           </div>
         </header>
 
-        {/* Main Content - Fixed height, no page scroll */}
-        <main 
-          className={`${sidebarPaddingClass} ${sidebar ? 'pb-20 lg:pb-0' : ''} bg-gray-50 overflow-hidden`}
-          style={{ height: 'calc(100vh - 6rem)' }}
-        >
-          <div className="w-full h-full px-2 sm:px-3 lg:px-4 py-1 overflow-hidden">
+        {/* Main Content */}
+        <main className={`${sidebarPaddingClass} bg-gray-50`}>
+          <div className="w-full min-h-[calc(100vh-6rem)] px-2 sm:px-3 lg:px-4 py-4 text-[17px] leading-relaxed">
             {children}
           </div>
         </main>
