@@ -57,15 +57,14 @@ export default function HomePage() {
             <div className="hidden lg:flex items-center flex-1 justify-center ml-4">
             </div>
 
-            {/* Right Section - Liên hệ, Gói dịch vụ, Đăng nhập */}
+            {/* Right Section - Trang chủ, Gói dịch vụ, Liên hệ, Đăng nhập */}
             <div className="hidden md:flex items-center space-x-6 flex-shrink-0">
-              {/* Liên hệ - Dark Gray, Black Phone Icon */}
+              {/* Trang chủ - Dark Gray, Bold */}
               <button
-                onClick={() => setIsContactModalOpen(true)}
-                className="flex items-center space-x-2 text-gray-900 hover:text-blue-600 hover:bg-gray-100 transition-all px-4 py-2 rounded-lg"
+                onClick={() => navigate('/')}
+                className="text-gray-900 hover:text-blue-600 hover:bg-gray-100 font-bold text-base transition-all px-4 py-2 rounded-lg"
               >
-                <Phone className="w-5 h-5 text-black" />
-                <span className="font-bold text-base">Liên hệ</span>
+                Trang chủ
               </button>
 
               {/* Gói dịch vụ - Dark Gray, Bold */}
@@ -74,6 +73,15 @@ export default function HomePage() {
                 className="text-gray-900 hover:text-blue-600 hover:bg-gray-100 font-bold text-base transition-all px-4 py-2 rounded-lg"
               >
                 Gói dịch vụ
+              </button>
+
+              {/* Liên hệ - Dark Gray, Black Phone Icon */}
+              <button
+                onClick={() => setIsContactModalOpen(true)}
+                className="flex items-center space-x-2 text-gray-900 hover:text-blue-600 hover:bg-gray-100 transition-all px-4 py-2 rounded-lg"
+              >
+                <Phone className="w-5 h-5 text-black" />
+                <span className="font-bold text-base">Liên hệ</span>
               </button>
 
               {/* Đăng nhập - Dark Gray, Bold */}
@@ -104,16 +112,15 @@ export default function HomePage() {
           {isMobileMenuOpen && (
             <div className="md:hidden border-t border-gray-200 py-4">
               <div className="flex flex-col space-y-3">
-                {/* Liên hệ */}
+                {/* Trang chủ */}
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false)
-                    setIsContactModalOpen(true)
+                    navigate('/')
                   }}
-                  className="flex items-center space-x-2 text-gray-900 hover:text-blue-600 hover:bg-gray-100 px-4 py-3 rounded-lg transition-all"
+                  className="text-left text-gray-900 hover:text-blue-600 hover:bg-gray-100 font-bold text-base transition-all px-4 py-3 rounded-lg"
                 >
-                  <Phone className="w-5 h-5 text-black" />
-                  <span className="font-bold text-base">Liên hệ</span>
+                  Trang chủ
                 </button>
 
                 {/* Gói dịch vụ */}
@@ -125,6 +132,18 @@ export default function HomePage() {
                   className="text-left text-gray-900 hover:text-blue-600 hover:bg-gray-100 font-bold text-base transition-all px-4 py-3 rounded-lg"
                 >
                   Gói dịch vụ
+                </button>
+
+                {/* Liên hệ */}
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false)
+                    setIsContactModalOpen(true)
+                  }}
+                  className="flex items-center space-x-2 text-gray-900 hover:text-blue-600 hover:bg-gray-100 px-4 py-3 rounded-lg transition-all"
+                >
+                  <Phone className="w-5 h-5 text-black" />
+                  <span className="font-bold text-base">Liên hệ</span>
                 </button>
 
                 {/* Đăng nhập */}

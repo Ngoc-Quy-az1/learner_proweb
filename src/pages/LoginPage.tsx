@@ -44,11 +44,18 @@ export default function LoginPage() {
           {/* Login Form */}
           <div className="bg-white rounded-3xl p-10 shadow-2xl">
             {/* Logo inside form */}
-            <div className="text-center mb-10">
+            <div className="text-center mb-8 sm:mb-10">
               <Link to="/" className="inline-block">
-                <div className="flex items-center justify-center space-x-5 mb-2">
-                  <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-24 w-auto" />
-                  <h1 className="text-6xl font-bold" style={{ fontFamily: 'Ubuntu, sans-serif', fontWeight: 700 }}>
+                <div className="flex items-center justify-center space-x-3 sm:space-x-4 md:space-x-5 mb-2 flex-wrap">
+                  <img 
+                    src="/skillar-favicon.svg" 
+                    alt="SKILLAR Logo" 
+                    className="h-16 sm:h-20 md:h-24 lg:h-28 xl:h-32 w-auto flex-shrink-0" 
+                  />
+                  <h1 
+                    className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold flex-shrink-0" 
+                    style={{ fontFamily: 'Ubuntu, sans-serif', fontWeight: 900 }}
+                  >
                     <span style={{ color: '#528fcd' }}>skillar</span>
                     <span style={{ color: '#032757' }}>Tutor</span>
                   </h1>

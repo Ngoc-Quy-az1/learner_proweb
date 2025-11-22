@@ -78,15 +78,22 @@ src/
 ├── components/       # Components dùng chung
 │   ├── Layout.tsx
 │   ├── ChecklistTable.tsx
-│   └── ScheduleWidget.tsx
+│   ├── ScheduleWidget.tsx
+│   ├── HeroSection.tsx
+│   ├── PerformanceSection.tsx
+│   ├── TutoringSection.tsx
+│   ├── TestimonialsSection.tsx
+│   ├── FooterSection.tsx
+│   ├── PricingCards.tsx
+│   └── ContactModal.tsx
 ├── contexts/        # React Contexts
 │   └── AuthContext.tsx
 ├── pages/           # Các trang chính
 │   ├── HomePage.tsx
 │   ├── LoginPage.tsx
+│   ├── PricingPage.tsx
 │   ├── StudentDashboard.tsx
 │   ├── TutorDashboard.tsx
-│   ├── TeacherDashboard.tsx
 │   └── AdminDashboard.tsx
 ├── App.tsx          # Main app component
 ├── main.tsx         # Entry point
