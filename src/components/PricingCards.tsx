@@ -1,4 +1,11 @@
+import React from 'react'
 import { Check, X } from 'lucide-react'
+
+// Constants for styling to ensure consistency across the component
+const POPULAR_COLOR = '#21C3F9' // Blue color for "Phổ biến"
+const FEATURE_TEXT_COLOR = 'text-gray-900'
+const FONT_WEIGHT_BLACK = 900
+const FONT_WEIGHT_BOLD = 800
 
 interface PricingCardsProps {
   onContactClick?: () => void
@@ -79,49 +86,83 @@ export default function PricingCards({ onContactClick }: PricingCardsProps) {
     }
   ]
 
+  /**
+   * Helper function to render the feature value (Check/X/Text)
+   */
+  const renderFeatureValue = (value: boolean | string) => {
+    const iconClass = `w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8`
+    const textClass = `${FEATURE_TEXT_COLOR} text-sm sm:text-base md:text-lg lg:text-xl font-black break-words`
+    
+    if (typeof value === 'boolean') {
+      return value ? (
+        <Check className={`${iconClass} text-green-600`} style={{ strokeWidth: 3 }} />
+      ) : (
+        <X className={`${iconClass} text-red-600`} style={{ strokeWidth: 3 }} />
+      )
+    }
+    return <span className={textClass} style={{ fontWeight: FONT_WEIGHT_BOLD }}>{value}</span>
+  }
+
+  /**
+   * Helper function to render the description with highlighted strong parts
+   */
+  const renderDescription = (description: string) => {
+    if (description.includes('+ yếu rõ 1–2 môn')) {
+      const parts = description.split('+ yếu rõ 1–2 môn, cần giải thích sâu và cải thiện điểm.')
+      return (
+        <>
+          {parts[0]}
+          <strong className="text-base sm:text-lg md:text-xl font-black text-gray-900" style={{ fontWeight: FONT_WEIGHT_BLACK }}>+ yếu rõ 1–2 môn, cần giải thích sâu và cải thiện điểm.</strong>
+        </>
+      )
+    }
+    if (description.includes('+ mất gốc nhiều môn')) {
+      const parts = description.split('+ mất gốc nhiều môn, hoặc đang thi chuyển cấp.')
+      return (
+        <>
+          {parts[0]}
+          <strong className="text-base sm:text-lg md:text-xl font-black text-gray-900" style={{ fontWeight: FONT_WEIGHT_BLACK }}>+ mất gốc nhiều môn, hoặc đang thi chuyển cấp.</strong>
+        </>
+      )
+    }
+    return description
+  }
+
   return (
-    <div className="w-full max-w-[90%] mx-auto px-4 sm:px-6 lg:px-8">
-      {/* Mobile Pricing Cards - Display one by one */}
-      <div className="md:hidden space-y-6 mb-8">
+    <div className="w-full max-w-[95%] xl:max-w-[90%] mx-auto p-4 sm:p-6 lg:p-8 font-inter">
+      {/* 1. Mobile Pricing Cards - Display one by one */}
+      <div className="md:hidden space-y-8 mb-12">
         {pricingPlans.map((plan, index) => (
           <div
             key={`mobile-card-${index}`}
-            className={`bg-white rounded-xl p-4 sm:p-6 border-2 flex flex-col overflow-hidden relative ${index === 1 ? 'border-blue-500' : 'border-gray-200'}`}
+            className={`bg-white rounded-xl p-6 sm:p-8 border-4 flex flex-col shadow-xl overflow-hidden relative transition-all duration-300 ${plan.isPopular ? 'transform scale-[1.02]' : 'border-gray-200'}`}
+            style={plan.isPopular ? { borderColor: '#21C3F9' } : {}}
           >
             {/* Popular Badge */}
             {plan.isPopular && (
-              <div className="absolute top-0 left-0 right-0 text-white text-center py-1.5 sm:py-2 rounded-t-xl font-bold text-xs sm:text-sm" style={{ fontWeight: 700, backgroundColor: '#21C3F9' }}>
+              <div className="absolute top-0 left-0 right-0 text-white text-center py-2 rounded-t-lg font-bold text-sm sm:text-base tracking-wider" style={{ fontWeight: FONT_WEIGHT_BLACK, backgroundColor: POPULAR_COLOR }}>
                 Phổ biến
               </div>
             )}
-            <div className={`flex items-center justify-center gap-2 mb-4 flex-wrap ${plan.isPopular ? 'mt-8 sm:mt-10' : ''}`}>
-              <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-gray-900 leading-tight whitespace-nowrap" style={{ fontWeight: 900, letterSpacing: '-0.02em' }}>{plan.name}</h3>
-              <span className="text-xl sm:text-2xl md:text-3xl font-black text-gray-900 whitespace-nowrap" style={{ fontWeight: 900 }}>{plan.price}</span>
-              <span className="text-gray-700 text-base sm:text-lg font-bold whitespace-nowrap">{plan.period}</span>
+            
+            <div className={`flex flex-col items-center justify-center gap-1 mb-5 ${plan.isPopular ? 'mt-8 sm:mt-10' : ''}`}>
+              <h3 className={`text-3xl sm:text-4xl font-black ${FEATURE_TEXT_COLOR}`} style={{ fontWeight: FONT_WEIGHT_BLACK, letterSpacing: '-0.03em' }}>{plan.name}</h3>
+              <div className='flex items-end gap-2'>
+                <span className={`text-4xl sm:text-5xl font-black ${FEATURE_TEXT_COLOR}`} style={{ fontWeight: FONT_WEIGHT_BLACK }}>{plan.price}</span>
+                <span className="text-gray-700 text-lg sm:text-xl font-bold">{plan.period}</span>
+              </div>
             </div>
             
-            <div className="mb-6 flex flex-col">
-              <p className="text-sm sm:text-base md:text-lg font-normal text-gray-700 leading-relaxed break-words">
-                {plan.description.includes('+ yếu rõ 1–2 môn') ? (
-                  <>
-                    {plan.description.split('+ yếu rõ 1–2 môn, cần giải thích sâu và cải thiện điểm.')[0]}
-                    <strong className="text-base sm:text-lg md:text-xl font-black text-gray-900" style={{ fontWeight: 900 }}>+ yếu rõ 1–2 môn, cần giải thích sâu và cải thiện điểm.</strong>
-                  </>
-                ) : plan.description.includes('+ mất gốc nhiều môn') ? (
-                  <>
-                    {plan.description.split('+ mất gốc nhiều môn, hoặc đang thi chuyển cấp.')[0]}
-                    <strong className="text-base sm:text-lg md:text-xl font-black text-gray-900" style={{ fontWeight: 900 }}>+ mất gốc nhiều môn, hoặc đang thi chuyển cấp.</strong>
-                  </>
-                ) : (
-                  plan.description
-                )}
+            <div className="mb-8 text-center" style={{ minHeight: plan.isPopular ? '6rem' : '5rem' }}>
+              <p className="text-base sm:text-lg font-normal text-gray-700 leading-relaxed">
+                {renderDescription(plan.description)}
               </p>
             </div>
             
             <button
               onClick={onContactClick}
-              className="w-full py-3 sm:py-4 rounded-lg font-bold text-base sm:text-lg flex items-center justify-center gap-2 transition-all hover:opacity-90 text-white"
-              style={{ backgroundColor: '#63B8FF' }}
+              className="w-full py-3 sm:py-4 rounded-xl font-bold text-lg sm:text-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 text-white shadow-lg"
+              style={{ backgroundColor: plan.isPopular ? '#21C3F9' : '#032757' }}
             >
               Đăng ký ngay
             </button>
@@ -129,218 +170,31 @@ export default function PricingCards({ onContactClick }: PricingCardsProps) {
         ))}
       </div>
 
-      {/* Combined Pricing Cards and Table - Desktop */}
-      <div className="hidden md:block bg-white rounded-2xl shadow-lg border border-gray-200">
-        <div className="p-6 sm:p-8 md:p-10 lg:p-12 relative">
-          <div className="grid grid-cols-[300px_1fr_1fr_1fr] gap-6 sm:gap-8 md:gap-10 items-start">
-            {/* Empty first column for pricing cards row */}
-            <div className="w-[300px]"></div>
-            
-            {/* Pricing Cards Row */}
-            {pricingPlans.map((plan, index) => (
-              <div
-                key={`card-${index}`}
-                className={`relative flex ${!plan.isPopular ? 'mt-6 sm:mt-8 md:mt-10' : ''}`}
-              >
-                <div
-                  className="bg-white rounded-xl p-4 sm:p-5 md:p-6 lg:p-8 border-2 border-gray-200 flex flex-col min-w-0 w-full overflow-hidden relative"
-                >
-                {/* Popular Badge */}
-                {plan.isPopular && (
-                  <div className="absolute top-0 left-0 right-0 text-white text-center py-1.5 sm:py-2 md:py-2.5 rounded-t-xl font-bold text-xs sm:text-sm md:text-base z-10" style={{ fontWeight: 700, backgroundColor: '#21C3F9' }}>
-                    Phổ biến
-                  </div>
-                )}
-                {/* Title/Price section - fixed height and position for alignment */}
-                <div className={`flex items-center justify-center gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6 flex-wrap min-h-[5rem] sm:min-h-[6rem] md:min-h-[7rem] ${plan.isPopular ? 'pt-8 sm:pt-9 md:pt-10' : 'pt-0'}`}>
-                  <h3 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-gray-900 leading-tight whitespace-nowrap" style={{ fontWeight: 900, letterSpacing: '-0.02em' }}>{plan.name}</h3>
-                  <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-gray-900 whitespace-nowrap" style={{ fontWeight: 900 }}>{plan.price}</span>
-                  <span className="text-gray-700 text-lg sm:text-xl md:text-2xl font-bold whitespace-nowrap">{plan.period}</span>
-                </div>
-                
-                {/* Description section - fixed height for alignment */}
-                <div className="mb-6 sm:mb-8 md:mb-10 flex-grow flex flex-col min-h-[12rem] sm:min-h-[14rem] md:min-h-[16rem]">
-                  <p className="text-sm sm:text-base md:text-lg lg:text-xl font-normal text-gray-700 leading-relaxed flex-grow break-words">
-                    {plan.description.includes('+ yếu rõ 1–2 môn') ? (
-                      <>
-                        {plan.description.split('+ yếu rõ 1–2 môn, cần giải thích sâu và cải thiện điểm.')[0]}
-                        <strong className="text-base sm:text-lg md:text-xl lg:text-2xl font-black text-gray-900" style={{ fontWeight: 900 }}>+ yếu rõ 1–2 môn, cần giải thích sâu và cải thiện điểm.</strong>
-                      </>
-                    ) : plan.description.includes('+ mất gốc nhiều môn') ? (
-                      <>
-                        {plan.description.split('+ mất gốc nhiều môn, hoặc đang thi chuyển cấp.')[0]}
-                        <strong className="text-base sm:text-lg md:text-xl lg:text-2xl font-black text-gray-900" style={{ fontWeight: 900 }}>+ mất gốc nhiều môn, hoặc đang thi chuyển cấp.</strong>
-                      </>
-                    ) : (
-                      plan.description
-                    )}
-                  </p>
-                </div>
-                
-                {/* Button - fixed at bottom */}
-                <button
-                  onClick={onContactClick}
-                  className="w-full py-3 sm:py-4 md:py-5 rounded-lg font-bold text-base sm:text-lg md:text-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 text-white mt-auto"
-                  style={{ backgroundColor: '#63B8FF' }}
-                >
-                  Đăng ký ngay
-                </button>
-                </div>
-              </div>
-            ))}
-
-
-            {/* Feature Comparison Table */}
-            {features.map((category, catIndex) => (
-              <>
-                {/* Spacer row for spacing after pricing cards */}
-                {catIndex === 0 && (
-                  <div className="contents">
-                    <div className="w-[300px] h-6 sm:h-8 md:h-10"></div>
-                    <div className="h-6 sm:h-8 md:h-10"></div>
-                    <div className="h-6 sm:h-8 md:h-10"></div>
-                    <div className="h-6 sm:h-8 md:h-10"></div>
-                  </div>
-                )}
-                {/* Table Header */}
-                <div className="contents">
-                  <div className="text-left font-black text-gray-900 text-base sm:text-lg md:text-xl lg:text-2xl pb-3 sm:pb-4 border-b-2 border-gray-400 w-[300px] break-words flex items-end min-h-[3.5rem] sm:min-h-[4rem] md:min-h-[4.5rem] lg:min-h-[5rem]" style={{ fontWeight: 900 }}>{category.category}</div>
-                  <div className="text-center font-black text-gray-900 text-xl sm:text-2xl md:text-3xl lg:text-4xl pb-3 sm:pb-4 border-b-2 border-gray-400 min-w-0 break-words flex items-end justify-center min-h-[3.5rem] sm:min-h-[4rem] md:min-h-[4.5rem] lg:min-h-[5rem]" style={{ fontWeight: 900 }}>Cơ bản</div>
-                  <div className="text-center font-black text-gray-900 text-xl sm:text-2xl md:text-3xl lg:text-4xl pb-3 sm:pb-4 border-b-2 border-gray-400 min-w-0 break-words flex items-end justify-center min-h-[3.5rem] sm:min-h-[4rem] md:min-h-[4.5rem] lg:min-h-[5rem]" style={{ fontWeight: 900 }}>Toàn diện</div>
-                  <div className="text-center font-black text-gray-900 text-xl sm:text-2xl md:text-3xl lg:text-4xl pb-3 sm:pb-4 border-b-2 border-gray-400 min-w-0 break-words flex items-end justify-center min-h-[3.5rem] sm:min-h-[4rem] md:min-h-[4.5rem] lg:min-h-[5rem]" style={{ fontWeight: 900 }}>Chuyên sâu</div>
-                </div>
-                
-                {/* Table Rows */}
-                {category.items.map((item, itemIndex) => (
-                  <div key={`${catIndex}-${itemIndex}`} className="contents">
-                    <div className="font-black text-gray-900 text-sm sm:text-base md:text-lg lg:text-xl pt-1.5 sm:pt-2 md:pt-2.5 pb-3 sm:pb-4 md:pb-5 border-b border-gray-300 w-[300px] leading-relaxed break-words flex items-start" style={{ fontWeight: 800 }}>{item.name}</div>
-                    <div className="text-center pt-1.5 sm:pt-2 md:pt-2.5 pb-3 sm:pb-4 md:pb-5 border-b border-gray-300 min-w-0 flex items-center justify-center">
-                      {typeof item.basic === 'boolean' ? (
-                        item.basic ? (
-                          <Check className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-green-600" style={{ strokeWidth: 3 }} />
-                        ) : (
-                          <X className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-red-600" style={{ strokeWidth: 3 }} />
-                        )
-                      ) : (
-                        <span className="text-gray-900 text-sm sm:text-base md:text-lg lg:text-xl font-black break-words" style={{ fontWeight: 800 }}>{item.basic}</span>
-                      )}
-                    </div>
-                    <div className="text-center pt-1.5 sm:pt-2 md:pt-2.5 pb-3 sm:pb-4 md:pb-5 border-b border-gray-300 min-w-0 flex items-center justify-center">
-                      {typeof item.premium === 'boolean' ? (
-                        item.premium ? (
-                          <Check className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-green-600" style={{ strokeWidth: 3 }} />
-                        ) : (
-                          <X className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-red-600" style={{ strokeWidth: 3 }} />
-                        )
-                      ) : (
-                        <span className="text-gray-900 text-sm sm:text-base md:text-lg lg:text-xl font-black break-words" style={{ fontWeight: 800 }}>{item.premium}</span>
-                      )}
-                    </div>
-                    <div className="text-center pt-1.5 sm:pt-2 md:pt-2.5 pb-3 sm:pb-4 md:pb-5 border-b border-gray-300 min-w-0 flex items-center justify-center">
-                      {typeof item.ultra === 'boolean' ? (
-                        item.ultra ? (
-                          <Check className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-green-600" style={{ strokeWidth: 3 }} />
-                        ) : (
-                          <X className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-red-600" style={{ strokeWidth: 3 }} />
-                        )
-                      ) : (
-                        <span className="text-gray-900 text-sm sm:text-base md:text-lg lg:text-xl font-black break-words" style={{ fontWeight: 800 }}>{item.ultra}</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                
-                {/* Action Buttons at bottom of each category */}
-                <div className="col-span-4 grid grid-cols-[300px_1fr_1fr_1fr] gap-6 sm:gap-8 md:gap-10 mt-4 sm:mt-6">
-                  <div className="w-[300px]"></div>
-                  <button
-                    onClick={onContactClick}
-                    className="py-2.5 sm:py-3 md:py-4 rounded-lg font-bold text-sm sm:text-base md:text-lg lg:text-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 text-white min-w-0 ml-2 sm:ml-2.5 md:ml-3"
-                    style={{ backgroundColor: '#032757' }}
-                  >
-                    Đăng ký ngay
-                  </button>
-                  <button
-                    onClick={onContactClick}
-                    className="py-2.5 sm:py-3 md:py-4 rounded-lg font-bold text-sm sm:text-base md:text-lg lg:text-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 text-white min-w-0 ml-2 sm:ml-2.5 md:ml-3"
-                    style={{ backgroundColor: '#032757' }}
-                  >
-                    Đăng ký ngay
-                  </button>
-                  <button
-                    onClick={onContactClick}
-                    className="py-2.5 sm:py-3 md:py-4 rounded-lg font-bold text-sm sm:text-base md:text-lg lg:text-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 text-white min-w-0 ml-2 sm:ml-2.5 md:ml-3"
-                    style={{ backgroundColor: '#032757' }}
-                  >
-                    Đăng ký ngay
-                  </button>
-                </div>
-              </>
-            ))}
-          </div>
-          {/* Blue border frame for Toàn diện column - spans entire column */}
-          <div 
-            className="absolute rounded-3xl pointer-events-none z-10"
-            style={{
-              border: '16px solid #21C3F9',
-              left: 'calc((300px + 1.5rem) + ((100% - 300px - 1.5rem * 4) / 3) + 1.5rem + 1.75rem)',
-              width: 'calc((100% - 300px - 1.5rem * 4) / 3 - 1.5rem + 0.5rem)',
-              top: '2.25rem',
-              bottom: '9.5rem',
-            }}
-          ></div>
-        </div>
-      </div>
-
       {/* Mobile Feature Comparison Table */}
-      <div className="md:hidden bg-white rounded-2xl shadow-lg border border-gray-200 p-4 sm:p-6">
+      <div className="md:hidden bg-white rounded-2xl shadow-lg border border-gray-200 p-4 sm:p-6 mt-8">
         {features.map((category, catIndex) => (
           <div key={catIndex} className={catIndex > 0 ? 'mt-8' : ''}>
-            <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-gray-900 mb-4 sm:mb-6 break-words" style={{ fontWeight: 900 }}>{category.category}</h3>
+            <h3 className="text-xl sm:text-2xl font-black text-gray-900 mb-4 sm:mb-6 break-words" style={{ fontWeight: FONT_WEIGHT_BLACK }}>{category.category}</h3>
             
             <div className="overflow-x-auto">
-              <div className="grid grid-cols-4 gap-2 pb-3 border-b-2 border-gray-400">
-                <div className="text-left font-black text-gray-900 text-sm sm:text-base break-words" style={{ fontWeight: 900 }}>Tiêu chí / Lợi ích</div>
-                <div className="text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl break-words" style={{ fontWeight: 900 }}>Cơ bản</div>
-                <div className="text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl break-words" style={{ fontWeight: 900 }}>Toàn diện</div>
-                <div className="text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl break-words" style={{ fontWeight: 900 }}>Chuyên sâu</div>
+              <div className="grid grid-cols-4 gap-2 sm:gap-4 pb-3 border-b-2 border-gray-400 min-w-[600px]">
+                <div className="text-left font-black text-gray-900 text-sm sm:text-base break-words" style={{ fontWeight: FONT_WEIGHT_BLACK }}>Tiêu chí / Lợi ích</div>
+                <div className="text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl break-words" style={{ fontWeight: FONT_WEIGHT_BLACK }}>Cơ bản</div>
+                <div className="text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl break-words" style={{ fontWeight: FONT_WEIGHT_BLACK }}>Toàn diện</div>
+                <div className="text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl break-words" style={{ fontWeight: FONT_WEIGHT_BLACK }}>Chuyên sâu</div>
               </div>
               
               {category.items.map((item, itemIndex) => (
-                <div key={itemIndex} className="grid grid-cols-4 gap-2 py-3 sm:py-4 border-b border-gray-300">
-                  <div className="font-black text-gray-900 text-sm sm:text-base leading-relaxed break-words" style={{ fontWeight: 800 }}>{item.name}</div>
-                  <div className="text-center">
-                    {typeof item.basic === 'boolean' ? (
-                      item.basic ? (
-                        <Check className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 mx-auto" style={{ strokeWidth: 3 }} />
-                      ) : (
-                        <X className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 mx-auto" style={{ strokeWidth: 3 }} />
-                      )
-                    ) : (
-                      <span className="text-gray-900 text-sm sm:text-base font-black break-words" style={{ fontWeight: 800 }}>{item.basic}</span>
-                    )}
+                <div key={itemIndex} className="grid grid-cols-4 gap-2 sm:gap-4 py-3 sm:py-4 border-b border-gray-300 min-w-[600px]">
+                  <div className="font-black text-gray-900 text-sm sm:text-base leading-relaxed break-words" style={{ fontWeight: FONT_WEIGHT_BOLD }}>{item.name}</div>
+                  <div className="text-center flex items-center justify-center">
+                    {renderFeatureValue(item.basic)}
                   </div>
-                  <div className="text-center">
-                    {typeof item.premium === 'boolean' ? (
-                      item.premium ? (
-                        <Check className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 mx-auto" style={{ strokeWidth: 3 }} />
-                      ) : (
-                        <X className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 mx-auto" style={{ strokeWidth: 3 }} />
-                      )
-                    ) : (
-                      <span className="text-gray-900 text-sm sm:text-base font-black break-words" style={{ fontWeight: 800 }}>{item.premium}</span>
-                    )}
+                  <div className="text-center flex items-center justify-center bg-blue-50">
+                    {renderFeatureValue(item.premium)}
                   </div>
-                  <div className="text-center">
-                    {typeof item.ultra === 'boolean' ? (
-                      item.ultra ? (
-                        <Check className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 mx-auto" style={{ strokeWidth: 3 }} />
-                      ) : (
-                        <X className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 mx-auto" style={{ strokeWidth: 3 }} />
-                      )
-                    ) : (
-                      <span className="text-gray-900 text-sm sm:text-base font-black break-words" style={{ fontWeight: 800 }}>{item.ultra}</span>
-                    )}
+                  <div className="text-center flex items-center justify-center">
+                    {renderFeatureValue(item.ultra)}
                   </div>
                 </div>
               ))}
@@ -348,6 +202,163 @@ export default function PricingCards({ onContactClick }: PricingCardsProps) {
           </div>
         ))}
       </div>
+
+      {/* 2. Combined Pricing Cards and Table - Desktop (md and up) */}
+      <div className="hidden md:block bg-white rounded-3xl shadow-2xl border-2 border-gray-100 overflow-hidden">
+        <div className="pt-8 pb-6 px-4 sm:pt-10 sm:pb-8 sm:px-6 md:pt-12 md:pb-8 md:px-8 lg:pt-16 lg:pb-12 lg:px-12 relative">
+
+          {/* Pricing Cards Row and Feature Column Titles */}
+          {/* Using custom grid template for the 4 columns: Wide feature column, 3 equal plan columns */}
+          <div 
+            className="grid items-stretch" 
+            style={{ 
+              gridTemplateColumns: `minmax(200px, 250px) 1fr 1fr 1fr`,
+              gap: 'clamp(0.75rem, 2vw, 1.5rem)'
+            }}
+          >
+            {/* Empty first column space */}
+            <div></div>
+            
+            {/* Pricing Cards */}
+            {pricingPlans.map((plan, index) => {
+              const isPopular = plan.isPopular
+              // Apply distinct styling for the popular column
+              const cardClass = isPopular 
+                ? 'border-8 bg-blue-500/10 shadow-xl z-20' 
+                : 'border-2 border-gray-200 bg-white shadow-md'
+
+              return (
+                <div key={`card-${index}`} className="relative flex h-full">
+                  <div className={`rounded-2xl flex flex-col min-w-0 w-full h-full overflow-hidden transition-all duration-300 ${cardClass}`} style={
+                    isPopular 
+                      ? { borderColor: '#21C3F9', padding: 'clamp(0.5rem, 1.5vw, 1.5rem) clamp(0.5rem, 1.5vw, 2rem)' } 
+                      : index === 0 
+                        ? { padding: 'clamp(0.375rem, 1vw, 0.75rem) clamp(0.375rem, 1vw, 1.25rem)' }
+                        : { padding: 'clamp(0.5rem, 1.25vw, 1rem) clamp(0.5rem, 1.25vw, 1.5rem)' }
+                  }>
+                    
+                    {/* Popular Badge */}
+                    {isPopular && (
+                      <div className="absolute -top-8 left-0 right-0 text-white text-center py-1.5 sm:py-2 rounded-t-xl font-black text-base sm:text-lg md:text-xl lg:text-2xl z-10" style={{ fontWeight: FONT_WEIGHT_BLACK, backgroundColor: POPULAR_COLOR }}>
+                        Phổ biến
+                      </div>
+                    )}
+
+                    {/* Title/Price section - Fixed height for vertical alignment */}
+                    <div className="flex flex-col items-center justify-center gap-1 sm:gap-2 mb-2 sm:mb-3" style={{ minHeight: 'clamp(80px, 8vw, 120px)', paddingTop: isPopular ? 'clamp(1.25rem, 2.5vw, 1.75rem)' : 'clamp(2.5rem, 4vw, 3.5rem)' }}>
+                      <h3 className={`text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-black ${FEATURE_TEXT_COLOR}`} style={{ fontWeight: 900, letterSpacing: '-0.02em' }}>{plan.name}</h3>
+                      <div className="flex items-end justify-center gap-1.5 sm:gap-2">
+                        <span className={`text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black ${FEATURE_TEXT_COLOR}`} style={{ fontWeight: FONT_WEIGHT_BLACK }}>{plan.price}</span>
+                        <span className="text-gray-700 text-sm sm:text-base md:text-lg lg:text-xl font-bold">{plan.period}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Description section - Fixed height for vertical alignment */}
+                    <div className="mb-2 sm:mb-3 flex-grow flex flex-col" style={{ minHeight: 'clamp(100px, 12vw, 160px)' }}>
+                      <p className="text-xs sm:text-sm md:text-base lg:text-lg font-normal text-gray-700 leading-relaxed flex-grow break-words text-center">
+                        {renderDescription(plan.description)}
+                      </p>
+                    </div>
+                    
+                    {/* Button - fixed at bottom */}
+                    <button
+                      onClick={onContactClick}
+                      className={`w-full py-2 sm:py-2.5 md:py-3 lg:py-4 rounded-xl font-bold text-xs sm:text-sm md:text-base lg:text-lg flex items-center justify-center gap-1.5 sm:gap-2 transition-all hover:opacity-90 text-white shadow-lg mt-auto`}
+                      style={{ backgroundColor: isPopular ? '#21C3F9' : '#032757' }}
+                    >
+                      Đăng ký ngay
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Feature Comparison Table */}
+          <div className='mt-12 lg:mt-16'>
+            {features.map((category, catIndex) => (
+              <React.Fragment key={catIndex}>
+                
+                {/* Table Header Row (Plan Names, fixed height for alignment) */}
+                <div 
+                  className="grid border-b-2 border-gray-400 mb-4" 
+                  style={{ 
+                    gridTemplateColumns: `minmax(200px, 250px) 1fr 1fr 1fr`,
+                    gap: 'clamp(0.75rem, 2vw, 1.5rem)'
+                  }}
+                >
+                  {/* Category Title Cell */}
+                  <div className={`text-left font-black ${FEATURE_TEXT_COLOR} text-sm sm:text-base md:text-lg lg:text-xl py-2 sm:py-3 break-words flex items-end justify-start`} style={{ fontWeight: FONT_WEIGHT_BLACK }}>
+                    {category.category}
+                  </div>
+                  
+                  {/* Plan Name Cells */}
+                  <div className='text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl lg:text-3xl py-2 sm:py-3 break-words flex items-end justify-center' style={{ fontWeight: FONT_WEIGHT_BLACK }}>Cơ bản</div>
+                  <div className='text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl lg:text-3xl py-2 sm:py-3 break-words flex items-end justify-center' style={{ fontWeight: FONT_WEIGHT_BLACK }}>Toàn diện</div>
+                  <div className='text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl lg:text-3xl py-2 sm:py-3 break-words flex items-end justify-center' style={{ fontWeight: FONT_WEIGHT_BLACK }}>Chuyên sâu</div>
+                </div>
+                
+                {/* Table Content Rows */}
+                {category.items.map((item, itemIndex) => {
+                  const items = [item.basic, item.premium, item.ultra]
+                  return (
+                    <div 
+                      key={`${catIndex}-${itemIndex}`} 
+                      className="grid py-3 sm:py-4 border-b border-gray-300 transition-all duration-100 hover:bg-gray-50/50" 
+                      style={{ 
+                        gridTemplateColumns: `minmax(200px, 250px) 1fr 1fr 1fr`,
+                        gap: 'clamp(0.75rem, 2vw, 1.5rem)'
+                      }}
+                    >
+                      {/* Feature Name */}
+                      <div className={`font-black ${FEATURE_TEXT_COLOR} text-xs sm:text-sm md:text-base lg:text-lg leading-relaxed break-words flex items-center`} style={{ fontWeight: FONT_WEIGHT_BOLD }}>
+                        {item.name}
+                      </div>
+                      
+                      {/* Plan Feature Values */}
+                      {items.map((value, planIndex) => {
+                        const isPopular = planIndex === 1
+                        const cellClass = isPopular ? 'bg-blue-50' : 'bg-transparent'
+                        
+                        return (
+                          <div key={planIndex} className={`text-center py-3 flex items-center justify-center ${cellClass}`}>
+                            {renderFeatureValue(value)}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
+                
+              </React.Fragment>
+            ))}
+          </div>
+          
+          {/* Action Buttons at bottom of feature comparison */}
+          <div 
+            className="grid mt-8 sm:mt-10 md:mt-12 pt-4 sm:pt-5 md:pt-6"
+            style={{ 
+              gridTemplateColumns: `minmax(200px, 250px) 1fr 1fr 1fr`,
+              gap: 'clamp(0.75rem, 2vw, 1.5rem)'
+            }}
+          >
+            <div></div> {/* Spacer */}
+            
+            {pricingPlans.map((plan, index) => (
+              <button
+                key={`btn-bottom-${index}`}
+                onClick={onContactClick}
+                className="py-3 lg:py-4 rounded-xl font-bold text-base lg:text-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 text-white shadow-md"
+                style={{ backgroundColor: plan.isPopular ? '#21C3F9' : '#032757' }}
+              >
+                Đăng ký ngay
+              </button>
+            ))}
+          </div>
+
+        </div>
+      </div>
+
     </div>
   )
 }

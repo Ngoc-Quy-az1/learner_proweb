@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Layout from '../components/Layout'
+import { apiCall, API_BASE_URL } from '../config/api'
+import { getCookie } from '../utils/cookies'
 import {
   Users,
   UserPlus,
@@ -27,10 +29,15 @@ interface User {
   id: string
   name: string
   email: string
-  role: 'student' | 'tutor'
-  status: 'active' | 'inactive'
-  password: string
-  joinDate: string
+  role: 'student' | 'tutor' | 'parent' | 'admin' | 'teacher'
+  phone?: string
+  birthday?: string
+  isEmailVerified?: boolean
+  isActive?: boolean
+  // For display purposes (not from API)
+  password?: string
+  joinDate?: string
+  status?: 'active' | 'inactive'
 }
 
 interface ParentInfo {
@@ -115,6 +122,9 @@ interface ScheduleSession {
 const ROLE_LABELS: Record<User['role'], string> = {
   student: 'Học sinh / Phụ huynh',
   tutor: 'Tutor',
+  parent: 'Phụ huynh',
+  admin: 'Admin',
+  teacher: 'Giáo viên',
 }
 
 const INITIAL_USERS: User[] = [
@@ -450,11 +460,18 @@ export default function AdminDashboard() {
   const [activeSection, setActiveSection] = useState<AdminSection>('user-management')
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [showAddUserModal, setShowAddUserModal] = useState(false)
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS)
+  const [users, setUsers] = useState<User[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'tutor'>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({})
+  const [usersLoading, setUsersLoading] = useState(true)
+  const [usersPagination, setUsersPagination] = useState({
+    page: 1,
+    limit: 10,
+    totalPages: 1,
+    totalResults: 0,
+  })
   const [newUser, setNewUser] = useState({
     name: '',
     email: '',
@@ -465,9 +482,15 @@ export default function AdminDashboard() {
     tutorInfo: createEmptyTutorInfo(),
     avatar: null as File | null,
     cvFile: null as File | null,
+    avatarUrl: '' as string,
+    cvFileUrl: '' as string,
   })
+  const [uploadingFile, setUploadingFile] = useState(false)
   const [editUserId, setEditUserId] = useState<string | null>(null)
   const [editData, setEditData] = useState<Partial<User>>({})
+  const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false)
   const [studentList, setStudentList] = useState<StudentListItem[]>(STUDENT_LIST)
   const [studentProfiles, setStudentProfiles] = useState<Record<string, StudentProfile>>(() => createInitialStudentProfiles(STUDENT_LIST))
   const [selectedStudentId, setSelectedStudentId] = useState(STUDENT_LIST[0].id)
@@ -494,31 +517,66 @@ export default function AdminDashboard() {
     meetingLink: '',
     note: '',
   })
+  const [stats, setStats] = useState({
+    total: 0,
+    students: 0,
+    tutors: 0,
+    lessonsToday: 0,
+  })
+  const [statsLoading, setStatsLoading] = useState(true)
 
-  const usersPerPage = 8
+  const usersPerPage = 10
 
-  const filteredUsers = useMemo(
-    () =>
-      users.filter((user) => {
-        const matchesRole = roleFilter === 'all' ? true : user.role === roleFilter
-        const keyword = searchTerm.trim().toLowerCase()
-        const matchesSearch =
-          keyword.length === 0 ||
-          user.name.toLowerCase().includes(keyword) ||
-          user.email.toLowerCase().includes(keyword)
-        return matchesRole && matchesSearch
-      }),
-    [users, roleFilter, searchTerm],
-  )
-
-  const maxPage = Math.max(1, Math.ceil(filteredUsers.length / usersPerPage))
-  const safePage = Math.min(currentPage, maxPage)
-
+  // Fetch users from API
   useEffect(() => {
-    if (safePage !== currentPage) {
-      setCurrentPage(safePage)
+    const fetchUsers = async () => {
+      try {
+        setUsersLoading(true)
+        
+        // Build query parameters
+        const params = new URLSearchParams()
+        if (searchTerm.trim()) {
+          params.append('name', searchTerm.trim())
+        }
+        if (roleFilter !== 'all') {
+          params.append('role', roleFilter)
+        }
+        params.append('page', currentPage.toString())
+        params.append('limit', usersPerPage.toString())
+        params.append('sortBy', 'name:asc')
+
+        const response = await apiCall<{
+          results: User[]
+          page: number
+          limit: number
+          totalPages: number
+          totalResults: number
+        }>(`/users?${params.toString()}`)
+
+        // Map API users to display format
+        const mappedUsers: User[] = response.results.map((user) => ({
+          ...user,
+          status: (user.isActive ? 'active' : 'inactive') as 'active' | 'inactive',
+          joinDate: user.birthday ? new Date(user.birthday).toLocaleDateString('vi-VN') : '',
+        }))
+
+        setUsers(mappedUsers)
+        setUsersPagination({
+          page: response.page,
+          limit: response.limit,
+          totalPages: response.totalPages,
+          totalResults: response.totalResults,
+        })
+      } catch (error) {
+        console.error('Error fetching users:', error)
+        setUsers([])
+      } finally {
+        setUsersLoading(false)
+      }
     }
-  }, [currentPage, safePage])
+
+    fetchUsers()
+  }, [currentPage, roleFilter, searchTerm])
 
   useEffect(() => {
     setIsStudentEditing(false)
@@ -530,14 +588,50 @@ export default function AdminDashboard() {
     setTutorEditData(null)
   }, [selectedTutorId])
 
-  const paginatedUsers = useMemo(() => {
-    const start = (safePage - 1) * usersPerPage
-    return filteredUsers.slice(start, start + usersPerPage)
-  }, [filteredUsers, safePage])
+  // Reset to page 1 when filter or search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [roleFilter, searchTerm])
 
-  const totalStudents = users.filter((user) => user.role === 'student').length
-  const totalTutors = users.filter((user) => user.role === 'tutor').length
-  const lessonsToday = 12
+  const paginatedUsers = users
+
+  // Fetch stats from API
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        setStatsLoading(true)
+        // Fetch user stats
+        const userStats = await apiCall<{
+          total: number
+          student: number
+          parent: number
+          tutor: number
+          admin: number
+        }>('/users/stats')
+
+        // Fetch today's schedule stats
+        const scheduleStats = await apiCall<{ count: number }>('/schedules/stats/today')
+
+        setStats({
+          total: userStats.total,
+          students: userStats.student || 0,
+          tutors: userStats.tutor || 0,
+          lessonsToday: scheduleStats.count || 0,
+        })
+      } catch (error) {
+        console.error('Error fetching stats:', error)
+        // Keep default values on error
+      } finally {
+        setStatsLoading(false)
+      }
+    }
+
+    fetchStats()
+  }, [])
+
+  const totalStudents = stats.students
+  const totalTutors = stats.tutors
+  const lessonsToday = stats.lessonsToday
 
   const togglePasswordVisibility = (userId: string) => {
     setVisiblePasswords((prev) => ({ ...prev, [userId]: !prev[userId] }))
@@ -570,19 +664,138 @@ export default function AdminDashboard() {
     }))
   }
 
-  const saveEditUser = () => {
+  const handleResetPassword = async (userId: string) => {
+    setResetPasswordUserId(userId)
+    setNewPassword('')
+    setShowResetPasswordModal(true)
+  }
+
+  const confirmResetPassword = async () => {
+    if (!resetPasswordUserId || !newPassword.trim()) {
+      alert('Vui lòng nhập mật khẩu mới')
+      return
+    }
+
+    try {
+      // Use PATCH /users/:userId to update password (admin can update any user)
+      await apiCall(`/users/${resetPasswordUserId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          password: newPassword.trim(),
+        }),
+      })
+      alert('Đã reset mật khẩu thành công')
+      setShowResetPasswordModal(false)
+      setResetPasswordUserId(null)
+      setNewPassword('')
+      // Refresh users list
+      const params = new URLSearchParams()
+      if (searchTerm.trim()) {
+        params.append('name', searchTerm.trim())
+      }
+      if (roleFilter !== 'all') {
+        params.append('role', roleFilter)
+      }
+      params.append('page', currentPage.toString())
+      params.append('limit', usersPerPage.toString())
+      params.append('sortBy', 'name:asc')
+
+      const response = await apiCall<{
+        results: User[]
+        page: number
+        limit: number
+        totalPages: number
+        totalResults: number
+      }>(`/users?${params.toString()}`)
+
+      const mappedUsers: User[] = response.results.map((user) => ({
+        ...user,
+        status: (user.isActive ? 'active' : 'inactive') as 'active' | 'inactive',
+        joinDate: user.birthday ? new Date(user.birthday).toLocaleDateString('vi-VN') : '',
+      }))
+
+      setUsers(mappedUsers)
+    } catch (error) {
+      console.error('Error resetting password:', error)
+      let errorMessage = 'Có lỗi xảy ra khi reset mật khẩu'
+      if (error instanceof Error) {
+        errorMessage = error.message
+      }
+      alert(errorMessage)
+    }
+  }
+
+  const saveEditUser = async () => {
     if (!editUserId) return
-    const requiredFields: Array<keyof User> = ['name', 'email', 'password', 'role', 'joinDate']
+    const requiredFields: Array<keyof User> = ['name', 'email', 'role']
     const missing = requiredFields.some((field) => !editData[field])
     if (missing) {
       alert('Vui lòng điền đầy đủ thông tin trước khi lưu.')
       return
     }
 
-    setUsers((prev) =>
-      prev.map((user) => (user.id === editUserId ? { ...user, ...(editData as User) } : user)),
-    )
-    cancelEditUser()
+    try {
+      // Prepare update body
+      const updateBody: any = {
+        name: editData.name,
+        email: editData.email,
+      }
+      
+      // If password is provided, add it to update body
+      if (editData.password && editData.password.trim()) {
+        updateBody.password = editData.password.trim()
+      }
+
+      // Call API to update user
+      await apiCall(`/users/${editUserId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updateBody),
+      })
+
+      // Refresh users list to get updated data
+      const params = new URLSearchParams()
+      if (searchTerm.trim()) {
+        params.append('name', searchTerm.trim())
+      }
+      if (roleFilter !== 'all') {
+        params.append('role', roleFilter)
+      }
+      params.append('page', currentPage.toString())
+      params.append('limit', usersPerPage.toString())
+      params.append('sortBy', 'name:asc')
+
+      const response = await apiCall<{
+        results: User[]
+        page: number
+        limit: number
+        totalPages: number
+        totalResults: number
+      }>(`/users?${params.toString()}`)
+
+      const mappedUsers: User[] = response.results.map((user) => ({
+        ...user,
+        status: (user.isActive ? 'active' : 'inactive') as 'active' | 'inactive',
+        joinDate: user.birthday ? new Date(user.birthday).toLocaleDateString('vi-VN') : '',
+      }))
+
+      setUsers(mappedUsers)
+      setUsersPagination({
+        page: response.page,
+        limit: response.limit,
+        totalPages: response.totalPages,
+        totalResults: response.totalResults,
+      })
+
+      cancelEditUser()
+      alert('Đã cập nhật thông tin thành công')
+    } catch (error) {
+      console.error('Error saving user:', error)
+      let errorMessage = 'Có lỗi xảy ra khi cập nhật thông tin'
+      if (error instanceof Error) {
+        errorMessage = error.message
+      }
+      alert(errorMessage)
+    }
   }
 
   const handleStudentSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -714,6 +927,61 @@ export default function AdminDashboard() {
     setNewSchedule((prev) => ({ ...prev, startTime: '', endTime: '', subject: '', meetingLink: '', note: '' }))
   }
 
+  const uploadFile = async (file: File): Promise<string> => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    // Get access token from cookie
+    const accessToken = getCookie('accessToken')
+
+    const response = await fetch(`${API_BASE_URL}/files/upload`, {
+      method: 'POST',
+      headers: {
+        ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+      },
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || 'Failed to upload file')
+    }
+
+    const data = await response.json()
+    return data.file.url
+  }
+
+  const handleFileChange = async (file: File | null, type: 'avatar' | 'cvFile') => {
+    if (!file) {
+      setNewUser((prev) => ({
+        ...prev,
+        [type]: null,
+        [type === 'avatar' ? 'avatarUrl' : 'cvFileUrl']: '',
+      }))
+      return
+    }
+
+    try {
+      setUploadingFile(true)
+      const url = await uploadFile(file)
+      setNewUser((prev) => ({
+        ...prev,
+        [type]: file,
+        [type === 'avatar' ? 'avatarUrl' : 'cvFileUrl']: url,
+      }))
+    } catch (error) {
+      console.error('Error uploading file:', error)
+      alert(error instanceof Error ? error.message : 'Có lỗi xảy ra khi upload file')
+      setNewUser((prev) => ({
+        ...prev,
+        [type]: null,
+        [type === 'avatar' ? 'avatarUrl' : 'cvFileUrl']: '',
+      }))
+    } finally {
+      setUploadingFile(false)
+    }
+  }
+
   const resetNewUser = () =>
     setNewUser({
       name: '',
@@ -725,14 +993,85 @@ export default function AdminDashboard() {
       tutorInfo: createEmptyTutorInfo(),
       avatar: null,
       cvFile: null,
+      avatarUrl: '',
+      cvFileUrl: '',
     })
 
-  const handleAddUser = (event?: React.FormEvent<HTMLFormElement>) => {
+  const handleAddUser = async (event?: React.FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
-    console.log('Add user:', newUser)
-    setShowAddUserModal(false)
-    resetNewUser()
-    alert('Đã tạo tài khoản thành công!')
+    
+    // Validate required fields
+    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
+      alert('Vui lòng điền đầy đủ thông tin bắt buộc (Tên, Email, Mật khẩu)')
+      return
+    }
+
+    try {
+      // Prepare user data
+      const userData: any = {
+        name: newUser.name.trim(),
+        email: newUser.email.trim(),
+        password: newUser.password.trim(),
+        role: newUser.role,
+      }
+
+      // Add avatar URL if available
+      if (newUser.avatarUrl) {
+        userData.avatar = newUser.avatarUrl
+      }
+
+      // Call API to create user
+      await apiCall('/users', {
+        method: 'POST',
+        body: JSON.stringify(userData),
+      })
+
+      // Refresh users list
+      const params = new URLSearchParams()
+      if (searchTerm.trim()) {
+        params.append('name', searchTerm.trim())
+      }
+      if (roleFilter !== 'all') {
+        params.append('role', roleFilter)
+      }
+      params.append('page', currentPage.toString())
+      params.append('limit', usersPerPage.toString())
+      params.append('sortBy', 'name:asc')
+
+      const response = await apiCall<{
+        results: User[]
+        page: number
+        limit: number
+        totalPages: number
+        totalResults: number
+      }>(`/users?${params.toString()}`)
+
+      const mappedUsers: User[] = response.results.map((user) => ({
+        ...user,
+        status: (user.isActive ? 'active' : 'inactive') as 'active' | 'inactive',
+        joinDate: user.birthday ? new Date(user.birthday).toLocaleDateString('vi-VN') : '',
+      }))
+
+      setUsers(mappedUsers)
+      setUsersPagination({
+        page: response.page,
+        limit: response.limit,
+        totalPages: response.totalPages,
+        totalResults: response.totalResults,
+      })
+
+      setShowAddUserModal(false)
+      resetNewUser()
+      alert('Đã tạo tài khoản thành công!')
+    } catch (error) {
+      console.error('Error creating user:', error)
+      // Extract error message from API response
+      let errorMessage = 'Có lỗi xảy ra khi tạo tài khoản. Vui lòng thử lại.'
+      if (error instanceof Error) {
+        errorMessage = error.message
+      }
+      alert(errorMessage)
+    }
   }
 
   const displayedStudents = useMemo(() => {
@@ -770,16 +1109,18 @@ export default function AdminDashboard() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Tổng số người dùng', value: users.length, icon: <Users className="w-7 h-7 text-white" />, gradient: 'from-blue-500 to-blue-600' },
-          { label: 'Số lượng học sinh', value: totalStudents, icon: <GraduationCap className="w-7 h-7 text-white" />, gradient: 'from-green-500 to-green-600' },
-          { label: 'Số lượng tutor', value: totalTutors, icon: <UserCog className="w-7 h-7 text-white" />, gradient: 'from-purple-500 to-purple-600' },
-          { label: 'Ca học hôm nay', value: lessonsToday, icon: <Calendar className="w-7 h-7 text-white" />, gradient: 'from-yellow-500 to-yellow-600' },
+          { label: 'Tổng số người dùng', value: statsLoading ? '...' : stats.total, icon: <Users className="w-7 h-7 text-white" />, gradient: 'from-blue-500 to-blue-600' },
+          { label: 'Số lượng học sinh', value: statsLoading ? '...' : totalStudents, icon: <GraduationCap className="w-7 h-7 text-white" />, gradient: 'from-green-500 to-green-600' },
+          { label: 'Số lượng tutor', value: statsLoading ? '...' : totalTutors, icon: <UserCog className="w-7 h-7 text-white" />, gradient: 'from-purple-500 to-purple-600' },
+          { label: 'Ca học hôm nay', value: statsLoading ? '...' : lessonsToday, icon: <Calendar className="w-7 h-7 text-white" />, gradient: 'from-yellow-500 to-yellow-600' },
         ].map((card) => (
           <div key={card.label} className="stat-card">
             <div className="flex flex-col items-center text-center">
               <div className={`w-14 h-14 bg-gradient-to-br ${card.gradient} rounded-2xl flex items-center justify-center shadow-lg mb-3`}>{card.icon}</div>
               <p className="text-xs text-gray-600 font-medium mb-1">{card.label}</p>
-              <p className="text-2xl font-bold text-gray-900">{card.value}</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {card.value}
+              </p>
             </div>
           </div>
         ))}
@@ -838,7 +1179,20 @@ export default function AdminDashboard() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {paginatedUsers.map((user) => {
+              {usersLoading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                    Đang tải dữ liệu...
+                  </td>
+                </tr>
+              ) : paginatedUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                    Không có dữ liệu
+                  </td>
+                </tr>
+              ) : (
+                paginatedUsers.map((user) => {
                 const isVisible = visiblePasswords[user.id]
                 const isEditing = editUserId === user.id
                 return (
@@ -870,7 +1224,12 @@ export default function AdminDashboard() {
                           >
                             {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
-                          <button className="text-xs text-primary-600 font-semibold hover:text-primary-700">Reset</button>
+                          <button 
+                            onClick={() => handleResetPassword(user.id)}
+                            className="text-xs text-primary-600 font-semibold hover:text-primary-700"
+                          >
+                            Reset
+                          </button>
                         </div>
                       )}
                     </td>
@@ -888,7 +1247,7 @@ export default function AdminDashboard() {
                       {isEditing ? (
                         <input className="input h-9" type="date" value={editData.joinDate ?? ''} onChange={(e) => updateEditField('joinDate', e.target.value)} />
                       ) : (
-                        new Date(user.joinDate).toLocaleDateString('vi-VN')
+                        user.joinDate ? new Date(user.joinDate).toLocaleDateString('vi-VN') : (user.birthday ? new Date(user.birthday).toLocaleDateString('vi-VN') : 'N/A')
                       )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
@@ -912,39 +1271,45 @@ export default function AdminDashboard() {
                     </td>
                   </tr>
                 )
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4 text-sm text-gray-600">
           <p>
-            Hiển thị {filteredUsers.length === 0 ? 0 : (safePage - 1) * usersPerPage + 1}-{Math.min(safePage * usersPerPage, filteredUsers.length)} trong tổng {filteredUsers.length} tài khoản
+            {usersLoading ? (
+              'Đang tải...'
+            ) : (
+              `Hiển thị ${usersPagination.totalResults === 0 ? 0 : (usersPagination.page - 1) * usersPagination.limit + 1}-${Math.min(usersPagination.page * usersPagination.limit, usersPagination.totalResults)} trong tổng ${usersPagination.totalResults} tài khoản`
+            )}
           </p>
           <div className="flex items-center space-x-2 mt-3 sm:mt-0">
             <button
-              disabled={safePage === 1}
+              disabled={usersPagination.page === 1 || usersLoading}
               onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
               className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-semibold disabled:opacity-40"
             >
               Trước
             </button>
             <div className="flex items-center space-x-1">
-              {Array.from({ length: maxPage }, (_, idx) => (
+              {Array.from({ length: usersPagination.totalPages }, (_, idx) => (
                 <button
                   key={idx}
                   onClick={() => setCurrentPage(idx + 1)}
+                  disabled={usersLoading}
                   className={`w-8 h-8 rounded-lg text-sm font-semibold ${
-                    safePage === idx + 1 ? 'bg-primary-500 text-white' : 'border border-gray-200 text-gray-600 hover:border-primary-200'
-                  }`}
+                    usersPagination.page === idx + 1 ? 'bg-primary-500 text-white' : 'border border-gray-200 text-gray-600 hover:border-primary-200'
+                  } disabled:opacity-40`}
                 >
                   {idx + 1}
                 </button>
               ))}
             </div>
             <button
-              disabled={safePage === maxPage}
-              onClick={() => setCurrentPage((prev) => Math.min(maxPage, prev + 1))}
+              disabled={usersPagination.page === usersPagination.totalPages || usersLoading}
+              onClick={() => setCurrentPage((prev) => Math.min(usersPagination.totalPages, prev + 1))}
               className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-semibold disabled:opacity-40"
             >
               Sau
@@ -952,6 +1317,46 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Reset Password Modal */}
+      {showResetPasswordModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Reset mật khẩu</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Mật khẩu mới
+              </label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Nhập mật khẩu mới"
+                className="w-full bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowResetPasswordModal(false)
+                  setResetPasswordUserId(null)
+                  setNewPassword('')
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-semibold"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={confirmResetPassword}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+              >
+                Lưu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 
@@ -1947,20 +2352,29 @@ export default function AdminDashboard() {
                       <div className="flex-1">
                         <p className="text-sm font-semibold text-gray-800">Ảnh đại diện</p>
                         <p className="text-xs text-gray-500">Tải ảnh học sinh (PNG, JPG, tối đa 5MB)</p>
-                        {newUser.avatar && <p className="mt-2 text-xs font-medium text-primary-600">{newUser.avatar.name}</p>}
+                        {uploadingFile && newUser.avatar && (
+                          <p className="mt-2 text-xs font-medium text-gray-500">Đang upload...</p>
+                        )}
+                        {!uploadingFile && newUser.avatar && (
+                          <p className="mt-2 text-xs font-medium text-primary-600">{newUser.avatar.name}</p>
+                        )}
+                        {newUser.avatarUrl && (
+                          <p className="mt-1 text-xs font-medium text-green-600">✓ Đã upload thành công</p>
+                        )}
                       </div>
-                      <label className="btn-secondary cursor-pointer text-center">
-                        Chọn ảnh
+                      <label className={`btn-secondary cursor-pointer text-center ${uploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        {uploadingFile ? 'Đang upload...' : 'Chọn ảnh'}
                         <input
                           type="file"
                           accept="image/*"
                           className="hidden"
-                          onChange={(e) =>
-                            setNewUser((prev) => ({
-                              ...prev,
-                              avatar: e.target.files?.[0] ?? null,
-                            }))
-                          }
+                          disabled={uploadingFile}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] ?? null
+                            if (file) {
+                              handleFileChange(file, 'avatar')
+                            }
+                          }}
                         />
                       </label>
                     </div>
@@ -1993,38 +2407,56 @@ export default function AdminDashboard() {
                       <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 p-4 flex flex-col gap-3">
                         <p className="text-sm font-semibold text-gray-800">Ảnh đại diện</p>
                         <p className="text-xs text-gray-500">Tải ảnh tutor (PNG, JPG, tối đa 5MB)</p>
-                        {newUser.avatar && <p className="text-xs font-medium text-primary-600">{newUser.avatar.name}</p>}
-                        <label className="btn-secondary cursor-pointer text-center">
-                          Chọn ảnh
+                        {uploadingFile && newUser.avatar && (
+                          <p className="text-xs font-medium text-gray-500">Đang upload...</p>
+                        )}
+                        {!uploadingFile && newUser.avatar && (
+                          <p className="text-xs font-medium text-primary-600">{newUser.avatar.name}</p>
+                        )}
+                        {newUser.avatarUrl && (
+                          <p className="text-xs font-medium text-green-600">✓ Đã upload thành công</p>
+                        )}
+                        <label className={`btn-secondary cursor-pointer text-center ${uploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                          {uploadingFile ? 'Đang upload...' : 'Chọn ảnh'}
                           <input
                             type="file"
                             accept="image/*"
                             className="hidden"
-                            onChange={(e) =>
-                              setNewUser((prev) => ({
-                                ...prev,
-                                avatar: e.target.files?.[0] ?? null,
-                              }))
-                            }
+                            disabled={uploadingFile}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] ?? null
+                              if (file) {
+                                handleFileChange(file, 'avatar')
+                              }
+                            }}
                           />
                         </label>
                       </div>
                       <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 p-4 flex flex-col gap-3">
                         <p className="text-sm font-semibold text-gray-800">Hồ sơ CV</p>
                         <p className="text-xs text-gray-500">Tải CV (PDF, DOC, tối đa 10MB)</p>
-                        {newUser.cvFile && <p className="text-xs font-medium text-primary-600">{newUser.cvFile.name}</p>}
-                        <label className="btn-secondary cursor-pointer text-center">
-                          Chọn file
+                        {uploadingFile && newUser.cvFile && (
+                          <p className="text-xs font-medium text-gray-500">Đang upload...</p>
+                        )}
+                        {!uploadingFile && newUser.cvFile && (
+                          <p className="text-xs font-medium text-primary-600">{newUser.cvFile.name}</p>
+                        )}
+                        {newUser.cvFileUrl && (
+                          <p className="text-xs font-medium text-green-600">✓ Đã upload thành công</p>
+                        )}
+                        <label className={`btn-secondary cursor-pointer text-center ${uploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                          {uploadingFile ? 'Đang upload...' : 'Chọn file'}
                           <input
                             type="file"
                             accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                             className="hidden"
-                            onChange={(e) =>
-                              setNewUser((prev) => ({
-                                ...prev,
-                                cvFile: e.target.files?.[0] ?? null,
-                              }))
-                            }
+                            disabled={uploadingFile}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] ?? null
+                              if (file) {
+                                handleFileChange(file, 'cvFile')
+                              }
+                            }}
                           />
                         </label>
                       </div>
