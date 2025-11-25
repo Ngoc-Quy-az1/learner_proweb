@@ -10,6 +10,8 @@ import { TaskItem } from '../components/TaskTable'
 import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, Upload, FileText, AlertTriangle, Star, Eye, Download, Search, Filter } from 'lucide-react'
 import { format, isToday } from 'date-fns'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { apiCall } from '../config/api'
+import { useAuth } from '../contexts/AuthContext'
 
 // Giả định kiểu dữ liệu cho ChecklistDetailItem nếu chưa có trong file gốc
 interface ChecklistDetailItem {
@@ -42,6 +44,223 @@ interface HomeworkDetailItem {
   solutionPreview?: string
   uploadedFileName?: string
   assignmentFileName?: string
+}
+
+interface ScheduleApiItem {
+  id: string
+  startTime: string
+  duration: number
+  subjectCode?: string
+  studentId?: string
+  tutorId?: { id?: string; name?: string; fullName?: string } | string
+  meetingURL?: string
+  note?: string
+  status?: 'upcoming' | 'ongoing' | 'completed' | 'cancelled'
+}
+
+interface SchedulePaginatedResponse {
+  results: ScheduleApiItem[]
+  page: number
+  limit: number
+  totalPages: number
+  totalResults: number
+}
+
+type AssignmentStatus = 'pending' | 'in-progress' | 'completed'
+type AssignmentTaskStatus = AssignmentStatus | 'submitted' | 'graded'
+
+interface AssignmentTaskApiItem {
+  id?: string
+  name?: string
+  description?: string
+  status?: AssignmentTaskStatus
+  estimatedTime?: number
+  actualTime?: number
+  assignmentUrl?: string
+  solutionUrl?: string
+}
+
+interface AssignmentApiItem {
+  id: string
+  name?: string
+  description?: string
+  subject?: string
+  status?: AssignmentStatus
+  tasks?: AssignmentTaskApiItem[]
+  createdAt?: string
+  updatedAt?: string
+}
+
+interface AssignmentPaginatedResponse {
+  results: AssignmentApiItem[]
+  page: number
+  limit: number
+  totalPages: number
+  totalResults: number
+}
+
+type HomeworkTaskStatus = 'pending' | 'submitted' | 'graded'
+
+interface HomeworkTaskApiItem {
+  id?: string
+  name?: string
+  assignmentUrl?: string
+  solutionUrl?: string
+  status?: HomeworkTaskStatus
+  description?: string
+}
+
+interface HomeworkApiItem {
+  id: string
+  studentId?: string
+  scheduleId?: string
+  name?: string
+  description?: string
+  deadline?: string
+  difficulty?: TaskItem['difficulty']
+  subject?: string
+  tasks?: HomeworkTaskApiItem[]
+  createdAt?: string
+  updatedAt?: string
+}
+
+interface HomeworkPaginatedResponse {
+  results: HomeworkApiItem[]
+  page: number
+  limit: number
+  totalPages: number
+  totalResults: number
+}
+
+type HomeworkTaskItem = TaskItem & { sessionDate?: Date; sessionTime?: string; sessionId?: string; scheduleId?: string }
+
+type ChecklistWithDate = ChecklistItem & { date: Date }
+
+const SUBJECT_LABELS: Record<string, string> = {
+  math: 'Toán',
+  physics: 'Lý',
+  chemistry: 'Hóa',
+  english: 'Anh',
+  literature: 'Văn',
+  biology: 'Sinh',
+}
+
+const getSubjectLabel = (subjectCode?: string) => {
+  if (!subjectCode) return 'Chưa xác định'
+  const normalizedCode = subjectCode.toLowerCase()
+  return SUBJECT_LABELS[normalizedCode] || subjectCode
+}
+
+const ensureValidDate = (value?: string | Date) => {
+  if (!value) return new Date()
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? new Date() : value
+  }
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed
+}
+
+const mapAssignmentStatusToChecklist = (
+  status?: AssignmentTaskStatus
+): ChecklistItem['status'] => {
+  if (!status || status === 'pending') {
+    return 'not_done'
+  }
+  if (status === 'in-progress') {
+    return 'in_progress'
+  }
+  return 'done'
+}
+
+const mapAssignmentsToChecklistItems = (
+  assignments: AssignmentApiItem[]
+): ChecklistWithDate[] => {
+  const items: ChecklistWithDate[] = []
+
+  assignments.forEach((assignment) => {
+    const subject = getSubjectLabel(assignment.subject)
+    const date = ensureValidDate(assignment.updatedAt || assignment.createdAt)
+
+    if (assignment.tasks && assignment.tasks.length > 0) {
+      assignment.tasks.forEach((task, index) => {
+        items.push({
+          id: task.id || `${assignment.id}-task-${index}`,
+          subject,
+          lesson: assignment.name || 'Bài học',
+          task: task.name || assignment.description || 'Nhiệm vụ',
+          status: mapAssignmentStatusToChecklist(task.status),
+          note: task.description || assignment.description,
+          attachment: task.assignmentUrl || task.solutionUrl,
+          date: new Date(date),
+        })
+      })
+    } else {
+      items.push({
+        id: assignment.id,
+        subject,
+        lesson: assignment.name || 'Bài học',
+        task: assignment.description || 'Nhiệm vụ',
+        status: mapAssignmentStatusToChecklist(assignment.status),
+        note: assignment.description,
+        date: new Date(date),
+      })
+    }
+  })
+
+  return items.sort((a, b) => a.date.getTime() - b.date.getTime())
+}
+
+const normalizeDifficulty = (value?: string): TaskItem['difficulty'] => {
+  if (value === 'easy' || value === 'medium' || value === 'hard' || value === 'advanced') {
+    return value
+  }
+  return 'medium'
+}
+
+const mapHomeworkStatusToResult = (status?: HomeworkTaskStatus): HomeworkDetailItem['result'] => {
+  if (status === 'graded' || status === 'submitted') {
+    return 'completed'
+  }
+  return 'not_completed'
+}
+
+const getFileNameFromUrl = (url?: string) => {
+  if (!url) return undefined
+  try {
+    const withoutQuery = url.split('?')[0]
+    const segments = withoutQuery.split('/')
+    return segments[segments.length - 1] || url
+  } catch {
+    return url
+  }
+}
+
+const mapScheduleFromApi = (schedule: ScheduleApiItem): ScheduleItem => {
+  const startDate = new Date(schedule.startTime)
+  const durationMinutes = Number(schedule.duration) || 0
+  const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000)
+  const formatTimeRange = `${format(startDate, 'HH:mm')} - ${format(endDate, 'HH:mm')}`
+
+  const tutorName =
+    typeof schedule.tutorId === 'object' && schedule.tutorId !== null
+      ? schedule.tutorId.name || schedule.tutorId.fullName
+      : undefined
+
+  const normalizedStatus =
+    schedule.status && ['upcoming', 'ongoing', 'completed'].includes(schedule.status)
+      ? (schedule.status as ScheduleItem['status'])
+      : undefined
+
+  return {
+    id: schedule.id,
+    subject: getSubjectLabel(schedule.subjectCode),
+    time: formatTimeRange,
+    date: startDate,
+    meetLink: schedule.meetingURL,
+    tutor: tutorName,
+    note: schedule.note,
+    status: normalizedStatus,
+  }
 }
 
 const checklistResultConfig: Record<
@@ -371,6 +590,7 @@ const HomeworkDetailTable = ({
 }
 
 export default function StudentDashboard() {
+  const { user } = useAuth()
   const [activeSection, setActiveSection] = useState('home')
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [selectedDateType, setSelectedDateType] = useState<'schedule' | 'checklist' | 'homework' | null>(null)
@@ -385,6 +605,11 @@ export default function StudentDashboard() {
   const [checklistDateRange, setChecklistDateRange] = useState<'all' | 'week' | 'month' | 'custom'>('all')
   const [checklistCustomStartDate, setChecklistCustomStartDate] = useState<string>('')
   const [checklistCustomEndDate, setChecklistCustomEndDate] = useState<string>('')
+  const [homeworks, setHomeworks] = useState<HomeworkApiItem[]>([])
+  const [isHomeworkLoading, setIsHomeworkLoading] = useState<boolean>(false)
+  const [homeworkError, setHomeworkError] = useState<string | null>(null)
+  const [taskItems, setTaskItems] = useState<HomeworkTaskItem[]>([])
+  const [homeworkDetailItems, setHomeworkDetailItems] = useState<Record<string, HomeworkDetailItem[]>>({})
 
   useEffect(() => {
     if (activeSection !== 'home' && showChecklistOverlay) {
@@ -392,212 +617,222 @@ export default function StudentDashboard() {
     }
   }, [activeSection, showChecklistOverlay])
   
-  // Checklist items with dates for multiple days - chỉ hiển thị 3 ngày: hôm qua, hôm nay, ngày mai
-  const [checklistItems] = useState<(ChecklistItem & { date: Date })[]>([
-    // Yesterday (17/11)
-    {
-      id: '4',
-      subject: 'Toán',
-      lesson: 'Luyện đề 1',
-      task: 'Làm phần A',
-      status: 'done',
-      note: 'Hoàn thành tốt',
-      date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-    },
-    {
-      id: '5',
-      subject: 'Hóa',
-      lesson: 'Bài tập SGK trang 56',
-      task: 'Bài 1, 3',
-      status: 'done',
-      note: 'Đã nộp',
-      date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-    },
-    // Today (18/11)
-    {
-      id: '1',
-      subject: 'Toán',
-      lesson: 'Giải hệ phương trình',
-      task: 'Bài tập SGK 2,3,5',
-      status: 'not_done',
-      date: new Date(),
-    },
-    {
-      id: '2',
-      subject: 'Toán',
-      lesson: 'Ôn lý thuyết chương 2',
-      task: 'Đọc lại trang 34-36',
-      status: 'done',
-      note: 'Học tốt',
-      date: new Date(),
-    },
-    {
-      id: '3',
-      subject: 'Hóa',
-      lesson: 'Cân bằng phản ứng oxi hóa khử',
-      task: 'Làm 3 bài tập',
-      status: 'done',
-      date: new Date(),
-    },
-    // Tomorrow (19/11)
-    {
-      id: '10',
-      subject: 'Toán',
-      lesson: 'Bài tập nâng cao',
-      task: 'Làm bài 6-10',
-      status: 'not_done',
-      date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
-    },
-    {
-      id: '11',
-      subject: 'Lý',
-      lesson: 'Chuẩn bị bài mới',
-      task: 'Đọc trước chương 3',
-      status: 'not_done',
-      date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
-    },
-  ])
-  
-  // Schedules data for multiple days
-  const [schedules] = useState<ScheduleItem[]>([
-    // Today - Multiple classes in different times
-    {
-      id: '1',
-      subject: 'Toán',
-      time: '09:00 - 10:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/abc-defg-hij',
-      tutor: 'Tutor B',
-      note: 'Ôn tập kiểm tra chương 2, chuẩn bị câu hỏi khó.',
-      status: 'completed',
-    },
-    {
-      id: '2',
-      subject: 'Hóa',
-      time: '14:00 - 15:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/xyz-uvw-rst',
-      tutor: 'Tutor C',
-      note: 'Mang sổ thí nghiệm để tutor kiểm tra.',
-      status: 'ongoing',
-    },
-    {
-      id: '3',
-      subject: 'Lý',
-      time: '16:00 - 17:00',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/abc-123',
-      tutor: 'Tutor D',
-      note: 'Ôn lại phần sóng cơ để thuyết trình.',
-      status: 'upcoming',
-    },
-    // Tomorrow - Multiple classes
-    {
-      id: '4',
-      subject: 'Toán',
-      time: '08:00 - 09:30',
-      date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/abc-456',
-      tutor: 'Tutor B',
-    },
-    {
-      id: '5',
-      subject: 'Hóa',
-      time: '10:00 - 11:30',
-      date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/xyz-789',
-      tutor: 'Tutor C',
-    },
-    {
-      id: '6',
-      subject: 'Toán',
-      time: '14:00 - 15:30',
-      date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/abc-012',
-      tutor: 'Tutor B',
-    },
-    {
-      id: '7',
-      subject: 'Lý',
-      time: '18:00 - 19:30',
-      date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/xyz-345',
-      tutor: 'Tutor D',
-    },
-    // Day after tomorrow
-    {
-      id: '8',
-      subject: 'Hóa',
-      time: '13:00 - 14:30',
-      date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/xyz-456',
-      tutor: 'Tutor C',
-    },
-    {
-      id: '9',
-      subject: 'Toán',
-      time: '15:00 - 16:30',
-      date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/abc-678',
-      tutor: 'Tutor B',
-    },
-    // 3 days from now
-    {
-      id: '10',
-      subject: 'Lý',
-      time: '11:00 - 12:30',
-      date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/xyz-901',
-      tutor: 'Tutor D',
-    },
-    {
-      id: '11',
-      subject: 'Toán',
-      time: '17:00 - 18:30',
-      date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/abc-234',
-      tutor: 'Tutor B',
-    },
-    // 4 days from now
-    {
-      id: '12',
-      subject: 'Hóa',
-      time: '09:30 - 11:00',
-      date: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/xyz-567',
-      tutor: 'Tutor C',
-    },
-    {
-      id: '13',
-      subject: 'Lý',
-      time: '14:30 - 16:00',
-      date: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/abc-890',
-      tutor: 'Tutor D',
-    },
-    // 5 days from now
-    {
-      id: '14',
-      subject: 'Toán',
-      time: '10:00 - 11:00',
-      date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/xyz-123',
-      tutor: 'Tutor B',
-    },
-    // 6 days from now
-    {
-      id: '15',
-      subject: 'Hóa',
-      time: '15:00 - 17:00',
-      date: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/abc-456',
-      tutor: 'Tutor C',
-    },
-  ])
+  const [checklistItems, setChecklistItems] = useState<ChecklistWithDate[]>([])
+  const [isChecklistLoading, setIsChecklistLoading] = useState<boolean>(false)
+  const [checklistError, setChecklistError] = useState<string | null>(null)
+  // Schedules data fetched from API
+  const [schedules, setSchedules] = useState<ScheduleItem[]>([])
+  const [isSchedulesLoading, setIsSchedulesLoading] = useState<boolean>(false)
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
+  const [scheduleFetchTrigger, setScheduleFetchTrigger] = useState(0)
+
+  useEffect(() => {
+    let isActive = true
+
+    const fetchSchedules = async () => {
+      if (!user) {
+        setSchedules([])
+        setIsSchedulesLoading(false)
+        return
+      }
+
+      setIsSchedulesLoading(true)
+      setScheduleError(null)
+
+      try {
+        const response = await apiCall<SchedulePaginatedResponse>(
+          `/schedules?studentId=${user.id}&limit=100&sortBy=startTime:asc`
+        )
+        if (!isActive) return
+        const mappedSchedules = (response.results || [])
+          .map((schedule) => mapScheduleFromApi(schedule))
+          .sort((a, b) => a.date.getTime() - b.date.getTime())
+        setSchedules(mappedSchedules)
+      } catch (error) {
+        if (!isActive) return
+        const message = error instanceof Error ? error.message : 'Không thể tải lịch học'
+        setScheduleError(message)
+        setSchedules([])
+      } finally {
+        if (isActive) {
+          setIsSchedulesLoading(false)
+        }
+      }
+    }
+
+    fetchSchedules()
+
+    return () => {
+      isActive = false
+    }
+  }, [user, scheduleFetchTrigger])
+
+  useEffect(() => {
+    let isActive = true
+
+    const fetchAssignments = async () => {
+      if (!user) {
+        if (isActive) {
+          setChecklistItems([])
+          setChecklistError(null)
+        }
+        return
+      }
+
+      setIsChecklistLoading(true)
+      setChecklistError(null)
+
+      const query = new URLSearchParams({
+        studentId: user.id,
+        limit: '200',
+        sortBy: 'updatedAt:desc',
+      }).toString()
+
+      try {
+        const response = await apiCall<AssignmentPaginatedResponse>(`/assignments?${query}`)
+        if (!isActive) return
+        setChecklistItems(mapAssignmentsToChecklistItems(response.results || []))
+      } catch (error) {
+        if (!isActive) return
+        const message = error instanceof Error ? error.message : 'Không thể tải checklist'
+        setChecklistError(message)
+        setChecklistItems([])
+      } finally {
+        if (isActive) {
+          setIsChecklistLoading(false)
+        }
+      }
+    }
+
+    fetchAssignments()
+
+    return () => {
+      isActive = false
+    }
+  }, [user])
+
+  useEffect(() => {
+    let isActive = true
+
+    const fetchHomeworks = async () => {
+      if (!user) {
+        if (isActive) {
+          setHomeworks([])
+          setHomeworkError(null)
+          setIsHomeworkLoading(false)
+        }
+        return
+      }
+
+      setIsHomeworkLoading(true)
+      setHomeworkError(null)
+
+      const query = new URLSearchParams({
+        studentId: user.id,
+        limit: '200',
+        sortBy: 'deadline:asc',
+      }).toString()
+
+      try {
+        const response = await apiCall<HomeworkPaginatedResponse>(`/homeworks?${query}`)
+        if (!isActive) return
+        setHomeworks(response.results || [])
+      } catch (error) {
+        if (!isActive) return
+        const message = error instanceof Error ? error.message : 'Không thể tải bài tập về nhà'
+        setHomeworkError(message)
+        setHomeworks([])
+      } finally {
+        if (isActive) {
+          setIsHomeworkLoading(false)
+        }
+      }
+    }
+
+    fetchHomeworks()
+
+    return () => {
+      isActive = false
+    }
+  }, [user])
+
+  useEffect(() => {
+    const scheduleMap = schedules.reduce<Record<string, ScheduleItem>>((acc, schedule) => {
+      acc[schedule.id] = schedule
+      return acc
+    }, {})
+
+    const sessionMap = new Map<string, HomeworkTaskItem>()
+    const detailsMap: Record<string, HomeworkDetailItem[]> = {}
+
+    homeworks.forEach((homework) => {
+      const schedule = homework.scheduleId ? scheduleMap[homework.scheduleId] : undefined
+      const sessionId = homework.scheduleId || homework.id
+      const sessionDate = schedule?.date ?? ensureValidDate(homework.deadline)
+      const sessionTime = schedule?.time
+      const subject = getSubjectLabel(homework.subject)
+      const deadlineDate = homework.deadline ? ensureValidDate(homework.deadline) : sessionDate
+      const difficulty = normalizeDifficulty(homework.difficulty)
+
+      if (!sessionMap.has(sessionId)) {
+        sessionMap.set(sessionId, {
+          id: homework.id,
+          task: homework.name || 'Bài tập',
+          subject,
+          difficulty,
+          deadline: deadlineDate ? format(deadlineDate, 'dd/MM') : format(new Date(), 'dd/MM'),
+          sessionDate,
+          sessionTime,
+          sessionId,
+          scheduleId: homework.scheduleId,
+        })
+      }
+
+      const mappedTasks: HomeworkDetailItem[] =
+        homework.tasks?.map((task, index): HomeworkDetailItem => ({
+          id: task.id || `${homework.id}-task-${index}`,
+          task: task.name || homework.name || 'Bài tập',
+          estimatedTime: 0,
+          actualTime: undefined,
+          difficulty,
+          result: mapHomeworkStatusToResult(task.status),
+          comment: task.description || homework.description,
+          solutionType: task.solutionUrl ? 'file' : undefined,
+          solutionText: undefined,
+          solutionFileName: getFileNameFromUrl(task.solutionUrl),
+          assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
+        })) || []
+
+      const fallbackTask: HomeworkDetailItem[] =
+        mappedTasks.length === 0
+          ? [
+              {
+                id: `${homework.id}-summary`,
+                task: homework.name || 'Bài tập',
+                estimatedTime: 0,
+                actualTime: undefined,
+                difficulty,
+                result: 'not_completed',
+                comment: homework.description,
+                solutionType: undefined,
+                solutionText: undefined,
+                solutionFileName: undefined,
+                assignmentFileName: undefined,
+              },
+            ]
+          : []
+
+      detailsMap[sessionId] = [...(detailsMap[sessionId] || []), ...mappedTasks, ...fallbackTask]
+    })
+
+    setTaskItems(Array.from(sessionMap.values()))
+    setHomeworkDetailItems(detailsMap)
+  }, [homeworks, schedules])
 
   const handleStatusChange = (id: string, status: ChecklistItem['status']) => {
-    // Update checklist item status (this would normally update state)
-    console.log('Update status:', id, status)
+    setChecklistItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, status } : item))
+    )
   }
 
   // Dữ liệu chi tiết tutor
@@ -736,192 +971,16 @@ export default function StudentDashboard() {
     })
   }
 
-  // Homework items grouped by date - chỉ hiển thị 2 ngày: hôm qua và hôm nay
-  const [taskItems] = useState<(TaskItem & { sessionDate?: Date; sessionTime?: string; sessionId?: string })[]>([
-    // Yesterday (17/11)
-    {
-      id: 'y1',
-      task: 'Làm bài tập Toán chương 2',
-      subject: 'Toán',
-      difficulty: 'medium',
-      deadline: '17/11',
-      sessionDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-      sessionTime: '09:00 - 10:30',
-      sessionId: 'y1',
-    },
-    {
-      id: 'y2',
-      task: 'Ôn tập Hóa chương 1',
-      subject: 'Hóa',
-      difficulty: 'easy',
-      deadline: '17/11',
-      sessionDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-      sessionTime: '14:00 - 15:30',
-      sessionId: 'y2',
-    },
-    // Today (18/11)
-    {
-      id: '1',
-      task: 'Làm lại bài 4 (SGK tr.33)',
-      subject: 'Toán',
-      difficulty: 'medium',
-      deadline: '18/11',
-      sessionDate: new Date(),
-      sessionTime: '09:00 - 10:30',
-      sessionId: '1',
-    },
-    {
-      id: '2',
-      task: 'Giải 2 bài nâng cao (Azota link)',
-      subject: 'Toán',
-      difficulty: 'advanced',
-      deadline: '18/11',
-      sessionDate: new Date(),
-      sessionTime: '09:00 - 10:30',
-      sessionId: '1',
-    },
-    {
-      id: '3',
-      task: 'Ghi chép công thức vào vở học',
-      subject: 'Toán',
-      difficulty: 'easy',
-      deadline: '18/11',
-      sessionDate: new Date(),
-      sessionTime: '09:00 - 10:30',
-      sessionId: '1',
-    },
-    {
-      id: '4',
-      task: 'Làm bài tập Hóa SGK trang 56',
-      subject: 'Hóa',
-      difficulty: 'medium',
-      deadline: '18/11',
-      sessionDate: new Date(),
-      sessionTime: '14:00 - 15:30',
-      sessionId: '2',
-    },
-    {
-      id: '5',
-      task: 'Chuẩn bị bài mới chương 3',
-      subject: 'Hóa',
-      difficulty: 'easy',
-      deadline: '18/11',
-      sessionDate: new Date(),
-      sessionTime: '14:00 - 15:30',
-      sessionId: '2',
-    },
-    {
-      id: '6',
-      task: 'Làm bài tập Lý chương 2',
-      subject: 'Lý',
-      difficulty: 'advanced',
-      deadline: '18/11',
-      sessionDate: new Date(),
-      sessionTime: '16:00 - 17:00',
-      sessionId: '3',
-    },
-  ])
-
-  // Chi tiết bài tập về nhà với đầy đủ thông tin
-  const [homeworkDetailItems] = useState<Record<string, HomeworkDetailItem[]>>({
-    // Yesterday sessions
-    'y1': [
-      {
-        id: 'y1-1',
-        task: 'Làm bài tập Toán chương 2',
-        estimatedTime: 20,
-        actualTime: 22,
-        difficulty: 'medium',
-        result: 'completed',
-        comment: 'Hoàn thành tốt',
-        uploadedFileName: 'bai_tap_toan_chuong_2.pdf',
-        solutionFileName: 'loi_giai_toan_chuong_2.pdf',
-        assignmentFileName: 'bai_tap_toan_chuong_2_goc.pdf',
-      },
-    ],
-    'y2': [
-      {
-        id: 'y2-1',
-        task: 'Ôn tập Hóa chương 1',
-        estimatedTime: 15,
-        actualTime: 15,
-        difficulty: 'easy',
-        result: 'completed',
-        comment: 'Đã nộp đúng hạn',
-        uploadedFileName: 'on_tap_hoa_chuong_1.pdf',
-        assignmentFileName: 'on_tap_hoa_chuong_1_goc.pdf',
-      },
-    ],
-    // Today sessions
-    '1': [
-      {
-        id: '1',
-        task: 'Làm lại bài 4 (SGK tr.33)',
-        estimatedTime: 15,
-        actualTime: 18,
-        difficulty: 'medium',
-        result: 'completed',
-        comment: 'Làm đúng, trình bày rõ ràng',
-        solutionType: 'text',
-        solutionText: 'Áp dụng phương pháp thế, trình bày từng bước.',
-        assignmentFileName: 'bai_4_sgk_trang_33.pdf',
-      },
-      {
-        id: '2',
-        task: 'Giải 2 bài nâng cao (Azota link)',
-        estimatedTime: 20,
-        actualTime: 25,
-        difficulty: 'advanced',
-        result: 'not_completed',
-        comment: 'Cần luyện thêm phần rút gọn',
-        solutionFileName: 'loi_giai_bai_nang_cao.pdf',
-        assignmentFileName: 'bai_nang_cao_azota.pdf',
-      },
-      {
-        id: '3',
-        task: 'Ghi chép công thức vào vở học',
-        estimatedTime: 10,
-        actualTime: 10,
-        difficulty: 'easy',
-        result: 'completed',
-        comment: 'Hoàn thành tốt',
-      },
-    ],
-    '2': [
-      {
-        id: '4',
-        task: 'Làm bài tập Hóa SGK trang 56',
-        estimatedTime: 20,
-        actualTime: 22,
-        difficulty: 'medium',
-        result: 'completed',
-        comment: 'Làm đúng các bước',
-      },
-      {
-        id: '5',
-        task: 'Chuẩn bị bài mới chương 3',
-        estimatedTime: 15,
-        difficulty: 'easy',
-        result: 'not_completed',
-        comment: 'Chưa hoàn thành',
-      },
-    ],
-    '3': [
-      {
-        id: '6',
-        task: 'Làm bài tập Lý chương 2',
-        estimatedTime: 25,
-        actualTime: 30,
-        difficulty: 'advanced',
-        result: 'completed',
-        comment: 'Hiểu bài tốt',
-        solutionType: 'file',
-        solutionFileName: 'loi_giai_ly_chuong_2.pdf',
-      },
-    ],
-  })
-
   const handleFileUpload = (id: string, file: File) => {
+    setHomeworkDetailItems((prev) => {
+      const updatedEntries: Record<string, HomeworkDetailItem[]> = {}
+      Object.entries(prev).forEach(([sessionId, items]) => {
+        updatedEntries[sessionId] = items.map((item) =>
+          item.id === id ? { ...item, uploadedFileName: file.name } : item
+        )
+      })
+      return updatedEntries
+    })
     console.log('Upload file for item:', id, file.name)
   }
 
@@ -971,6 +1030,10 @@ export default function StudentDashboard() {
     if (schedule?.meetLink) {
       window.open(schedule.meetLink, '_blank')
     }
+  }
+
+  const handleReloadSchedules = () => {
+    setScheduleFetchTrigger((prev) => prev + 1)
   }
 
 
@@ -1501,6 +1564,14 @@ useEffect(() => {
   }
 
   const renderTodayChecklistGroups = (forceExpand = false) => {
+    if (isChecklistLoading) {
+      return <p className="text-sm text-gray-500">Đang tải checklist...</p>
+    }
+
+    if (checklistError) {
+      return <p className="text-sm text-red-500">{checklistError}</p>
+    }
+
     const subjects = Array.from(new Set(todayChecklist.map(item => item.subject)))
     if (subjects.length === 0) {
       return <p className="text-sm text-gray-500">Không có checklist cho hôm nay.</p>
@@ -2362,11 +2433,34 @@ useEffect(() => {
   const renderScheduleSection = () => (
     <div className="h-full overflow-hidden">
       <div className="h-full flex flex-col bg-white rounded-2xl shadow-lg overflow-hidden">
-        <MonthlyCalendar
-          schedules={schedules}
-          onJoinClass={handleJoinClass}
-          onViewChecklist={handleViewChecklist}
-        />
+        {isSchedulesLoading ? (
+          <div className="flex-1 flex items-center justify-center text-sm font-semibold text-gray-500">
+            Đang tải lịch học...
+          </div>
+        ) : scheduleError ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-3">
+            <p className="text-sm font-semibold text-red-500">{scheduleError}</p>
+            <button
+              onClick={handleReloadSchedules}
+              className="px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold hover:bg-primary-700 transition-colors"
+            >
+              Thử lại
+            </button>
+          </div>
+        ) : (
+          <>
+            <MonthlyCalendar
+              schedules={schedules}
+              onJoinClass={handleJoinClass}
+              onViewChecklist={handleViewChecklist}
+            />
+            {schedules.length === 0 && (
+              <div className="p-4 text-center text-sm text-gray-500 border-t border-gray-100">
+                Chưa có lịch học nào được lên lịch.
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   )
@@ -2398,6 +2492,14 @@ useEffect(() => {
             <Target className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
             <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Checklist</h2>
           </div>
+
+          {isChecklistLoading && (
+            <p className="mb-4 text-sm text-gray-500">Đang tải checklist...</p>
+          )}
+
+          {checklistError && !isChecklistLoading && (
+            <p className="mb-4 text-sm text-red-500">{checklistError}</p>
+          )}
           
           {/* Bộ lọc */}
           <div className="mb-4 space-y-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
@@ -2597,7 +2699,7 @@ useEffect(() => {
   }
 
   const renderHomeworkSection = () => {
-    // Group homework by date - chỉ hiển thị 2 ngày: hôm qua và hôm nay
+    // Group homework by date
     const groupHomeworkByDate = () => {
       const grouped: Record<string, typeof taskItems> = {}
       taskItems.forEach(task => {
@@ -2628,14 +2730,9 @@ useEffect(() => {
     }
     
     const homeworkByDate = groupHomeworkByDate()
-    
-    // Chỉ lấy 2 ngày: hôm qua và hôm nay
-    const today = new Date()
-    const yesterday = new Date(today.getTime() - 1 * 24 * 60 * 60 * 1000)
-    const todayStr = format(today, 'yyyy-MM-dd')
-    const yesterdayStr = format(yesterday, 'yyyy-MM-dd')
-    
-    const homeworkDates = [yesterdayStr, todayStr].filter(dateKey => homeworkByDate[dateKey])
+    const homeworkDates = Object.keys(homeworkByDate).sort(
+      (a, b) => new Date(b).getTime() - new Date(a).getTime()
+    )
     
     // Get session info
     const getSessionInfo = (tasks: typeof taskItems) => {
@@ -2656,87 +2753,99 @@ useEffect(() => {
             <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Bài tập về nhà</h2>
           </div>
           
+          {isHomeworkLoading && (
+            <p className="text-sm text-gray-500 mb-4">Đang tải danh sách bài tập...</p>
+          )}
+
+          {homeworkError && !isHomeworkLoading && (
+            <p className="text-sm text-red-500 mb-4">{homeworkError}</p>
+          )}
+          
           {/* Homework list by date with expand/collapse */}
           <div className="space-y-2 sm:space-y-4">
-            {homeworkDates.map((dateKey) => {
-              const dateObj = new Date(dateKey)
-              const dayTasks = homeworkByDate[dateKey] || []
-              const isTodayDate = isToday(dateObj)
-              const isExpanded = expandedHomeworkSession === dateKey
-              const sessionGroups = groupBySession(dayTasks)
-              const sessionKeys = Object.keys(sessionGroups)
-              
-              return (
-                <div
-                  key={dateKey}
-                  className={`border-2 rounded-lg sm:rounded-xl p-3 sm:p-4 transition-all ${
-                    isExpanded
-                      ? 'border-primary-500 bg-gradient-to-r from-primary-50 to-blue-50 shadow-lg'
-                      : 'border-gray-200 hover:border-primary-300 hover:shadow-md bg-gradient-to-br from-white to-gray-50'
-                  }`}
-                >
-                  <button
-                    className="w-full flex items-center justify-between text-left"
-                    onClick={() => {
-                      setExpandedHomeworkSession(isExpanded ? null : dateKey)
-                    }}
+            {homeworkDates.length === 0 && !isHomeworkLoading && !homeworkError ? (
+              <p className="text-sm text-gray-500 text-center py-8">Chưa có bài tập nào.</p>
+            ) : (
+              homeworkDates.map((dateKey) => {
+                const dateObj = new Date(dateKey)
+                const dayTasks = homeworkByDate[dateKey] || []
+                const isTodayDate = isToday(dateObj)
+                const isExpanded = expandedHomeworkSession === dateKey
+                const sessionGroups = groupBySession(dayTasks)
+                const sessionKeys = Object.keys(sessionGroups)
+                
+                return (
+                  <div
+                    key={dateKey}
+                    className={`border-2 rounded-lg sm:rounded-xl p-3 sm:p-4 transition-all ${
+                      isExpanded
+                        ? 'border-primary-500 bg-gradient-to-r from-primary-50 to-blue-50 shadow-lg'
+                        : 'border-gray-200 hover:border-primary-300 hover:shadow-md bg-gradient-to-br from-white to-gray-50'
+                    }`}
                   >
-                    <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
-                      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center font-bold flex-shrink-0 ${
-                        isTodayDate
-                          ? 'bg-primary-500 text-white'
-                          : 'bg-gray-200 text-gray-700'
-                      }`}>
-                        <span className="text-sm sm:text-base">{format(dateObj, 'dd')}</span>
+                    <button
+                      className="w-full flex items-center justify-between text-left"
+                      onClick={() => {
+                        setExpandedHomeworkSession(isExpanded ? null : dateKey)
+                      }}
+                    >
+                      <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
+                        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center font-bold flex-shrink-0 ${
+                          isTodayDate
+                            ? 'bg-primary-500 text-white'
+                            : 'bg-gray-200 text-gray-700'
+                        }`}>
+                          <span className="text-sm sm:text-base">{format(dateObj, 'dd')}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm sm:text-base font-bold truncate ${isTodayDate ? 'text-primary-600' : 'text-gray-900'}`}>
+                            {isTodayDate ? 'Hôm nay' : format(dateObj, 'EEEE, dd/MM/yyyy')}
+                          </p>
+                          <p className="text-xs sm:text-sm text-gray-600">{dayTasks.length} bài tập</p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm sm:text-base font-bold truncate ${isTodayDate ? 'text-primary-600' : 'text-gray-900'}`}>
-                          {isTodayDate ? 'Hôm nay' : format(dateObj, 'EEEE, dd/MM/yyyy')}
-                        </p>
-                        <p className="text-xs sm:text-sm text-gray-600">{dayTasks.length} bài tập</p>
+                      <ChevronRight className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90 text-primary-600' : 'text-gray-400'}`} />
+                    </button>
+                    
+                    {isExpanded && dayTasks.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
+                        {sessionKeys.map((sessionKey) => {
+                          const sessionTasks = sessionGroups[sessionKey]
+                          const sessionInfo = getSessionInfo(sessionTasks)
+                          if (!sessionInfo) return null
+                          
+                          return (
+                            <div key={sessionKey} className="space-y-3">
+                              <div className="flex items-center space-x-3">
+                                <span className={`px-4 py-1.5 rounded-lg text-sm font-bold shadow-md ${
+                                  sessionInfo.subject === 'Toán' ? 'bg-blue-500 text-white' :
+                                  sessionInfo.subject === 'Hóa' ? 'bg-green-500 text-white' :
+                                  sessionInfo.subject === 'Lý' ? 'bg-purple-500 text-white' :
+                                  'bg-gray-500 text-white'
+                                }`}>
+                                  {sessionInfo.subject}
+                                </span>
+                                <span className="text-sm text-gray-600">
+                                  {sessionInfo.time}
+                                </span>
+                              </div>
+                              
+                              <div className="pl-4">
+                                <h4 className="text-sm font-bold text-gray-900 mb-3">Chi tiết bài tập</h4>
+                                <HomeworkDetailTable
+                                  items={homeworkDetailItems[sessionTasks[0]?.sessionId || ''] || []}
+                                  onUpload={(id, file) => handleFileUpload(id, file)}
+                                />
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
-                    </div>
-                    <ChevronRight className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90 text-primary-600' : 'text-gray-400'}`} />
-                  </button>
-                  
-                  {isExpanded && dayTasks.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
-                      {sessionKeys.map((sessionKey) => {
-                        const sessionTasks = sessionGroups[sessionKey]
-                        const sessionInfo = getSessionInfo(sessionTasks)
-                        if (!sessionInfo) return null
-                        
-                        return (
-                          <div key={sessionKey} className="space-y-3">
-                            <div className="flex items-center space-x-3">
-                              <span className={`px-4 py-1.5 rounded-lg text-sm font-bold shadow-md ${
-                                sessionInfo.subject === 'Toán' ? 'bg-blue-500 text-white' :
-                                sessionInfo.subject === 'Hóa' ? 'bg-green-500 text-white' :
-                                sessionInfo.subject === 'Lý' ? 'bg-purple-500 text-white' :
-                                'bg-gray-500 text-white'
-                              }`}>
-                                {sessionInfo.subject}
-                              </span>
-                              <span className="text-sm text-gray-600">
-                                {sessionInfo.time}
-                              </span>
-                            </div>
-                            
-                            <div className="pl-4">
-                              <h4 className="text-sm font-bold text-gray-900 mb-3">Chi tiết bài tập</h4>
-                              <HomeworkDetailTable
-                                items={homeworkDetailItems[sessionTasks[0]?.sessionId || ''] || []}
-                                onUpload={(id, file) => handleFileUpload(id, file)}
-                              />
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+                    )}
+                  </div>
+                )
+              })
+            )}
           </div>
         </div>
       </div>
