@@ -53,14 +53,17 @@ export default function HeroSection({ onGetStarted }: HeroSectionProps) {
 
             {/* Main Title */}
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-4xl xl:text-5xl 2xl:text-6xl font-extrabold leading-tight text-white" style={{ fontFamily: "'Montserrat', 'Poppins', sans-serif", fontWeight: 1000 }}>
-              Tương Lai Tốt Đẹp Hơn<br />
+              Tương Lai Tự Tin <span className="whitespace-nowrap">Hơn</span><br />
               Cho Con Bạn.
             </h1>
 
             {/* Description */}
             <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl font-semibold text-white/95 leading-relaxed">
-              Nhận dạy kèm tại nhà được cá nhân hóa, được thiết kế để hướng dẫn con bạn đạt thành công trong kỳ thi,
-              tăng cường sự tự tin và đạt điểm cao hơn ở trường.
+              Con bạn hay mất tập trung, quên bài, không làm hết bài tập? Skillar Tutor giúp xây dựng thói quen học tập,
+              tăng khả năng tập trung và hoàn thành bài tập mỗi ngày.
+            </p>
+            <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl italic text-white/95">
+              Nhận lộ trình cá nhân hóa theo từng thói quen, mức độ tập trung và từng môn học.
             </p>
 
 

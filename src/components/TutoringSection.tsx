@@ -14,18 +14,18 @@ export default function TutoringSection({ onGetTutor }: TutoringSectionProps) {
             {/* Small Yellow Text */}
             <div>
               <span className="text-yellow-500 font-semibold text-xs sm:text-sm uppercase tracking-wide" style={{ fontFamily: "'Comic Sans MS', cursive" }}>
-                Chúng tôi dạy kèm tại nhà đúng cách.
+                Đối tác đồng hành cùng phụ huynh
               </span>
             </div>
             
             {/* Main Title */}
             <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold text-gray-900 leading-tight">
-              Hãy để SKILLAR trở thành đối tác dạy kèm cho con bạn từ khi còn nhỏ đến khi trưởng thành.
+              Hãy để SKILLAR trở thành người đồng hành giúp con tăng tập trung và hoàn thành bài tập mỗi ngày.
             </h2>
             
             {/* Description */}
             <p className="text-base sm:text-lg text-gray-700 leading-relaxed">
-              Chúng tôi làm việc với bạn để đảm bảo con bạn xuất sắc ở mọi giai đoạn học tập, từ xây dựng nền tảng ban đầu, giúp làm bài tập về nhà, đạt điểm cao hơn, thành thạo môn học đến vượt qua các kỳ thi quan trọng.
+              Chúng tôi không chỉ dạy, mà còn giúp con hình thành:
             </p>
             
             {/* Key Features */}
@@ -34,21 +34,25 @@ export default function TutoringSection({ onGetTutor }: TutoringSectionProps) {
                 <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 bg-green-500 rounded-full flex items-center justify-center mt-0.5">
                   <Check className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
                 </div>
-                <p className="text-gray-700 text-base sm:text-lg">Học với 1% gia sư được tuyển chọn kỹ lưỡng</p>
+                <p className="text-gray-700 text-base sm:text-lg">Kỷ luật học tập – hoàn thành bài tập đúng hạn</p>
               </div>
               <div className="flex items-start space-x-3">
                 <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 bg-green-500 rounded-full flex items-center justify-center mt-0.5">
                   <Check className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
                 </div>
-                <p className="text-gray-700 text-base sm:text-lg">Bao gồm tất cả lớp học, kỳ thi & chương trình</p>
+                <p className="text-gray-700 text-base sm:text-lg">Tăng khả năng tập trung khi học và làm bài</p>
               </div>
               <div className="flex items-start space-x-3">
                 <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 bg-green-500 rounded-full flex items-center justify-center mt-0.5">
                   <Check className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
                 </div>
-                <p className="text-gray-700 text-base sm:text-lg">Gia sư đến tận nhà hoặc học online</p>
+                <p className="text-gray-700 text-base sm:text-lg">Hình thành thói quen tự học và ghi nhớ</p>
           </div>
             </div>
+            <p className="text-base sm:text-lg text-gray-800 leading-relaxed italic flex items-start gap-2">
+              <span role="img" aria-label="target">🎯</span>
+              Chương trình phù hợp với học sinh từ Tiểu học đến THCS – đặc biệt là các bạn dễ xao nhãng, học chưa đều, chưa có thói quen học tập.
+            </p>
             
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4">
@@ -56,7 +60,7 @@ export default function TutoringSection({ onGetTutor }: TutoringSectionProps) {
                 onClick={onGetTutor}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-lg font-bold text-base sm:text-lg transition-all duration-200 shadow-lg hover:shadow-xl"
               >
-                Tìm gia sư chuyên nghiệp
+                Tìm gia sư phù hợp
               </button>
               <button className="flex items-center space-x-2 text-gray-700 hover:text-blue-600 font-semibold text-base sm:text-lg">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-100 rounded-full flex items-center justify-center hover:bg-blue-100 transition-colors">

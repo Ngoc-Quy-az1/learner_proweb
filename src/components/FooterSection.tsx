@@ -9,12 +9,17 @@ export default function FooterSection() {
                 <div className="flex items-center space-x-3 sm:space-x-5 flex-wrap">
                   <img src="/skillar-favicon.svg" alt="SKILLAR Logo" className="h-12 sm:h-16 md:h-20 w-auto flex-shrink-0" />
                   <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold whitespace-nowrap" style={{ fontFamily: 'Ubuntu, sans-serif', fontWeight: 700 }}>
-                    <span style={{ color: '#528fcd' }}>skillar</span>
-                    <span style={{ color: '#032757' }}>Tutor</span>
+                    <span style={{ color: '#032757' }}>skillar</span>
+                    <span style={{ color: '#528fcd' }}>Tutor</span>
                   </h2>
                 </div>
               </div>
-              <p className="text-white text-base sm:text-lg font-medium">Where Growth Begins</p>
+              <div className="text-white text-base sm:text-lg font-medium space-y-1">
+                <p>Footer tagline thay đổi</p>
+                <p className="text-2xl font-semibold">Where Focus Begins</p>
+                <p className="text-base">Hoặc</p>
+                <p className="text-xl font-semibold">Where Better Study Habits Grow</p>
+              </div>
             </div>
           </div>
           <div className="text-left">

@@ -1,7 +1,8 @@
 // API Configuration
 import { getCookie, setCookie } from '../utils/cookies'
 
-export const API_BASE_URL = 'http://47.128.68.241:3000/v1'
+// Lấy API_BASE_URL từ biến môi trường, fallback về giá trị mặc định nếu không có
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://47.128.68.241:3000/v1'
 
 const ACCESS_TOKEN_COOKIE_NAME = 'accessToken'
 let isRefreshing = false
@@ -163,6 +164,17 @@ export async function apiCall<T>(
     throw new Error(errorMessage)
   }
 
-  return response.json()
+  // Handle empty responses (e.g., DELETE 204 No Content)
+  const responseText = await response.text()
+  if (!responseText) {
+    return undefined as T
+  }
+
+  try {
+    return JSON.parse(responseText)
+  } catch {
+    // If not JSON, return as plain text
+    return responseText as unknown as T
+  }
 }
 

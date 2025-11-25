@@ -12,6 +12,16 @@ dist
 dist-ssr
 *.local
 
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.*.local
+# Nhưng giữ lại .env.example để người khác có thể tham khảo
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

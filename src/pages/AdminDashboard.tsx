@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import Layout from '../components/Layout'
 import { apiCall, API_BASE_URL } from '../config/api'
 import { getCookie } from '../utils/cookies'
@@ -8,8 +8,6 @@ import {
   Calendar,
   GraduationCap,
   UserCog,
-  Eye,
-  EyeOff,
   Search,
   MapPin,
   BookOpenCheck,
@@ -19,6 +17,12 @@ import {
   FileText,
   Clock,
   X,
+  User,
+  Mail,
+  Lock,
+  Shield,
+  UserCircle,
+  Image as ImageIcon,
 } from 'lucide-react'
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth } from 'date-fns'
 import { vi } from 'date-fns/locale'
@@ -34,18 +38,44 @@ interface User {
   birthday?: string
   isEmailVerified?: boolean
   isActive?: boolean
+  createdAt?: string
+  updatedAt?: string
+  avatarUrl?: string
+  address?: string
+  currentLevel?: string
   // For display purposes (not from API)
   password?: string
   joinDate?: string
   status?: 'active' | 'inactive'
 }
 
+type EditableArrayField = 'strengths' | 'improvements' | 'hobbies' | 'favoriteSubjects'
+
 interface ParentInfo {
   fatherName: string
   fatherPhone: string
+  fatherEmail?: string
+  fatherRequest?: string
   motherName: string
   motherPhone: string
+  motherEmail?: string
+  motherRequest?: string
   email: string
+}
+
+const combineParentRequests = (
+  fatherRequest?: string | null,
+  motherRequest?: string | null,
+  fallback?: string | null,
+): string => {
+  const normalized = [fatherRequest, motherRequest]
+    .map((req) => req?.trim())
+    .filter((req): req is string => Boolean(req))
+  if (normalized.length > 0) {
+    return normalized.join('\n')
+  }
+  const defaultValue = fallback?.trim()
+  return defaultValue && defaultValue.length > 0 ? defaultValue : 'Chưa có yêu cầu cụ thể.'
 }
 
 interface StudentProfile {
@@ -61,6 +91,7 @@ interface StudentProfile {
   progress: number
   status: 'Đang học' | 'Tạm dừng'
   parentInfo: ParentInfo
+  parentId?: string // Parent ID for API
   currentLevel: string
   parentRequest: string
   hobbies: string[]
@@ -82,6 +113,64 @@ interface StudentListItem {
   hasProfile: boolean
 }
 
+interface StudentInfoFromAPI {
+  id: string
+  userId: {
+    id: string
+    name: string
+    email: string
+    role: string
+  }
+  school: string
+  grade: string
+  parentId?: {
+    id: string
+    name: string
+  }
+  // New format fields
+  parentName?: string
+  parentEmail?: string
+  parentNumber?: string
+  parent1Name?: string
+  parent1Email?: string
+  parent1Number?: string
+  parent1Request?: string
+  parent2Name?: string
+  parent2Email?: string
+  parent2Number?: string
+  parent2Request?: string
+  academicLevel?: string
+  parentRequest?: string
+  hobbies: string[]
+  favoriteSubjects: string[]
+  strengths: string[]
+  improvements: string[]
+  notes: string
+}
+
+interface TutorInfoFromAPI {
+  id: string
+  userId:
+    | string
+    | {
+        id: string
+        name: string
+        email: string
+        role: string
+        phone?: string
+        avatarUrl?: string
+      }
+  subjects: string[]
+  experience: string
+  qualification: string
+  specialties: string[]
+  bio: string
+  cvUrl: string
+  totalStudents: number
+  createdAt: string
+  updatedAt: string
+}
+
 interface TutorProfile {
   id: string
   name: string
@@ -94,6 +183,8 @@ interface TutorProfile {
   phone: string
   bio: string
   cvUrl: string
+  specialties: string[]
+  totalStudents: number
 }
 
 interface TutorListItem {
@@ -127,55 +218,6 @@ const ROLE_LABELS: Record<User['role'], string> = {
   teacher: 'Giáo viên',
 }
 
-const INITIAL_USERS: User[] = [
-  { id: '1', name: 'Nguyễn Văn A', email: 'student@skillar.com', role: 'student', status: 'active', password: 'Stud@123', joinDate: '2025-01-10' },
-  { id: '2', name: 'Tutor B', email: 'tutor@skillar.com', role: 'tutor', status: 'active', password: 'Tutor@456', joinDate: '2024-11-18' },
-  { id: '3', name: 'GV Toán C', email: 'teacher@skillar.com', role: 'tutor', status: 'active', password: 'Teacher@2024', joinDate: '2024-09-05' },
-  { id: '4', name: 'Trần Thị D', email: 'student2@skillar.com', role: 'student', status: 'active', password: 'TranD@778', joinDate: '2025-02-01' },
-  { id: '5', name: 'Lê Minh E', email: 'parent@skillar.com', role: 'student', status: 'active', password: 'LeMinh@222', joinDate: '2025-02-14' },
-  { id: '6', name: 'Nguyễn Tuấn F', email: 'student3@skillar.com', role: 'student', status: 'inactive', password: 'TuanF@999', joinDate: '2024-12-06' },
-  { id: '7', name: 'Tutor C', email: 'tutor2@skillar.com', role: 'tutor', status: 'active', password: 'TutorC@111', joinDate: '2024-10-28' },
-  { id: '8', name: 'Trần Văn G', email: 'student4@skillar.com', role: 'student', status: 'active', password: 'TranG@321', joinDate: '2025-03-01' },
-  { id: '9', name: 'Tutor D', email: 'tutor3@skillar.com', role: 'tutor', status: 'inactive', password: 'TutorD@753', joinDate: '2023-08-17' },
-  { id: '10', name: 'Phạm Thị H', email: 'student5@skillar.com', role: 'student', status: 'active', password: 'PhamH@555', joinDate: '2025-01-26' },
-  { id: '11', name: 'Đỗ Thành I', email: 'student6@skillar.com', role: 'student', status: 'active', password: 'DoI@678', joinDate: '2025-02-23' },
-  { id: '12', name: 'Tutor E', email: 'tutor4@skillar.com', role: 'tutor', status: 'active', password: 'TutorE@909', joinDate: '2025-02-08' },
-  { id: '13', name: 'Võ Hữu L', email: 'student7@skillar.com', role: 'student', status: 'inactive', password: 'VoL@128', joinDate: '2024-11-02' },
-  { id: '14', name: 'Parent M', email: 'parent2@skillar.com', role: 'student', status: 'active', password: 'ParentM@001', joinDate: '2025-01-03' },
-  { id: '15', name: 'Nguyễn An N', email: 'student8@skillar.com', role: 'student', status: 'active', password: 'AnN@314', joinDate: '2025-03-16' },
-  { id: '16', name: 'Tutor F', email: 'tutor5@skillar.com', role: 'tutor', status: 'active', password: 'TutorF@515', joinDate: '2024-12-21' },
-  { id: '17', name: 'Phạm Văn O', email: 'student9@skillar.com', role: 'student', status: 'active', password: 'PhamO@951', joinDate: '2025-02-27' },
-  { id: '18', name: 'Trần Quốc P', email: 'student10@skillar.com', role: 'student', status: 'inactive', password: 'QuocP@741', joinDate: '2024-10-09' },
-  { id: '19', name: 'Tutor G', email: 'tutor6@skillar.com', role: 'tutor', status: 'active', password: 'TutorG@852', joinDate: '2025-01-19' },
-  { id: '20', name: 'Tutor H', email: 'tutor7@skillar.com', role: 'tutor', status: 'active', password: 'TutorH@963', joinDate: '2025-03-06' },
-]
-
-const studentFields = [
-  { name: 'dob', label: 'Ngày sinh', type: 'date' },
-  { name: 'school', label: 'Trường học', type: 'text' },
-  { name: 'className', label: 'Lớp', type: 'text' },
-  { name: 'parentName', label: 'Tên phụ huynh', type: 'text' },
-  { name: 'parentPhone', label: 'SĐT phụ huynh', type: 'tel' },
-  { name: 'parentEmail', label: 'Email phụ huynh', type: 'email' },
-  { name: 'address', label: 'Địa chỉ', type: 'text' },
-  { name: 'channel', label: 'Kênh biết đến Skillar', type: 'text' },
-] as const
-
-const tutorFields = [
-  { name: 'phone', label: 'Số điện thoại', type: 'tel', colSpan: false },
-  { name: 'experience', label: 'Kinh nghiệm giảng dạy', type: 'text', colSpan: false },
-  { name: 'specialization', label: 'Chuyên môn chính', type: 'text', colSpan: false },
-  { name: 'introduction', label: 'Giới thiệu ngắn', type: 'text', colSpan: true },
-] as const
-
-type StudentField = (typeof studentFields)[number]
-type TutorField = (typeof tutorFields)[number]
-
-type StudentFieldName = StudentField['name']
-type TutorFieldName = TutorField['name']
-
-const FIELD_LABEL_CLASS = 'label block text-sm font-semibold text-gray-700 mb-1'
-
 const STUDENT_PROFILES: StudentProfile[] = [
   {
     id: 'stu-1',
@@ -192,8 +234,12 @@ const STUDENT_PROFILES: StudentProfile[] = [
     parentInfo: {
       fatherName: 'Nguyễn Văn Bình',
       fatherPhone: '0901 234 567',
+      fatherEmail: 'nguyenvanbinh@example.com',
+      fatherRequest: 'Mong con rèn tính kỷ luật hơn.',
       motherName: 'Trần Thị Hoa',
       motherPhone: '0902 345 678',
+      motherEmail: 'tranthihoa@example.com',
+      motherRequest: 'Muốn con tự tin phát biểu.',
       email: 'phuhuynh.avan@skillar.com',
     },
     currentLevel: 'Hoàn thành chương trình Toán lớp 6, đang ôn luyện chuyên đề hình học nâng cao.',
@@ -219,8 +265,12 @@ const STUDENT_PROFILES: StudentProfile[] = [
     parentInfo: {
       fatherName: 'Trần Quốc Huy',
       fatherPhone: '0911 654 321',
+      fatherEmail: 'quochuy@example.com',
+      fatherRequest: 'Tập trung luyện kỹ năng viết.',
       motherName: 'Lê Minh Thư',
       motherPhone: '0935 222 111',
+      motherEmail: 'minhthu@example.com',
+      motherRequest: 'Muốn con tự tin khi phát biểu.',
       email: 'parent.ngoc@skillar.com',
     },
     currentLevel: 'Đang luyện thi vào chuyên Anh, đạt IELTS 6.5, cần nâng điểm viết.',
@@ -232,24 +282,6 @@ const STUDENT_PROFILES: StudentProfile[] = [
     notes: 'Ngọc thích tham gia các câu lạc bộ ngoại ngữ và văn học, cần thêm hoạt động tương tác.',
   },
 ]
-
-const createEmptyStudentInfo = (): Record<StudentFieldName, string> =>
-  studentFields.reduce(
-    (acc, field) => ({
-      ...acc,
-      [field.name]: '',
-    }),
-    {} as Record<StudentFieldName, string>,
-  )
-
-const createEmptyTutorInfo = (): Record<TutorFieldName, string> =>
-  tutorFields.reduce(
-    (acc, field) => ({
-      ...acc,
-      [field.name]: '',
-    }),
-    {} as Record<TutorFieldName, string>,
-  )
 
 const STUDENT_CARD_COLORS = [
   { subject: 'Toán', color: 'bg-blue-100 text-blue-600' },
@@ -274,8 +306,12 @@ const buildPlaceholderProfile = (item: StudentListItem): StudentProfile => ({
   parentInfo: {
     fatherName: 'Đang cập nhật',
     fatherPhone: '—',
+    fatherEmail: '',
+    fatherRequest: '',
     motherName: 'Đang cập nhật',
     motherPhone: '—',
+    motherEmail: '',
+    motherRequest: '',
     email: 'dangcapnhat@skillar.com',
   },
   currentLevel: 'Thông tin đang được bổ sung.',
@@ -328,15 +364,6 @@ const cloneStudentProfile = (profile: StudentProfile): StudentProfile => ({
   improvements: [...profile.improvements],
 })
 
-const createInitialStudentProfiles = (list: StudentListItem[]): Record<string, StudentProfile> => {
-  const map: Record<string, StudentProfile> = {}
-  list.forEach((item) => {
-    const base = STUDENT_PROFILES.find((profile) => profile.id === item.id)
-    map[item.id] = base ? cloneStudentProfile(base) : buildPlaceholderProfile(item)
-  })
-  return map
-}
-
 const TUTOR_PROFILES: TutorProfile[] = [
   {
     id: 'tutor-1',
@@ -350,6 +377,8 @@ const TUTOR_PROFILES: TutorProfile[] = [
     phone: '0905 123 456',
     bio: 'Đam mê hướng dẫn học sinh luyện thi vào các lớp chuyên Toán, chú trọng phương pháp trực quan.',
     cvUrl: 'https://drive.google.com/file/d/1-tutor-khoa',
+    specialties: ['Hình học', 'Đại số'],
+    totalStudents: 120,
   },
   {
     id: 'tutor-2',
@@ -363,6 +392,8 @@ const TUTOR_PROFILES: TutorProfile[] = [
     phone: '0914 222 789',
     bio: 'Tập trung phát triển kỹ năng viết và hùng biện cho học sinh trung học.',
     cvUrl: 'https://drive.google.com/file/d/2-tutor-ha',
+    specialties: ['Viết luận', 'IELTS'],
+    totalStudents: 95,
   },
 ]
 
@@ -408,6 +439,8 @@ const createInitialTutorProfiles = (list: TutorListItem[]): Record<string, Tutor
         phone: '—',
         bio: 'Thông tin đang được bổ sung.',
         cvUrl: '',
+        specialties: [],
+        totalStudents: 0,
       }
   })
   return map
@@ -416,6 +449,7 @@ const createInitialTutorProfiles = (list: TutorListItem[]): Record<string, Tutor
 const cloneTutorProfile = (profile: TutorProfile): TutorProfile => ({
   ...profile,
   subjects: [...profile.subjects],
+  specialties: [...profile.specialties],
 })
 
 const todayString = format(new Date(), 'yyyy-MM-dd')
@@ -459,12 +493,13 @@ const INITIAL_SCHEDULE_SESSIONS: ScheduleSession[] = [
 export default function AdminDashboard() {
   const [activeSection, setActiveSection] = useState<AdminSection>('user-management')
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const [showAddUserModal, setShowAddUserModal] = useState(false)
+  const [isAddingUser, setIsAddingUser] = useState(false)
   const [users, setUsers] = useState<User[]>([])
   const [currentPage, setCurrentPage] = useState(1)
-  const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'tutor'>('all')
+  const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'tutor' | 'admin'>('all')
   const [searchTerm, setSearchTerm] = useState('')
-  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({})
+  const [sortField, setSortField] = useState<'name' | 'email' | 'createdAt'>('name')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [usersLoading, setUsersLoading] = useState(true)
   const [usersPagination, setUsersPagination] = useState({
     page: 1,
@@ -472,37 +507,48 @@ export default function AdminDashboard() {
     totalPages: 1,
     totalResults: 0,
   })
-  const [newUser, setNewUser] = useState({
+  const INITIAL_NEW_USER = {
     name: '',
     email: '',
     role: 'student' as User['role'],
     password: '',
-    joinDate: '',
-    studentInfo: createEmptyStudentInfo(),
-    tutorInfo: createEmptyTutorInfo(),
     avatar: null as File | null,
-    cvFile: null as File | null,
     avatarUrl: '' as string,
-    cvFileUrl: '' as string,
-  })
+  }
+  const [newUser, setNewUser] = useState(INITIAL_NEW_USER)
   const [uploadingFile, setUploadingFile] = useState(false)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [studentAvatarUploading, setStudentAvatarUploading] = useState(false)
+  const [isCreatingUser, setIsCreatingUser] = useState(false)
   const [editUserId, setEditUserId] = useState<string | null>(null)
   const [editData, setEditData] = useState<Partial<User>>({})
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null)
   const [newPassword, setNewPassword] = useState('')
   const [showResetPasswordModal, setShowResetPasswordModal] = useState(false)
-  const [studentList, setStudentList] = useState<StudentListItem[]>(STUDENT_LIST)
-  const [studentProfiles, setStudentProfiles] = useState<Record<string, StudentProfile>>(() => createInitialStudentProfiles(STUDENT_LIST))
-  const [selectedStudentId, setSelectedStudentId] = useState(STUDENT_LIST[0].id)
+  const [studentList, setStudentList] = useState<StudentListItem[]>([])
+  const [studentProfiles, setStudentProfiles] = useState<Record<string, StudentProfile>>({})
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [studentSearchTerm, setStudentSearchTerm] = useState('')
   const [isStudentEditing, setIsStudentEditing] = useState(false)
   const [studentEditData, setStudentEditData] = useState<StudentProfile | null>(null)
+  const [studentsLoading, setStudentsLoading] = useState(true)
+  const initialStudentArrayDrafts: Record<EditableArrayField, string> = {
+    strengths: '',
+    improvements: '',
+    hobbies: '',
+    favoriteSubjects: '',
+  }
+  const [studentArrayDrafts, setStudentArrayDrafts] = useState<Record<EditableArrayField, string>>(initialStudentArrayDrafts)
   const [tutorList, setTutorList] = useState<TutorListItem[]>(TUTOR_LIST)
   const [tutorProfiles, setTutorProfiles] = useState<Record<string, TutorProfile>>(() => createInitialTutorProfiles(TUTOR_LIST))
   const [selectedTutorId, setSelectedTutorId] = useState(TUTOR_LIST[0].id)
   const [tutorSearchTerm, setTutorSearchTerm] = useState('')
   const [isTutorEditing, setIsTutorEditing] = useState(false)
   const [tutorEditData, setTutorEditData] = useState<TutorProfile | null>(null)
+  const [tutorsLoading, setTutorsLoading] = useState(true)
+  const [isSavingTutor, setIsSavingTutor] = useState(false)
+  const [tutorAvatarUploading, setTutorAvatarUploading] = useState(false)
+  const [tutorCvUploading, setTutorCvUploading] = useState(false)
   const [currentCalendarMonth, setCurrentCalendarMonth] = useState(new Date())
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(todayString)
   const [scheduleSessions, setScheduleSessions] = useState<ScheduleSession[]>(INITIAL_SCHEDULE_SESSIONS)
@@ -525,58 +571,317 @@ export default function AdminDashboard() {
   })
   const [statsLoading, setStatsLoading] = useState(true)
 
-  const usersPerPage = 10
+const usersPerPage = 10
 
-  // Fetch users from API
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        setUsersLoading(true)
-        
-        // Build query parameters
-        const params = new URLSearchParams()
-        if (searchTerm.trim()) {
-          params.append('name', searchTerm.trim())
-        }
-        if (roleFilter !== 'all') {
-          params.append('role', roleFilter)
-        }
-        params.append('page', currentPage.toString())
-        params.append('limit', usersPerPage.toString())
-        params.append('sortBy', 'name:asc')
+const refreshUsersList = useCallback(async () => {
+  const params = new URLSearchParams()
+  if (searchTerm.trim()) {
+    params.append('name', searchTerm.trim())
+  }
+  if (roleFilter !== 'all') {
+    params.append('role', roleFilter)
+  }
+  params.append('page', currentPage.toString())
+  params.append('limit', usersPerPage.toString())
+  params.append('sortBy', `${sortField}:${sortOrder}`)
 
-        const response = await apiCall<{
-          results: User[]
-          page: number
-          limit: number
-          totalPages: number
-          totalResults: number
-        }>(`/users?${params.toString()}`)
+  const response = await apiCall<{
+    results: User[]
+    page: number
+    limit: number
+    totalPages: number
+    totalResults: number
+  }>(`/users?${params.toString()}`)
 
-        // Map API users to display format
-        const mappedUsers: User[] = response.results.map((user) => ({
-          ...user,
-          status: (user.isActive ? 'active' : 'inactive') as 'active' | 'inactive',
-          joinDate: user.birthday ? new Date(user.birthday).toLocaleDateString('vi-VN') : '',
-        }))
+  const mappedUsers: User[] = response.results.map((user) => ({
+    ...user,
+    status: (user.isActive ? 'active' : 'inactive') as 'active' | 'inactive',
+    joinDate: user.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN') : '',
+  }))
 
-        setUsers(mappedUsers)
-        setUsersPagination({
-          page: response.page,
-          limit: response.limit,
-          totalPages: response.totalPages,
-          totalResults: response.totalResults,
-        })
-      } catch (error) {
-        console.error('Error fetching users:', error)
-        setUsers([])
-      } finally {
-        setUsersLoading(false)
-      }
+  setUsers(mappedUsers)
+  setUsersPagination({
+    page: response.page,
+    limit: response.limit,
+    totalPages: response.totalPages,
+    totalResults: response.totalResults,
+  })
+}, [currentPage, roleFilter, searchTerm, sortField, sortOrder, usersPerPage])
+
+// Fetch users from API
+useEffect(() => {
+  const fetchUsers = async () => {
+    try {
+      setUsersLoading(true)
+      await refreshUsersList()
+    } catch (error) {
+      console.error('Error fetching users:', error)
+      setUsers([])
+    } finally {
+      setUsersLoading(false)
     }
+  }
 
-    fetchUsers()
-  }, [currentPage, roleFilter, searchTerm])
+  fetchUsers()
+}, [refreshUsersList])
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa tài khoản này?')) return
+
+    try {
+      await apiCall(`/users/${userId}`, {
+        method: 'DELETE',
+      })
+      alert('Đã xóa tài khoản thành công')
+      await refreshUsersList()
+    } catch (error) {
+      console.error('Error deleting user:', error)
+      let errorMessage = 'Có lỗi xảy ra khi xóa tài khoản'
+      if (error instanceof Error) {
+        errorMessage = error.message
+      }
+      alert(errorMessage)
+    }
+  }
+
+  const fetchStudents = useCallback(async () => {
+    try {
+      setStudentsLoading(true)
+
+      // Fetch all users with role=student
+      const params = new URLSearchParams()
+      params.append('role', 'student')
+      params.append('limit', '100') // Get all students
+
+      const usersResponse = await apiCall<{
+        results: User[]
+      }>(`/users?${params.toString()}`)
+
+      const students: StudentListItem[] = []
+      const profiles: Record<string, StudentProfile> = {}
+
+      // Fetch detailed info for each student
+      for (const user of usersResponse.results) {
+        try {
+          // Fetch student info
+          const studentInfo = await apiCall<StudentInfoFromAPI>(`/students/${user.id}/info`)
+
+          // Get subject color (use first favorite subject or default)
+          const firstSubject = studentInfo.favoriteSubjects[0] || 'Toán'
+          const subjectColor = STUDENT_CARD_COLORS.find((c) => c.subject === firstSubject)?.color || STUDENT_CARD_COLORS[0].color
+
+          // Create StudentListItem
+          const listItem: StudentListItem = {
+            id: user.id,
+            name: user.name,
+            avatar: user.avatarUrl || `https://i.pravatar.cc/150?img=${Math.floor(Math.random() * 70)}`,
+            grade: studentInfo.grade,
+            address: user.address || 'Đang cập nhật',
+            subject: firstSubject,
+            subjectColor,
+            progress: 50, // Default progress, can be calculated later
+            hasProfile: true,
+          }
+          students.push(listItem)
+
+          // Create StudentProfile
+          // Use new format fields if available, otherwise fall back to old format
+          const fatherName = studentInfo.parent1Name || studentInfo.parentName || studentInfo.parentId?.name || 'Đang cập nhật'
+          const fatherEmail = studentInfo.parent1Email || studentInfo.parentEmail || user.email
+          const fatherPhone = studentInfo.parent1Number || studentInfo.parentNumber || '—'
+          const fatherRequest = studentInfo.parent1Request || ''
+          const motherName = studentInfo.parent2Name || 'Đang cập nhật'
+          const motherEmail = studentInfo.parent2Email || ''
+          const motherPhone = studentInfo.parent2Number || '—'
+          const motherRequest = studentInfo.parent2Request || ''
+          const combinedParentRequest = combineParentRequests(fatherRequest, motherRequest, studentInfo.parentRequest)
+          const academicLevel = studentInfo.academicLevel || user.currentLevel || 'Đang cập nhật'
+
+          const profile: StudentProfile = {
+            id: user.id,
+            name: user.name,
+            avatar: user.avatarUrl || `https://i.pravatar.cc/150?img=${Math.floor(Math.random() * 70)}`,
+            dob: user.birthday || '2010-01-01',
+            address: user.address || 'Đang cập nhật',
+            school: studentInfo.school,
+            grade: studentInfo.grade,
+            subject: firstSubject,
+            subjectColor,
+            progress: 50,
+            status: user.isActive ? 'Đang học' : 'Tạm dừng',
+            parentInfo: {
+              fatherName,
+              fatherPhone,
+              fatherEmail,
+              fatherRequest,
+              motherName,
+              motherPhone,
+              motherEmail,
+              motherRequest,
+              email: fatherEmail || motherEmail || user.email,
+            },
+            parentId: studentInfo.parentId?.id,
+            currentLevel: academicLevel,
+            parentRequest: combinedParentRequest,
+            hobbies: studentInfo.hobbies,
+            favoriteSubjects: studentInfo.favoriteSubjects,
+            strengths: studentInfo.strengths,
+            improvements: studentInfo.improvements,
+            notes: studentInfo.notes,
+          }
+          profiles[user.id] = profile
+        } catch (error) {
+          // If student info not found, create placeholder
+          console.error(`Error fetching info for student ${user.id}:`, error)
+          const listItem: StudentListItem = {
+            id: user.id,
+            name: user.name,
+            avatar: user.avatarUrl || `https://i.pravatar.cc/150?img=${Math.floor(Math.random() * 70)}`,
+            grade: 'Đang cập nhật',
+            address: user.address || 'Đang cập nhật',
+            subject: 'Toán',
+            subjectColor: STUDENT_CARD_COLORS[0].color,
+            progress: 0,
+            hasProfile: false,
+          }
+          students.push(listItem)
+
+          const profile: StudentProfile = buildPlaceholderProfile(listItem)
+          profile.id = user.id
+          profile.name = user.name
+          profiles[user.id] = profile
+        }
+      }
+
+      setStudentList(students)
+      setStudentProfiles(profiles)
+
+      // Set first student as selected if available
+      if (students.length > 0) {
+        setSelectedStudentId((prev) => prev || students[0].id)
+      }
+    } catch (error) {
+      console.error('Error fetching students:', error)
+      setStudentList([])
+      setStudentProfiles({})
+    } finally {
+      setStudentsLoading(false)
+    }
+  }, [])
+
+  const fetchTutors = useCallback(async () => {
+    try {
+      setTutorsLoading(true)
+
+      const params = new URLSearchParams()
+      params.append('role', 'tutor')
+      params.append('limit', '100')
+
+      const usersResponse = await apiCall<{
+        results: User[]
+      }>(`/users?${params.toString()}`)
+
+      const tutors: TutorListItem[] = []
+      const profiles: Record<string, TutorProfile> = {}
+
+      for (const user of usersResponse.results) {
+        const avatar = user.avatarUrl || `https://i.pravatar.cc/150?img=${Math.floor(Math.random() * 70)}`
+        const status: 'Đang dạy' | 'Tạm nghỉ' = user.isActive ? 'Đang dạy' : 'Tạm nghỉ'
+        try {
+          const tutorInfo = await apiCall<TutorInfoFromAPI>(`/tutors/${user.id}/info`)
+          const subjects = Array.isArray(tutorInfo.subjects) ? tutorInfo.subjects : []
+          const specialties = Array.isArray(tutorInfo.specialties) ? tutorInfo.specialties : []
+          const displaySubjects = subjects.length > 0 ? subjects : ['Đang cập nhật']
+
+          tutors.push({
+            id: user.id,
+            name: user.name,
+            avatar,
+            headline: tutorInfo.qualification || 'Đang cập nhật',
+            subjects: displaySubjects,
+            status,
+            hasProfile: true,
+          })
+
+          profiles[user.id] = {
+            id: user.id,
+            name: user.name,
+            avatar,
+            subjects,
+            status,
+            experience: tutorInfo.experience || 'Đang cập nhật',
+            qualification: tutorInfo.qualification || 'Đang cập nhật',
+            email: user.email,
+            phone: user.phone || 'Chưa cập nhật',
+            bio: tutorInfo.bio || 'Chưa cập nhật',
+            cvUrl: tutorInfo.cvUrl || '',
+            specialties,
+            totalStudents: typeof tutorInfo.totalStudents === 'number' ? tutorInfo.totalStudents : 0,
+          }
+        } catch (error) {
+          console.error(`Error fetching info for tutor ${user.id}:`, error)
+          tutors.push({
+            id: user.id,
+            name: user.name,
+            avatar,
+            headline: 'Đang cập nhật',
+            subjects: ['Đang cập nhật'],
+            status,
+            hasProfile: false,
+          })
+          profiles[user.id] = {
+            id: user.id,
+            name: user.name,
+            avatar,
+            subjects: [],
+            status,
+            experience: 'Đang cập nhật',
+            qualification: 'Đang cập nhật',
+            email: user.email,
+            phone: user.phone || 'Chưa cập nhật',
+            bio: 'Thông tin đang được bổ sung.',
+            cvUrl: '',
+            specialties: [],
+            totalStudents: 0,
+          }
+        }
+      }
+
+      setTutorList(tutors)
+      setTutorProfiles(profiles)
+      setSelectedTutorId((prev) => {
+        if (tutors.length === 0) {
+          return ''
+        }
+        return tutors.some((tutor) => tutor.id === prev) ? prev : tutors[0].id
+      })
+      setNewSchedule((prev) => {
+        if (tutors.length === 0) {
+          return { ...prev, tutorId: '' }
+        }
+        if (tutors.some((tutor) => tutor.id === prev.tutorId)) {
+          return prev
+        }
+        return { ...prev, tutorId: tutors[0].id }
+      })
+    } catch (error) {
+      console.error('Error fetching tutors:', error)
+      setTutorList([])
+      setTutorProfiles({})
+      setSelectedTutorId('')
+      setNewSchedule((prev) => ({ ...prev, tutorId: '' }))
+    } finally {
+      setTutorsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchStudents()
+  }, [fetchStudents])
+
+  useEffect(() => {
+    fetchTutors()
+  }, [fetchTutors])
 
   useEffect(() => {
     setIsStudentEditing(false)
@@ -588,56 +893,73 @@ export default function AdminDashboard() {
     setTutorEditData(null)
   }, [selectedTutorId])
 
-  // Reset to page 1 when filter or search changes
+  // Reset to page 1 when filter, search, or sort changes
   useEffect(() => {
     setCurrentPage(1)
-  }, [roleFilter, searchTerm])
+  }, [roleFilter, searchTerm, sortField, sortOrder])
 
   const paginatedUsers = users
 
-  // Fetch stats from API
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        setStatsLoading(true)
-        // Fetch user stats
-        const userStats = await apiCall<{
-          total: number
-          student: number
-          parent: number
-          tutor: number
-          admin: number
-        }>('/users/stats')
+  const fetchStats = useCallback(async () => {
+    try {
+      setStatsLoading(true)
+      // Fetch user stats
+      const userStats = await apiCall<{
+        total: number
+        student: number
+        parent: number
+        tutor: number
+        admin: number
+      }>('/users/stats')
 
-        // Fetch today's schedule stats
-        const scheduleStats = await apiCall<{ count: number }>('/schedules/stats/today')
+      // Fetch today's schedule stats
+      const scheduleStats = await apiCall<{ count: number }>('/schedules/stats/today')
 
-        setStats({
-          total: userStats.total,
-          students: userStats.student || 0,
-          tutors: userStats.tutor || 0,
-          lessonsToday: scheduleStats.count || 0,
-        })
-      } catch (error) {
-        console.error('Error fetching stats:', error)
-        // Keep default values on error
-      } finally {
-        setStatsLoading(false)
-      }
+      setStats({
+        total: userStats.total,
+        students: userStats.student || 0,
+        tutors: userStats.tutor || 0,
+        lessonsToday: scheduleStats.count || 0,
+      })
+    } catch (error) {
+      console.error('Error fetching stats:', error)
+      // Keep default values on error
+    } finally {
+      setStatsLoading(false)
     }
-
-    fetchStats()
   }, [])
+
+  useEffect(() => {
+    fetchStats()
+  }, [fetchStats])
+
+  useEffect(() => {
+    switch (activeSection) {
+      case 'user-management':
+        refreshUsersList()
+        break
+      case 'student-management':
+        fetchStudents()
+        break
+      case 'analytics':
+        fetchStats()
+        break
+      case 'schedule-management':
+        // Future API refetch hooks can be added here
+        break
+      case 'tutor-management':
+        fetchTutors()
+        break
+      default:
+        break
+    }
+  }, [activeSection, refreshUsersList, fetchStudents, fetchTutors, fetchStats])
 
   const totalStudents = stats.students
   const totalTutors = stats.tutors
   const lessonsToday = stats.lessonsToday
 
-  const togglePasswordVisibility = (userId: string) => {
-    setVisiblePasswords((prev) => ({ ...prev, [userId]: !prev[userId] }))
-  }
-
-  const handleFilterChange = (value: 'all' | 'student' | 'tutor') => {
+  const handleFilterChange = (value: 'all' | 'student' | 'tutor' | 'admin') => {
     setRoleFilter(value)
     setCurrentPage(1)
   }
@@ -649,7 +971,25 @@ export default function AdminDashboard() {
 
   const startEditUser = (user: User) => {
     setEditUserId(user.id)
-    setEditData({ ...user })
+    // Convert createdAt to dd/mm/yyyy format for display
+    let joinDateForInput = ''
+    if (user.createdAt) {
+      const date = new Date(user.createdAt)
+      const day = String(date.getDate()).padStart(2, '0')
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const year = date.getFullYear()
+      joinDateForInput = `${day}/${month}/${year}` // Format: dd/mm/yyyy
+    } else if (user.joinDate) {
+      // If joinDate exists, try to parse it
+      const date = new Date(user.joinDate)
+      if (!isNaN(date.getTime())) {
+        const day = String(date.getDate()).padStart(2, '0')
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const year = date.getFullYear()
+        joinDateForInput = `${day}/${month}/${year}`
+      }
+    }
+    setEditData({ ...user, joinDate: joinDateForInput })
   }
 
   const cancelEditUser = () => {
@@ -688,33 +1028,7 @@ export default function AdminDashboard() {
       setShowResetPasswordModal(false)
       setResetPasswordUserId(null)
       setNewPassword('')
-      // Refresh users list
-      const params = new URLSearchParams()
-      if (searchTerm.trim()) {
-        params.append('name', searchTerm.trim())
-      }
-      if (roleFilter !== 'all') {
-        params.append('role', roleFilter)
-      }
-      params.append('page', currentPage.toString())
-      params.append('limit', usersPerPage.toString())
-      params.append('sortBy', 'name:asc')
-
-      const response = await apiCall<{
-        results: User[]
-        page: number
-        limit: number
-        totalPages: number
-        totalResults: number
-      }>(`/users?${params.toString()}`)
-
-      const mappedUsers: User[] = response.results.map((user) => ({
-        ...user,
-        status: (user.isActive ? 'active' : 'inactive') as 'active' | 'inactive',
-        joinDate: user.birthday ? new Date(user.birthday).toLocaleDateString('vi-VN') : '',
-      }))
-
-      setUsers(mappedUsers)
+      await refreshUsersList()
     } catch (error) {
       console.error('Error resetting password:', error)
       let errorMessage = 'Có lỗi xảy ra khi reset mật khẩu'
@@ -731,6 +1045,22 @@ export default function AdminDashboard() {
     const missing = requiredFields.some((field) => !editData[field])
     if (missing) {
       alert('Vui lòng điền đầy đủ thông tin trước khi lưu.')
+      return
+    }
+
+    // Find original user data
+    const originalUser = users.find((u) => u.id === editUserId)
+    if (!originalUser) return
+
+    // Check if there are any changes
+    const hasNameChange = editData.name !== originalUser.name
+    const hasEmailChange = editData.email !== originalUser.email
+    const hasPasswordChange = editData.password && editData.password.trim() && editData.password !== originalUser.password
+    const hasRoleChange = editData.role !== originalUser.role
+
+    // If no changes, just cancel edit without showing message
+    if (!hasNameChange && !hasEmailChange && !hasPasswordChange && !hasRoleChange) {
+      cancelEditUser()
       return
     }
 
@@ -752,39 +1082,7 @@ export default function AdminDashboard() {
         body: JSON.stringify(updateBody),
       })
 
-      // Refresh users list to get updated data
-      const params = new URLSearchParams()
-      if (searchTerm.trim()) {
-        params.append('name', searchTerm.trim())
-      }
-      if (roleFilter !== 'all') {
-        params.append('role', roleFilter)
-      }
-      params.append('page', currentPage.toString())
-      params.append('limit', usersPerPage.toString())
-      params.append('sortBy', 'name:asc')
-
-      const response = await apiCall<{
-        results: User[]
-        page: number
-        limit: number
-        totalPages: number
-        totalResults: number
-      }>(`/users?${params.toString()}`)
-
-      const mappedUsers: User[] = response.results.map((user) => ({
-        ...user,
-        status: (user.isActive ? 'active' : 'inactive') as 'active' | 'inactive',
-        joinDate: user.birthday ? new Date(user.birthday).toLocaleDateString('vi-VN') : '',
-      }))
-
-      setUsers(mappedUsers)
-      setUsersPagination({
-        page: response.page,
-        limit: response.limit,
-        totalPages: response.totalPages,
-        totalResults: response.totalResults,
-      })
+      await refreshUsersList()
 
       cancelEditUser()
       alert('Đã cập nhật thông tin thành công')
@@ -803,15 +1101,24 @@ export default function AdminDashboard() {
   }
 
   const startStudentEditing = () => {
+    if (!selectedStudentId) return
     const listItem = studentList.find((item) => item.id === selectedStudentId) ?? studentList[0]
+    if (!listItem) return
     const baseProfile = studentProfiles[selectedStudentId] ?? buildPlaceholderProfile(listItem)
     setStudentEditData(cloneStudentProfile(baseProfile))
+    setStudentArrayDrafts({
+      strengths: (baseProfile.strengths ?? []).join('\n'),
+      improvements: (baseProfile.improvements ?? []).join('\n'),
+      hobbies: (baseProfile.hobbies ?? []).join('\n'),
+      favoriteSubjects: (baseProfile.favoriteSubjects ?? []).join('\n'),
+    })
     setIsStudentEditing(true)
   }
 
   const cancelStudentEditing = () => {
     setIsStudentEditing(false)
     setStudentEditData(null)
+    setStudentArrayDrafts(initialStudentArrayDrafts)
   }
 
   const handleStudentEditFieldChange = (field: keyof StudentProfile, value: string) => {
@@ -819,18 +1126,123 @@ export default function AdminDashboard() {
   }
 
   const handleParentInfoChange = (field: keyof ParentInfo, value: string) => {
-    setStudentEditData((prev) =>
-      prev
-        ? {
-            ...prev,
-            parentInfo: { ...prev.parentInfo, [field]: value },
-          }
-        : prev,
-    )
+    setStudentEditData((prev) => {
+      if (!prev) return prev
+      const updatedParentInfo: ParentInfo = { ...prev.parentInfo, [field]: value }
+      return {
+        ...prev,
+        parentInfo: updatedParentInfo,
+        parentRequest: combineParentRequests(
+          updatedParentInfo.fatherRequest,
+          updatedParentInfo.motherRequest,
+          prev.parentRequest,
+        ),
+      }
+    })
   }
 
-  const handleStudentSave = () => {
-    if (!studentEditData) return
+  const handleStudentArrayFieldChange = (field: EditableArrayField, value: string) => {
+    setStudentArrayDrafts((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+    const items = value
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+    setStudentEditData((prev) => (prev ? { ...prev, [field]: items } : prev))
+  }
+
+  const handleStudentAvatarUpload = async (file: File | null) => {
+    if (!file) return
+    try {
+      setStudentAvatarUploading(true)
+      const url = await uploadFile(file)
+      setStudentEditData((prev) => (prev ? { ...prev, avatar: url } : prev))
+    } catch (error) {
+      console.error('Error uploading student avatar:', error)
+      alert(error instanceof Error ? error.message : 'Có lỗi xảy ra khi upload ảnh học sinh')
+    } finally {
+      setStudentAvatarUploading(false)
+    }
+  }
+
+  const handleStudentSave = async () => {
+    if (!studentEditData || !selectedStudentId) return
+
+    try {
+      // Prepare request body according to API format
+      const updateBody: any = {
+        school: studentEditData.school,
+        grade: studentEditData.grade,
+        academicLevel: studentEditData.currentLevel, // Map currentLevel to academicLevel
+        hobbies: studentEditData.hobbies,
+        favoriteSubjects: studentEditData.favoriteSubjects,
+        strengths: studentEditData.strengths,
+        improvements: studentEditData.improvements,
+        notes: studentEditData.notes,
+      }
+
+      // Add parent information (father/mother) – only include non-empty fields
+      if (studentEditData.parentInfo) {
+        const assignIfFilled = (key: string, value?: string | null) => {
+          const trimmed = value?.trim()
+          if (trimmed) {
+            updateBody[key] = trimmed
+          }
+        }
+
+        assignIfFilled('parent1Name', studentEditData.parentInfo.fatherName)
+        assignIfFilled('parent1Number', studentEditData.parentInfo.fatherPhone)
+        assignIfFilled(
+          'parent1Email',
+          studentEditData.parentInfo.fatherEmail || studentEditData.parentInfo.email,
+        )
+        assignIfFilled('parent1Request', studentEditData.parentInfo.fatherRequest)
+        assignIfFilled('parent2Name', studentEditData.parentInfo.motherName)
+        assignIfFilled('parent2Number', studentEditData.parentInfo.motherPhone)
+        assignIfFilled('parent2Email', studentEditData.parentInfo.motherEmail)
+        assignIfFilled('parent2Request', studentEditData.parentInfo.motherRequest)
+      }
+
+      // Call API to update student info
+      const saveStudentInfo = async () => {
+        try {
+          await apiCall(`/students/${selectedStudentId}/info`, {
+            method: 'PATCH',
+            body: JSON.stringify(updateBody),
+          })
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message.toLowerCase() : ''
+          if (errorMessage.includes('not found')) {
+            await apiCall(`/students/${selectedStudentId}/info`, {
+              method: 'POST',
+              body: JSON.stringify(updateBody),
+            })
+          } else {
+            throw error
+          }
+        }
+      }
+
+      await saveStudentInfo()
+
+      const existingProfile = studentProfiles[selectedStudentId]
+      const userUpdateBody: Record<string, string> = {}
+      if (studentEditData.name?.trim() && (!existingProfile || studentEditData.name !== existingProfile.name)) {
+        userUpdateBody.name = studentEditData.name.trim()
+      }
+      if (studentEditData.avatar && (!existingProfile || studentEditData.avatar !== existingProfile.avatar)) {
+        userUpdateBody.avatarUrl = studentEditData.avatar
+      }
+      if (Object.keys(userUpdateBody).length > 0) {
+        await apiCall(`/users/${selectedStudentId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(userUpdateBody),
+        })
+      }
+
+      // Update local state after successful API call
     setStudentProfiles((prev) => ({
       ...prev,
       [studentEditData.id]: cloneStudentProfile(studentEditData),
@@ -838,21 +1250,40 @@ export default function AdminDashboard() {
     setStudentList((prev) =>
       prev.map((student) =>
         student.id === studentEditData.id
-          ? { ...student, name: studentEditData.name, grade: studentEditData.grade, address: studentEditData.address }
+          ? {
+              ...student,
+              name: studentEditData.name,
+              grade: studentEditData.grade,
+              address: studentEditData.address,
+              avatar: studentEditData.avatar,
+            }
           : student,
       ),
     )
     cancelStudentEditing()
-    alert('Đã cập nhật thông tin học sinh.')
+      alert('Đã cập nhật thông tin học sinh thành công!')
+    } catch (error) {
+      console.error('Error updating student info:', error)
+      let errorMessage = 'Có lỗi xảy ra khi cập nhật thông tin học sinh'
+      if (error instanceof Error) {
+        errorMessage = error.message
+      }
+      alert(errorMessage)
+    }
   }
 
   const handleTutorSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setTutorSearchTerm(event.target.value)
   }
 
+
   const startTutorEditing = () => {
+    if (tutorList.length === 0) return
     const listItem = tutorList.find((item) => item.id === selectedTutorId) ?? tutorList[0]
-    const baseProfile = tutorProfiles[selectedTutorId] ?? createInitialTutorProfiles([listItem])[listItem.id]
+    if (!listItem) return
+    const fallbackProfile = createInitialTutorProfiles([listItem])[listItem.id]
+    const baseProfile = (selectedTutorId && tutorProfiles[selectedTutorId]) || fallbackProfile
+    if (!baseProfile) return
     setTutorEditData(cloneTutorProfile(baseProfile))
     setIsTutorEditing(true)
   }
@@ -871,19 +1302,138 @@ export default function AdminDashboard() {
     setTutorEditData((prev) => (prev ? { ...prev, subjects } : prev))
   }
 
-  const handleTutorSave = () => {
+  const handleTutorSpecialtiesChange = (value: string) => {
+    const specialties = value.split(',').map((specialty) => specialty.trim()).filter(Boolean)
+    setTutorEditData((prev) => (prev ? { ...prev, specialties } : prev))
+  }
+
+  const handleTutorTotalStudentsChange = (value: string) => {
+    setTutorEditData((prev) => {
+      if (!prev) return prev
+      const parsed = parseInt(value, 10)
+      return {
+        ...prev,
+        totalStudents: Number.isNaN(parsed) ? 0 : parsed,
+      }
+    })
+  }
+
+  const handleTutorAvatarUpload = async (file: File | null) => {
+    if (!file) return
+    try {
+      setTutorAvatarUploading(true)
+      const url = await uploadFile(file)
+      setTutorEditData((prev) => (prev ? { ...prev, avatar: url } : prev))
+    } catch (error) {
+      console.error('Error uploading tutor avatar:', error)
+      alert(error instanceof Error ? error.message : 'Có lỗi xảy ra khi upload ảnh đại diện')
+    } finally {
+      setTutorAvatarUploading(false)
+    }
+  }
+
+  const handleTutorCvUpload = async (file: File | null) => {
+    if (!file) return
+    try {
+      setTutorCvUploading(true)
+      const url = await uploadFile(file)
+      setTutorEditData((prev) => (prev ? { ...prev, cvUrl: url } : prev))
+    } catch (error) {
+      console.error('Error uploading tutor CV:', error)
+      alert(error instanceof Error ? error.message : 'Có lỗi xảy ra khi upload CV')
+    } finally {
+      setTutorCvUploading(false)
+    }
+  }
+
+  const handleTutorSave = async () => {
     if (!tutorEditData) return
-    setTutorProfiles((prev) => ({
-      ...prev,
-      [tutorEditData.id]: cloneTutorProfile(tutorEditData),
-    }))
-    setTutorList((prev) =>
-      prev.map((tutor) =>
-        tutor.id === tutorEditData.id ? { ...tutor, name: tutorEditData.name, headline: tutorEditData.qualification, subjects: tutorEditData.subjects, status: tutorEditData.status } : tutor,
-      ),
-    )
-    cancelTutorEditing()
-    alert('Đã cập nhật thông tin tutor.')
+    try {
+      setIsSavingTutor(true)
+
+      const tutorPayload = {
+        subjects: tutorEditData.subjects ?? [],
+        experience: tutorEditData.experience ?? '',
+        qualification: tutorEditData.qualification ?? '',
+        specialties: tutorEditData.specialties ?? [],
+        bio: tutorEditData.bio ?? '',
+        cvUrl: tutorEditData.cvUrl ?? '',
+        totalStudents: typeof tutorEditData.totalStudents === 'number' ? tutorEditData.totalStudents : 0,
+      }
+
+      const saveTutorInfo = async () => {
+        try {
+          await apiCall(`/tutors/${tutorEditData.id}/info`, {
+            method: 'PATCH',
+            body: JSON.stringify(tutorPayload),
+          })
+        } catch (error) {
+          const message = error instanceof Error ? error.message.toLowerCase() : ''
+          if (message.includes('not found')) {
+            await apiCall(`/tutors/${tutorEditData.id}/info`, {
+              method: 'POST',
+              body: JSON.stringify(tutorPayload),
+            })
+          } else {
+            throw error
+          }
+        }
+      }
+
+      await saveTutorInfo()
+
+      const userUpdateBody: Record<string, string> = {}
+      if (tutorEditData.name?.trim()) {
+        userUpdateBody.name = tutorEditData.name.trim()
+      }
+      if (tutorEditData.email?.trim()) {
+        userUpdateBody.email = tutorEditData.email.trim()
+      }
+      if (tutorEditData.phone?.trim()) {
+        userUpdateBody.phone = tutorEditData.phone.trim()
+      }
+      if (tutorEditData.avatar?.trim()) {
+        userUpdateBody.avatarUrl = tutorEditData.avatar.trim()
+      }
+
+      if (Object.keys(userUpdateBody).length > 0) {
+        await apiCall(`/users/${tutorEditData.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(userUpdateBody),
+        })
+      }
+
+      setTutorProfiles((prev) => ({
+        ...prev,
+        [tutorEditData.id]: cloneTutorProfile(tutorEditData),
+      }))
+      setTutorList((prev) =>
+        prev.map((tutor) =>
+          tutor.id === tutorEditData.id
+            ? {
+                ...tutor,
+                name: tutorEditData.name,
+                headline: tutorEditData.qualification,
+                subjects: (tutorEditData.subjects?.length ?? 0) > 0 ? tutorEditData.subjects : ['Đang cập nhật'],
+                status: tutorEditData.status,
+              }
+            : tutor,
+        ),
+      )
+
+      await fetchTutors()
+      cancelTutorEditing()
+      alert('Đã cập nhật thông tin tutor.')
+    } catch (error) {
+      console.error('Error updating tutor info:', error)
+      let errorMessage = 'Có lỗi xảy ra khi cập nhật thông tin tutor'
+      if (error instanceof Error) {
+        errorMessage = error.message
+      }
+      alert(errorMessage)
+    } finally {
+      setIsSavingTutor(false)
+    }
   }
 
   const handleMonthChange = (direction: 'prev' | 'next') => {
@@ -951,63 +1501,79 @@ export default function AdminDashboard() {
     return data.file.url
   }
 
-  const handleFileChange = async (file: File | null, type: 'avatar' | 'cvFile') => {
+  const handleAddUserAvatarChange = async (file: File | null) => {
     if (!file) {
       setNewUser((prev) => ({
         ...prev,
-        [type]: null,
-        [type === 'avatar' ? 'avatarUrl' : 'cvFileUrl']: '',
+        avatar: null,
+        avatarUrl: '',
       }))
+      setAvatarPreview(null)
       return
     }
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+    if (!validTypes.includes(file.type)) {
+      alert('Vui lòng chọn file ảnh hợp lệ (PNG, JPG, GIF, WEBP)')
+      return
+    }
+    
+    // Validate file size (5MB = 5 * 1024 * 1024 bytes)
+    const maxSize = 5 * 1024 * 1024
+    if (file.size > maxSize) {
+      alert('Kích thước file không được vượt quá 5MB')
+      return
+    }
+
+    // Create preview immediately
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setAvatarPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
 
     try {
       setUploadingFile(true)
       const url = await uploadFile(file)
       setNewUser((prev) => ({
         ...prev,
-        [type]: file,
-        [type === 'avatar' ? 'avatarUrl' : 'cvFileUrl']: url,
+        avatar: file,
+        avatarUrl: url,
       }))
+      // Also set preview from uploaded URL if needed
+      if (url) {
+        setAvatarPreview(url)
+      }
     } catch (error) {
       console.error('Error uploading file:', error)
       alert(error instanceof Error ? error.message : 'Có lỗi xảy ra khi upload file')
       setNewUser((prev) => ({
         ...prev,
-        [type]: null,
-        [type === 'avatar' ? 'avatarUrl' : 'cvFileUrl']: '',
+        avatar: null,
+        avatarUrl: '',
       }))
+      setAvatarPreview(null)
     } finally {
       setUploadingFile(false)
     }
   }
 
-  const resetNewUser = () =>
-    setNewUser({
-      name: '',
-      email: '',
-      role: 'student',
-      password: '',
-      joinDate: '',
-      studentInfo: createEmptyStudentInfo(),
-      tutorInfo: createEmptyTutorInfo(),
-      avatar: null,
-      cvFile: null,
-      avatarUrl: '',
-      cvFileUrl: '',
-    })
+  const resetNewUser = () => {
+    setNewUser(INITIAL_NEW_USER)
+  }
 
   const handleAddUser = async (event?: React.FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
-    
-    // Validate required fields
+    if (isCreatingUser) return
+
     if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
-      alert('Vui lòng điền đầy đủ thông tin bắt buộc (Tên, Email, Mật khẩu)')
+      alert('Vui lòng điền đầy đủ Tên, Email và Mật khẩu')
       return
     }
 
     try {
-      // Prepare user data
+      setIsCreatingUser(true)
       const userData: any = {
         name: newUser.name.trim(),
         email: newUser.email.trim(),
@@ -1015,62 +1581,30 @@ export default function AdminDashboard() {
         role: newUser.role,
       }
 
-      // Add avatar URL if available
       if (newUser.avatarUrl) {
-        userData.avatar = newUser.avatarUrl
+        userData.avatarUrl = newUser.avatarUrl
       }
 
-      // Call API to create user
       await apiCall('/users', {
         method: 'POST',
         body: JSON.stringify(userData),
       })
 
-      // Refresh users list
-      const params = new URLSearchParams()
-      if (searchTerm.trim()) {
-        params.append('name', searchTerm.trim())
-      }
-      if (roleFilter !== 'all') {
-        params.append('role', roleFilter)
-      }
-      params.append('page', currentPage.toString())
-      params.append('limit', usersPerPage.toString())
-      params.append('sortBy', 'name:asc')
+      await refreshUsersList()
 
-      const response = await apiCall<{
-        results: User[]
-        page: number
-        limit: number
-        totalPages: number
-        totalResults: number
-      }>(`/users?${params.toString()}`)
-
-      const mappedUsers: User[] = response.results.map((user) => ({
-        ...user,
-        status: (user.isActive ? 'active' : 'inactive') as 'active' | 'inactive',
-        joinDate: user.birthday ? new Date(user.birthday).toLocaleDateString('vi-VN') : '',
-      }))
-
-      setUsers(mappedUsers)
-      setUsersPagination({
-        page: response.page,
-        limit: response.limit,
-        totalPages: response.totalPages,
-        totalResults: response.totalResults,
-      })
-
-      setShowAddUserModal(false)
+      setIsAddingUser(false)
       resetNewUser()
+      setAvatarPreview(null)
       alert('Đã tạo tài khoản thành công!')
     } catch (error) {
       console.error('Error creating user:', error)
-      // Extract error message from API response
       let errorMessage = 'Có lỗi xảy ra khi tạo tài khoản. Vui lòng thử lại.'
       if (error instanceof Error) {
         errorMessage = error.message
       }
       alert(errorMessage)
+    } finally {
+      setIsCreatingUser(false)
     }
   }
 
@@ -1079,18 +1613,63 @@ export default function AdminDashboard() {
     return studentList.filter((student) => student.name.toLowerCase().includes(keyword))
   }, [studentList, studentSearchTerm])
 
-  const selectedListItem = studentList.find((item) => item.id === selectedStudentId) ?? studentList[0]
-  const baseStudentProfile = studentProfiles[selectedStudentId] ?? buildPlaceholderProfile(selectedListItem)
-  const selectedStudent = isStudentEditing && studentEditData ? studentEditData : baseStudentProfile
+  const selectedListItem = selectedStudentId 
+    ? studentList.find((item) => item.id === selectedStudentId) ?? studentList[0]
+    : studentList[0]
+  const baseStudentProfile = selectedStudentId && studentProfiles[selectedStudentId]
+    ? studentProfiles[selectedStudentId]
+    : selectedListItem
+      ? buildPlaceholderProfile(selectedListItem)
+      : null
+  const selectedStudent = isStudentEditing && studentEditData 
+    ? studentEditData 
+    : baseStudentProfile
 
   const displayedTutors = useMemo(() => {
     const keyword = tutorSearchTerm.trim().toLowerCase()
     return tutorList.filter((tutor) => tutor.name.toLowerCase().includes(keyword))
   }, [tutorList, tutorSearchTerm])
 
-  const selectedTutorListItem = tutorList.find((item) => item.id === selectedTutorId) ?? tutorList[0]
-  const baseTutorProfile = tutorProfiles[selectedTutorId] ?? createInitialTutorProfiles([selectedTutorListItem])[selectedTutorListItem.id]
-  const selectedTutor = isTutorEditing && tutorEditData ? tutorEditData : baseTutorProfile
+  const selectedTutorListItem = tutorList.length > 0 ? tutorList.find((item) => item.id === selectedTutorId) ?? tutorList[0] : null
+  const baseTutorProfile =
+    selectedTutorId && tutorProfiles[selectedTutorId]
+      ? tutorProfiles[selectedTutorId]
+      : selectedTutorListItem
+      ? createInitialTutorProfiles([selectedTutorListItem])[selectedTutorListItem.id]
+      : null
+  const selectedTutor: TutorProfile | null = isTutorEditing && tutorEditData ? tutorEditData : baseTutorProfile
+
+  const studentDetailSections: Array<{
+    title: string
+    field: EditableArrayField
+    icon: JSX.Element
+    placeholder: string
+  }> = [
+    {
+      title: 'Điểm mạnh',
+      field: 'strengths',
+      icon: <Heart className="w-4 h-4 text-pink-500" />,
+      placeholder: 'Mỗi dòng một điểm mạnh (nhấn Enter để xuống dòng)',
+    },
+    {
+      title: 'Cần cải thiện',
+      field: 'improvements',
+      icon: <ClipboardList className="w-4 h-4 text-amber-500" />,
+      placeholder: 'Mỗi dòng một mục cần cải thiện',
+    },
+    {
+      title: 'Sở thích',
+      field: 'hobbies',
+      icon: <Heart className="w-4 h-4 text-rose-500" />,
+      placeholder: 'Mỗi dòng một sở thích',
+    },
+    {
+      title: 'Môn học yêu thích',
+      field: 'favoriteSubjects',
+      icon: <BookOpenCheck className="w-4 h-4 text-blue-500" />,
+      placeholder: 'Mỗi dòng một môn học yêu thích',
+    },
+  ]
 
   const calendarDays = useMemo(() => {
     const monthStart = startOfMonth(currentCalendarMonth)
@@ -1105,8 +1684,221 @@ export default function AdminDashboard() {
     [scheduleSessions, selectedScheduleDate],
   )
 
-  const renderUserManagementSection = () => (
+  // Memoized onChange handlers to prevent re-renders
+  const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewUser((prev) => ({ ...prev, name: e.target.value }))
+  }, [])
+  
+  const handleEmailChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewUser((prev) => ({ ...prev, email: e.target.value }))
+  }, [])
+  
+  const handlePasswordChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewUser((prev) => ({ ...prev, password: e.target.value }))
+  }, [])
+  
+  const handleRoleChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setNewUser((prev) => ({
+      ...prev,
+      role: e.target.value as User['role'],
+    }))
+  }, [])
+  
+  // no-op handlers removed: user creation now only needs basic fields
+
+  const AddUserForm = (
     <div className="space-y-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-1">Thêm người dùng mới</h2>
+          <p className="text-sm text-gray-600">Điền thông tin để tạo tài khoản mới</p>
+        </div>
+        <button 
+          onClick={() => {
+            setIsAddingUser(false)
+            setAvatarPreview(null)
+            resetNewUser()
+          }} 
+          className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 transition-colors"
+        >
+          <X className="w-4 h-4" />
+          <span>Quay lại</span>
+        </button>
+      </div>
+
+      <form onSubmit={handleAddUser} className="space-y-6">
+        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-6 pb-4 border-b border-gray-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <Shield className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Thông tin đăng nhập</p>
+                <h4 className="text-lg font-bold text-gray-900">Tài khoản & phân quyền</h4>
+              </div>
+            </div>
+            <span className="px-4 py-1.5 text-sm font-semibold rounded-lg bg-blue-50 text-blue-700 border border-blue-200">
+              {newUser.role === 'student' ? 'Học sinh / Phụ huynh' : 'Tutor'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <User className="w-4 h-4 text-gray-500" />
+                Tên người dùng <span className="text-red-500">*</span>
+              </label>
+              <input 
+                id="add-user-name"
+                value={newUser.name} 
+                onChange={handleNameChange} 
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-900 placeholder-gray-400" 
+                placeholder="Nhập tên người dùng" 
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <Mail className="w-4 h-4 text-gray-500" />
+                Email <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="add-user-email"
+                type="email"
+                value={newUser.email}
+                onChange={handleEmailChange}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-900 placeholder-gray-400"
+                placeholder="Nhập email"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <Lock className="w-4 h-4 text-gray-500" />
+                Mật khẩu <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={newUser.password}
+                onChange={handlePasswordChange}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-900 placeholder-gray-400"
+                placeholder="Nhập mật khẩu"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <Shield className="w-4 h-4 text-gray-500" />
+                Vai trò <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={newUser.role}
+                onChange={handleRoleChange}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-900"
+              >
+                <option value="student">Học sinh / Phụ huynh</option>
+                <option value="tutor">Tutor</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8 space-y-6">
+          <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-gray-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                <UserCircle className="w-5 h-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Hồ sơ</p>
+                <h4 className="text-lg font-bold text-gray-900">Ảnh đại diện</h4>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gradient-to-br from-gray-50 to-gray-100/50 p-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center">
+              {avatarPreview || newUser.avatarUrl ? (
+                <div className="flex-shrink-0">
+                  <img 
+                    src={avatarPreview || newUser.avatarUrl} 
+                    alt="Preview" 
+                    className="w-32 h-32 object-cover rounded-lg border-2 border-gray-300"
+                  />
+                </div>
+              ) : (
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <ImageIcon className="w-6 h-6 text-blue-600" />
+                </div>
+              )}
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-900 mb-1">Ảnh đại diện</p>
+                <p className="text-xs text-gray-600">Tải ảnh (PNG, JPG, tối đa 5MB)</p>
+                {uploadingFile && newUser.avatar && (
+                  <p className="mt-2 text-xs font-medium text-blue-600 flex items-center gap-1">
+                    <Clock className="w-3 h-3 animate-spin" />
+                    Đang upload...
+                  </p>
+                )}
+                {!uploadingFile && newUser.avatar && (
+                  <p className="mt-2 text-xs font-medium text-blue-600 flex items-center gap-1">
+                    <FileText className="w-3 h-3" />
+                    {newUser.avatar.name}
+                  </p>
+                )}
+                {newUser.avatarUrl && !uploadingFile && (
+                  <p className="mt-1 text-xs font-medium text-green-600 flex items-center gap-1">
+                    <span className="w-4 h-4 rounded-full bg-green-500 text-white flex items-center justify-center text-[10px]">✓</span>
+                    Đã upload thành công
+                  </p>
+                )}
+              </div>
+              <label className={`px-5 py-3 bg-white border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 cursor-pointer text-center font-semibold text-gray-700 transition-all flex items-center justify-center gap-2 ${uploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <ImageIcon className="w-4 h-4" />
+                {uploadingFile ? 'Đang upload...' : (avatarPreview || newUser.avatarUrl) ? 'Đổi ảnh' : 'Chọn ảnh'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingFile}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null
+                    handleAddUserAvatarChange(file)
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pt-4 border-t border-gray-200">
+          <button 
+            type="button" 
+            onClick={() => {
+            setIsAddingUser(false)
+            setAvatarPreview(null)
+            resetNewUser()
+          }} 
+            className="px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all flex items-center justify-center gap-2"
+          >
+            <X className="w-4 h-4" />
+            Hủy
+          </button>
+          <button 
+            type="submit" 
+            disabled={isCreatingUser}
+            className={`px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg transition-all flex items-center justify-center gap-2 shadow-md ${isCreatingUser ? 'opacity-60 cursor-not-allowed' : 'hover:bg-blue-700 hover:shadow-lg'}`}
+          >
+            <UserPlus className="w-4 h-4" />
+            {isCreatingUser ? 'Đang tạo...' : 'Lưu tài khoản'}
+          </button>
+        </div>
+      </form>
+    </div>
+    )
+
+  const renderUserManagementSection = () => {
+    return (
+    <div className="space-y-6">
+      {/* Statistics Cards - Always visible */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Tổng số người dùng', value: statsLoading ? '...' : stats.total, icon: <Users className="w-7 h-7 text-white" />, gradient: 'from-blue-500 to-blue-600' },
@@ -1126,7 +1918,12 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      <div className="card">
+      {/* Show AddUserForm or User Management Table based on isAddingUser */}
+      {isAddingUser ? (
+        AddUserForm
+      ) : (
+        <>
+          <div className="card">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
           <div>
             <h2 className="text-xl font-bold text-gray-900 mb-1">Quản lý tài khoản người dùng</h2>
@@ -1147,6 +1944,7 @@ export default function AdminDashboard() {
                 { label: 'Tất cả', value: 'all' as const },
                 { label: 'Học sinh / PH', value: 'student' as const },
                 { label: 'Tutor', value: 'tutor' as const },
+                { label: 'Admin', value: 'admin' as const },
               ].map((button) => (
                 <button
                   key={button.value}
@@ -1159,7 +1957,47 @@ export default function AdminDashboard() {
                 </button>
               ))}
             </div>
-            <button onClick={() => setShowAddUserModal(true)} className="btn-primary flex items-center justify-center gap-2">
+            <div className="flex items-center bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm gap-2">
+              <span className="text-xs text-gray-500 font-semibold">Sắp xếp:</span>
+              <select
+                value={sortField}
+                onChange={(e) => {
+                  const newField = e.target.value as 'name' | 'email' | 'createdAt'
+                  setSortField(newField)
+                  // Reset sort order based on field type
+                  if (newField === 'createdAt') {
+                    // Default to "Gần nhất" (desc) for date
+                    setSortOrder('desc')
+                  } else {
+                    // Default to "A - Z" (asc) for name/email
+                    setSortOrder('asc')
+                  }
+                }}
+                className="text-sm text-gray-700 outline-none bg-transparent border-none"
+              >
+                <option value="name">Tên</option>
+                <option value="email">Email</option>
+                <option value="createdAt">Ngày tham gia</option>
+              </select>
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+                className="text-sm text-gray-700 outline-none bg-transparent border-none"
+              >
+                {sortField === 'createdAt' ? (
+                  <>
+                    <option value="desc">Gần nhất</option>
+                    <option value="asc">Muộn nhất</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="asc">A - Z</option>
+                    <option value="desc">Z - A</option>
+                  </>
+                )}
+              </select>
+            </div>
+            <button onClick={() => setIsAddingUser(true)} className="btn-primary flex items-center justify-center gap-2">
               <UserPlus className="w-4 h-4" />
               <span>Thêm tài khoản</span>
             </button>
@@ -1193,51 +2031,61 @@ export default function AdminDashboard() {
                 </tr>
               ) : (
                 paginatedUsers.map((user) => {
-                const isVisible = visiblePasswords[user.id]
                 const isEditing = editUserId === user.id
                 return (
                   <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                       {isEditing ? (
-                        <input className="input h-9 min-w-[180px]" value={editData.email ?? ''} onChange={(e) => updateEditField('email', e.target.value)} />
+                        <input 
+                          className="w-full min-w-[180px] h-9 px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
+                          value={editData.email ?? ''} 
+                          onChange={(e) => updateEditField('email', e.target.value)}
+                          placeholder="Nhập email"
+                        />
                       ) : (
                         user.email
                       )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
                       {isEditing ? (
-                        <input className="input h-9" value={editData.name ?? ''} onChange={(e) => updateEditField('name', e.target.value)} />
+                        <input 
+                          className="w-full min-w-[150px] h-9 px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
+                          value={editData.name ?? ''} 
+                          onChange={(e) => updateEditField('name', e.target.value)}
+                          placeholder="Nhập tên"
+                        />
                       ) : (
                         user.name
                       )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm">
                       {isEditing ? (
-                        <input className="input h-9" value={editData.password ?? ''} onChange={(e) => updateEditField('password', e.target.value)} />
+                        <input 
+                          type="password"
+                          className="w-full min-w-[120px] h-9 px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
+                          value={editData.password ?? ''} 
+                          onChange={(e) => updateEditField('password', e.target.value)}
+                          placeholder="Nhập mật khẩu mới"
+                        />
                       ) : (
-                        <div className="inline-flex items-center space-x-2">
-                          <span className="font-semibold tracking-wider text-gray-800">{isVisible ? user.password : '********'}</span>
-                          <button
-                            onClick={() => togglePasswordVisibility(user.id)}
-                            className="text-gray-500 hover:text-primary-600"
-                            title={isVisible ? 'Ẩn mật khẩu' : 'Hiển thị mật khẩu'}
-                          >
-                            {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                          <button 
-                            onClick={() => handleResetPassword(user.id)}
-                            className="text-xs text-primary-600 font-semibold hover:text-primary-700"
-                          >
-                            Reset
-                          </button>
-                        </div>
+                        <button 
+                          onClick={() => handleResetPassword(user.id)}
+                          className="text-xs text-primary-600 font-semibold hover:text-primary-700"
+                        >
+                          Reset
+                        </button>
                       )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
                       {isEditing ? (
-                        <select className="input h-9" value={editData.role ?? 'student'} onChange={(e) => updateEditField('role', e.target.value as User['role'])}>
+                        <select 
+                          className="w-full min-w-[150px] h-9 px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
+                          value={editData.role ?? 'student'} 
+                          onChange={(e) => updateEditField('role', e.target.value as User['role'])}
+                        >
                           <option value="student">Học sinh / Phụ huynh</option>
                           <option value="tutor">Tutor</option>
+                          <option value="admin">Admin</option>
                         </select>
                       ) : (
                         ROLE_LABELS[user.role]
@@ -1245,9 +2093,31 @@ export default function AdminDashboard() {
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
                       {isEditing ? (
-                        <input className="input h-9" type="date" value={editData.joinDate ?? ''} onChange={(e) => updateEditField('joinDate', e.target.value)} />
+                        <input 
+                          className="w-full min-w-[160px] h-9 px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
+                          type="text" 
+                          value={editData.joinDate ?? ''} 
+                          onChange={(e) => {
+                            let value = e.target.value
+                            // Remove non-numeric characters except /
+                            value = value.replace(/[^\d/]/g, '')
+                            // Auto-format as user types: dd/mm/yyyy
+                            if (value.length > 2 && value[2] !== '/') {
+                              value = value.slice(0, 2) + '/' + value.slice(2)
+                            }
+                            if (value.length > 5 && value[5] !== '/') {
+                              value = value.slice(0, 5) + '/' + value.slice(5)
+                            }
+                            // Limit to dd/mm/yyyy format (10 characters)
+                            if (value.length <= 10) {
+                              updateEditField('joinDate', value)
+                            }
+                          }}
+                          placeholder="dd/mm/yyyy"
+                          pattern="\d{2}/\d{2}/\d{4}"
+                        />
                       ) : (
-                        user.joinDate ? new Date(user.joinDate).toLocaleDateString('vi-VN') : (user.birthday ? new Date(user.birthday).toLocaleDateString('vi-VN') : 'N/A')
+                        user.joinDate || (user.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN') : 'N/A')
                       )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
@@ -1265,7 +2135,9 @@ export default function AdminDashboard() {
                           <button onClick={() => startEditUser(user)} className="text-primary-600 hover:text-primary-700 text-sm font-semibold">
                             Sửa
                           </button>
-                          <button className="text-red-600 hover:text-red-700 text-sm font-semibold">Xóa</button>
+                          <button onClick={() => handleDeleteUser(user.id)} className="text-red-600 hover:text-red-700 text-sm font-semibold">
+                            Xóa
+                          </button>
                         </div>
                       )}
                     </td>
@@ -1357,8 +2229,11 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+        </>
+      )}
     </div>
-  )
+    )
+  }
 
   const renderStudentManagementSection = () => (
     <div className="h-full overflow-hidden">
@@ -1392,6 +2267,9 @@ export default function AdminDashboard() {
           </div>
 
           <div className="flex-1 overflow-y-auto pr-1 mt-5">
+            {studentsLoading ? (
+              <div className="py-6 text-center text-sm text-gray-500">Đang tải dữ liệu...</div>
+            ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {displayedStudents.map((student) => {
                 const isActive = student.id === selectedStudentId
@@ -1421,20 +2299,28 @@ export default function AdminDashboard() {
                 )
               })}
             </div>
-            {displayedStudents.length === 0 && <div className="py-6 text-center text-sm text-gray-500">Không tìm thấy học sinh phù hợp.</div>}
+            )}
+            {!studentsLoading && displayedStudents.length === 0 && <div className="py-6 text-center text-sm text-gray-500">Không tìm thấy học sinh phù hợp.</div>}
           </div>
 
           <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500 font-semibold">Danh sách hiển thị toàn bộ học sinh</div>
         </div>
 
         <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
+          {!selectedStudent ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center text-gray-500">
+                <p className="text-sm">Vui lòng chọn học sinh để xem thông tin chi tiết</p>
+              </div>
+            </div>
+          ) : (
+            <>
           <div>
             <div className="flex items-center justify-between gap-3 flex-wrap mb-6 pb-4 border-b border-gray-200">
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Thông tin chi tiết</p>
                 <h3 className="text-xl font-semibold text-gray-900">{selectedStudent.name}</h3>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className={`px-3 py-0.5 text-xs font-semibold rounded-full ${selectedStudent.subjectColor}`}>{selectedStudent.subject}</span>
                   <span className="text-xs text-gray-500">{selectedStudent.status}</span>
                 </div>
               </div>
@@ -1457,10 +2343,39 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto pr-1 space-y-5">
-            <div className="w-full rounded-3xl border border-gray-100 bg-gray-50/70 p-5 flex flex-col gap-4 md:flex-row md:items-center md:gap-5 shadow-inner">
-              <div className="w-24 h-24 rounded-3xl overflow-hidden border-4 border-white shadow-lg flex-shrink-0">
-                <img src={selectedStudent.avatar} alt={selectedStudent.name} className="w-full h-full object-cover" />
+          <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+            <div className="w-full rounded-2xl border border-gray-100 bg-gray-50/70 p-4 flex flex-col gap-3 md:flex-row md:items-center md:gap-4 shadow-inner">
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-white shadow-md flex-shrink-0">
+                  <img src={studentEditData?.avatar ?? selectedStudent.avatar} alt={selectedStudent.name} className="w-full h-full object-cover" />
+                </div>
+                {isStudentEditing && (
+                  <label className="text-xs font-semibold text-primary-600 cursor-pointer flex items-center gap-1">
+                    {studentAvatarUploading ? 'Đang upload...' : 'Đổi ảnh'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+                        const maxSize = 5 * 1024 * 1024
+                        if (!validTypes.includes(file.type)) {
+                          alert('Vui lòng chọn file ảnh (jpg, png, gif, webp)')
+                          e.target.value = ''
+                          return
+                        }
+                        if (file.size > maxSize) {
+                          alert('Kích thước ảnh không được vượt quá 5MB')
+                          e.target.value = ''
+                          return
+                        }
+                        handleStudentAvatarUpload(file)
+                      }}
+                    />
+                  </label>
+                )}
               </div>
               <div className="flex-1">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Học sinh</p>
@@ -1470,16 +2385,19 @@ export default function AdminDashboard() {
                     className="input text-base font-semibold"
                     value={studentEditData?.name ?? ''}
                     onChange={(e) => handleStudentEditFieldChange('name', e.target.value)}
+                    placeholder="Nhập tên học sinh"
                   />
                   <input
                     className="input text-sm"
                     value={studentEditData?.grade ?? ''}
                     onChange={(e) => handleStudentEditFieldChange('grade', e.target.value)}
+                    placeholder="Nhập lớp"
                   />
                   <input
                     className="input text-sm"
                     value={studentEditData?.school ?? ''}
                     onChange={(e) => handleStudentEditFieldChange('school', e.target.value)}
+                    placeholder="Nhập trường học"
                   />
                   <select
                     className="input text-sm"
@@ -1492,7 +2410,7 @@ export default function AdminDashboard() {
                 </div>
               ) : (
                 <>
-                  <h4 className="text-2xl font-bold text-gray-900">{selectedStudent.name}</h4>
+                  <h4 className="text-xl font-bold text-gray-900">{selectedStudent.name}</h4>
                   <p className="text-sm text-gray-500">
                     {selectedStudent.grade} • {selectedStudent.school || 'Đang cập nhật'}
                   </p>
@@ -1501,396 +2419,625 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center shadow-inner">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="p-3 rounded-2xl border border-gray-100 bg-gray-50/60 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shadow-inner flex-shrink-0">
                 <Calendar className="w-4 h-4 text-primary-500" />
               </div>
-              <div className="flex-1">
-                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Ngày sinh</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em] mb-0.5">Ngày sinh</p>
                 {isStudentEditing ? (
                   <input
                     type="date"
                     className="input text-sm"
                     value={studentEditData?.dob ?? ''}
                     onChange={(e) => handleStudentEditFieldChange('dob', e.target.value)}
+                    placeholder="Chọn ngày sinh"
                   />
                 ) : (
-                  <p className="text-sm font-semibold text-gray-900">{new Date(selectedStudent.dob).toLocaleDateString('vi-VN')}</p>
+                  <p className="text-sm font-semibold text-gray-900 truncate">{new Date(selectedStudent.dob).toLocaleDateString('vi-VN')}</p>
                 )}
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center shadow-inner">
+            <div className="p-3 rounded-2xl border border-gray-100 bg-gray-50/60 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shadow-inner flex-shrink-0">
                 <MapPin className="w-4 h-4 text-primary-500" />
               </div>
-              <div className="flex-1">
-                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Địa chỉ</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em] mb-0.5">Địa chỉ</p>
                 {isStudentEditing ? (
                   <input
                     className="input text-sm"
                     value={studentEditData?.address ?? ''}
                     onChange={(e) => handleStudentEditFieldChange('address', e.target.value)}
+                    placeholder="Nhập địa chỉ"
                   />
                 ) : (
-                  <p className="text-sm font-semibold text-gray-900">{selectedStudent.address}</p>
+                  <p className="text-sm font-semibold text-gray-900 truncate">{selectedStudent.address}</p>
                 )}
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center shadow-inner">
+            <div className="p-3 rounded-2xl border border-gray-100 bg-gray-50/60 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shadow-inner flex-shrink-0">
                 <BookOpenCheck className="w-4 h-4 text-primary-500" />
               </div>
-              <div className="flex-1">
-                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Trường học</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em] mb-0.5">Trường học</p>
                 {isStudentEditing ? (
                   <input
                     className="input text-sm"
                     value={studentEditData?.school ?? ''}
                     onChange={(e) => handleStudentEditFieldChange('school', e.target.value)}
+                    placeholder="Nhập tên trường học"
                   />
                 ) : (
-                  <p className="text-sm font-semibold text-gray-900">{selectedStudent.school}</p>
+                  <p className="text-sm font-semibold text-gray-900 truncate">{selectedStudent.school}</p>
                 )}
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center shadow-inner">
+            <div className="p-3 rounded-2xl border border-gray-100 bg-gray-50/60 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shadow-inner flex-shrink-0">
                 <BookOpenCheck className="w-4 h-4 text-primary-500" />
               </div>
-              <div className="flex-1">
-                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Lớp</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em] mb-0.5">Lớp</p>
                 {isStudentEditing ? (
                   <input
                     className="input text-sm"
                     value={studentEditData?.grade ?? ''}
                     onChange={(e) => handleStudentEditFieldChange('grade', e.target.value)}
+                    placeholder="Nhập lớp học"
                   />
                 ) : (
-                  <p className="text-sm font-semibold text-gray-900">{selectedStudent.grade}</p>
+                  <p className="text-sm font-semibold text-gray-900 truncate">{selectedStudent.grade}</p>
                 )}
               </div>
             </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-3">
-              <div className="p-5 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Trình độ hiện tại</p>
+              <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-inner">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">Trình độ hiện tại</p>
                 {isStudentEditing ? (
                   <textarea
                     className="input text-sm"
                     value={studentEditData?.currentLevel ?? ''}
                     onChange={(e) => handleStudentEditFieldChange('currentLevel', e.target.value)}
+                    placeholder="Nhập trình độ hiện tại"
                   />
                 ) : (
                   <p className="text-sm text-gray-700 leading-relaxed">{selectedStudent.currentLevel}</p>
                 )}
               </div>
-              <div className="p-5 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Yêu cầu từ phụ huynh</p>
-                {isStudentEditing ? (
-                  <textarea
-                    className="input text-sm"
-                    value={studentEditData?.parentRequest ?? ''}
-                    onChange={(e) => handleStudentEditFieldChange('parentRequest', e.target.value)}
-                  />
-                ) : (
-                  <p className="text-sm text-gray-700 leading-relaxed">{selectedStudent.parentRequest}</p>
-                )}
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Phụ huynh</p>
-                <div className="mt-3 space-y-3">
-                  {[
-                    { title: 'Bố', nameKey: 'fatherName' as const, phoneKey: 'fatherPhone' as const },
-                    { title: 'Mẹ', nameKey: 'motherName' as const, phoneKey: 'motherPhone' as const },
-                  ].map((parent) => (
-                    <div key={parent.title} className="flex flex-col gap-2">
-                      <p className="text-xs text-gray-500 uppercase tracking-[0.2em]">{parent.title}</p>
-                      {isStudentEditing ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <input
-                            className="input text-sm"
-                            value={studentEditData?.parentInfo[parent.nameKey] ?? ''}
-                            onChange={(e) => handleParentInfoChange(parent.nameKey, e.target.value)}
-                            placeholder="Họ và tên"
-                          />
-                          <input
-                            className="input text-sm"
-                            value={studentEditData?.parentInfo[parent.phoneKey] ?? ''}
-                            onChange={(e) => handleParentInfoChange(parent.phoneKey, e.target.value)}
-                            placeholder="Số điện thoại"
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-semibold text-gray-900">{selectedStudent.parentInfo[parent.nameKey]}</p>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <Phone className="w-4 h-4 text-primary-500" />
-                            {selectedStudent.parentInfo[parent.phoneKey]}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
               <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-inner">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Email liên hệ</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">Email liên hệ</p>
                 {isStudentEditing ? (
                   <input
                     type="email"
                     className="input text-sm"
                     value={studentEditData?.parentInfo.email ?? ''}
                     onChange={(e) => handleParentInfoChange('email', e.target.value)}
+                    placeholder="Nhập email liên hệ"
                   />
                 ) : (
                   <p className="text-sm font-semibold text-primary-600">{selectedStudent.parentInfo.email}</p>
                 )}
               </div>
             </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {[
-              { title: 'Điểm mạnh', items: selectedStudent.strengths, icon: <Heart className="w-4 h-4 text-pink-500" /> },
-              { title: 'Cần cải thiện', items: selectedStudent.improvements, icon: <ClipboardList className="w-4 h-4 text-amber-500" /> },
-              { title: 'Sở thích', items: selectedStudent.hobbies, icon: <Heart className="w-4 h-4 text-rose-500" /> },
-            ].map((section) => (
-              <div key={section.title} className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60 space-y-3">
-                <div className="flex items-center gap-2">
-                  {section.icon}
-                  <p className="text-sm font-semibold text-gray-900">{section.title}</p>
-                </div>
-                <ul className="space-y-2 text-sm text-gray-700 list-disc list-inside">
-                  {section.items.map((item) => (
-                    <li key={item}>{item}</li>
+            <div className="space-y-3">
+              <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">Phụ huynh</p>
+                <div className="space-y-2">
+                  {[
+                    {
+                      title: 'Bố',
+                      nameKey: 'fatherName' as const,
+                      phoneKey: 'fatherPhone' as const,
+                      emailKey: 'fatherEmail' as const,
+                      requestKey: 'fatherRequest' as const,
+                      namePlaceholder: 'Họ và tên bố',
+                      phonePlaceholder: 'Số điện thoại bố',
+                    },
+                    {
+                      title: 'Mẹ',
+                      nameKey: 'motherName' as const,
+                      phoneKey: 'motherPhone' as const,
+                      emailKey: 'motherEmail' as const,
+                      requestKey: 'motherRequest' as const,
+                      namePlaceholder: 'Họ và tên mẹ',
+                      phonePlaceholder: 'Số điện thoại mẹ',
+                    },
+                  ].map((parent) => (
+                    <div key={parent.title} className="flex flex-col gap-1.5">
+                      <p className="text-xs text-gray-500 uppercase tracking-[0.2em]">{parent.title}</p>
+                      {isStudentEditing ? (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input
+                              className="input text-sm"
+                              value={studentEditData?.parentInfo[parent.nameKey] ?? ''}
+                              onChange={(e) => handleParentInfoChange(parent.nameKey, e.target.value)}
+                              placeholder={parent.namePlaceholder}
+                            />
+                            <input
+                              className="input text-sm"
+                              value={studentEditData?.parentInfo[parent.phoneKey] ?? ''}
+                              onChange={(e) => handleParentInfoChange(parent.phoneKey, e.target.value)}
+                              placeholder={parent.phonePlaceholder}
+                            />
+                          </div>
+                          <input
+                            className="input text-sm"
+                            type="email"
+                            value={studentEditData?.parentInfo[parent.emailKey] ?? ''}
+                            onChange={(e) => handleParentInfoChange(parent.emailKey, e.target.value)}
+                            placeholder="Email liên hệ"
+                          />
+                          <textarea
+                            className="input text-sm"
+                            value={studentEditData?.parentInfo[parent.requestKey] ?? ''}
+                            onChange={(e) => handleParentInfoChange(parent.requestKey, e.target.value)}
+                            placeholder="Yêu cầu/phản hồi"
+                          />
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold text-gray-900">{selectedStudent.parentInfo[parent.nameKey]}</p>
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                              <Phone className="w-4 h-4 text-primary-500" />
+                              {selectedStudent.parentInfo[parent.phoneKey]}
+                            </div>
+                          </div>
+                          {selectedStudent.parentInfo[parent.emailKey] && (
+                            <p className="text-xs text-gray-600">{selectedStudent.parentInfo[parent.emailKey]}</p>
+                          )}
+                          {selectedStudent.parentInfo[parent.requestKey] && (
+                            <p className="text-xs italic text-gray-500">{selectedStudent.parentInfo[parent.requestKey]}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ))}
-                </ul>
+                </div>
               </div>
-            ))}
+            </div>
             </div>
 
-            <div className="p-5 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Ghi chú tổng quan</p>
-              <p className="text-sm text-gray-700 leading-relaxed">{selectedStudent.notes}</p>
-              <div className="flex flex-wrap gap-2">
-                {selectedStudent.favoriteSubjects.map((subject) => (
-                  <span key={subject} className="px-3 py-1 text-xs font-semibold rounded-full bg-primary-50 text-primary-600">
-                    {subject}
-                  </span>
-                ))}
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-3">
+              {studentDetailSections.map((section) => {
+                const currentItems = (selectedStudent[section.field] as string[]) ?? []
+                const editingValue = ((studentEditData?.[section.field] as string[]) ?? []).join('\n')
+                return (
+                  <div key={section.title} className="p-3 rounded-2xl border border-gray-100 bg-gray-50/60">
+                    <div className="flex items-center gap-2 mb-2">
+                      {section.icon}
+                      <p className="text-sm font-semibold text-gray-900">{section.title}</p>
+                    </div>
+                    {isStudentEditing ? (
+                  <textarea
+                        className="input text-sm whitespace-pre-wrap"
+                        value={studentArrayDrafts[section.field] ?? editingValue}
+                    onChange={(e) => handleStudentArrayFieldChange(section.field, e.target.value)}
+                    placeholder={section.placeholder}
+                  />
+                ) : section.field === 'favoriteSubjects' ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {currentItems.length > 0 ? (
+                          currentItems.map((item: string) => (
+                            <span key={item} className="px-2.5 py-1 text-xs font-semibold rounded-full bg-primary-50 text-primary-600">
+                              {item}
+                            </span>
+                          ))
+                        ) : (
+                          <p className="text-sm text-gray-500">Chưa có môn học yêu thích</p>
+                        )}
+                      </div>
+                    ) : (
+                      <ul className="space-y-1 text-sm text-gray-700 list-disc list-inside">
+                        {currentItems.length > 0 ? (
+                          currentItems.map((item: string) => (
+                            <li key={item}>{item}</li>
+                          ))
+                        ) : (
+                          <li className="text-gray-500">Chưa có thông tin</li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-inner">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">Ghi chú tổng quan</p>
+              <p className="text-sm text-gray-700 leading-relaxed">{selectedStudent.notes || 'Chưa có ghi chú'}</p>
               </div>
             </div>
-          </div>
+            </>
+          )}
         </div>
       </div>
     </div>
   )
 
-  const renderTutorManagementSection = () => (
-    <div className="h-full overflow-hidden">
-      <div className="flex flex-col gap-2 mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Quản lý tutor</h2>
-        <p className="text-sm text-gray-600">Theo dõi hồ sơ tutor và cập nhật nhanh CV, thông tin liên hệ</p>
-      </div>
+  const renderTutorManagementSection = () => {
+    if (tutorsLoading) {
+      return (
+        <div className="flex items-center justify-center h-full py-10">
+          <div className="card max-w-md text-center text-gray-600">Đang tải dữ liệu tutor...</div>
+        </div>
+      )
+    }
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full">
-        <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
-          <div className="flex items-center justify-between gap-3 flex-wrap border-b border-gray-200 pb-4">
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Danh sách tutor</p>
-              <h3 className="text-lg font-semibold text-gray-900">{displayedTutors.length} tutor đang hiển thị</h3>
-            </div>
-            <div className="flex items-center bg-white border border-gray-200 rounded-2xl px-3 py-2 shadow-sm">
-              <Search className="w-4 h-4 text-gray-500 mr-2" />
-              <input
-                value={tutorSearchTerm}
-                onChange={handleTutorSearchChange}
-                placeholder="Tìm kiếm tutor theo tên..."
-                className="text-sm text-gray-700 outline-none bg-transparent flex-1"
-              />
-            </div>
-          </div>
+    if (!selectedTutor) {
+      return (
+        <div className="card text-center text-gray-500">
+          Chưa có dữ liệu tutor. Vui lòng tạo tài khoản tutor hoặc cập nhật thông tin.
+        </div>
+      )
+    }
 
-          <div className="flex-1 overflow-y-auto pr-1 mt-5">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {displayedTutors.map((tutor) => {
-                const isActive = tutor.id === selectedTutorId
-                return (
-                  <button
-                    key={tutor.id}
-                    onClick={() => setSelectedTutorId(tutor.id)}
-                    className={`text-left rounded-xl p-4 transition-all duration-200 ${
-                      isActive
-                        ? 'bg-gradient-to-br from-purple-50 to-blue-50 border-2 border-purple-500 shadow-lg ring-2 ring-purple-100'
-                        : 'bg-white border-2 border-gray-200 hover:border-purple-300 hover:shadow-md'
-                    }`}
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-200">
-                        <img src={tutor.avatar} alt={tutor.name} className="w-full h-full object-cover" loading="lazy" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className={`text-lg font-bold truncate ${isActive ? 'text-purple-700' : 'text-gray-900'}`}>
-                          {tutor.name}
-                        </h3>
-                        <p className="text-sm text-gray-500 mt-1 truncate">{tutor.headline}</p>
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {tutor.subjects.slice(0, 2).map((subject) => (
-                            <span key={subject} className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 text-gray-600">
-                              {subject}
-                            </span>
-                          ))}
-                          {tutor.subjects.length > 2 && (
-                            <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 text-gray-600">
-                              +{tutor.subjects.length - 2}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-            {displayedTutors.length === 0 && <div className="py-6 text-center text-sm text-gray-500">Không tìm thấy tutor phù hợp.</div>}
-          </div>
+    return (
+      <div className="h-full overflow-hidden">
+        <div className="flex flex-col gap-2 mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Quản lý tutor</h2>
+          <p className="text-sm text-gray-600">Theo dõi hồ sơ tutor và cập nhật nhanh CV, thông tin liên hệ</p>
         </div>
 
-        <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
-          <div>
-            <div className="flex items-center justify-between gap-3 flex-wrap mb-6 pb-4 border-b border-gray-200">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full">
+          <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
+            <div className="flex items-center justify-between gap-3 flex-wrap border-b border-gray-200 pb-4">
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Hồ sơ tutor</p>
-                <h3 className="text-xl font-semibold text-gray-900">{selectedTutor.name}</h3>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="px-3 py-0.5 text-xs font-semibold rounded-full bg-white border border-gray-200 text-gray-700">{selectedTutor.status}</span>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Danh sách tutor</p>
+                <h3 className="text-lg font-semibold text-gray-900">{displayedTutors.length} tutor đang hiển thị</h3>
+              </div>
+              <div className="flex items-center bg-white border border-gray-200 rounded-2xl px-3 py-2 shadow-sm">
+                <Search className="w-4 h-4 text-gray-500 mr-2" />
+                <input
+                  value={tutorSearchTerm}
+                  onChange={handleTutorSearchChange}
+                  placeholder="Tìm kiếm tutor theo tên..."
+                  className="text-sm text-gray-700 outline-none bg-transparent flex-1"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 mt-5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {displayedTutors.map((tutor) => {
+                  const isActive = tutor.id === selectedTutorId
+                  return (
+                    <button
+                      key={tutor.id}
+                      onClick={() => setSelectedTutorId(tutor.id)}
+                      className={`text-left rounded-xl p-4 transition-all duration-200 ${
+                        isActive
+                          ? 'bg-gradient-to-br from-purple-50 to-blue-50 border-2 border-purple-500 shadow-lg ring-2 ring-purple-100'
+                          : 'bg-white border-2 border-gray-200 hover:border-purple-300 hover:shadow-md'
+                      }`}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-200">
+                          <img src={tutor.avatar} alt={tutor.name} className="w-full h-full object-cover" loading="lazy" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className={`text-lg font-bold truncate ${isActive ? 'text-purple-700' : 'text-gray-900'}`}>
+                            {tutor.name}
+                          </h3>
+                          <p className="text-sm text-gray-500 mt-1 truncate">{tutor.headline}</p>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {tutor.subjects.slice(0, 2).map((subject) => (
+                              <span key={subject} className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 text-gray-600">
+                                {subject}
+                              </span>
+                            ))}
+                            {tutor.subjects.length > 2 && (
+                              <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 text-gray-600">
+                                +{tutor.subjects.length - 2}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+              {displayedTutors.length === 0 && <div className="py-6 text-center text-sm text-gray-500">Không tìm thấy tutor phù hợp.</div>}
+            </div>
+          </div>
+
+          <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
+            <div>
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-6 pb-4 border-b border-gray-200">
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Hồ sơ tutor</p>
+                  <h3 className="text-xl font-semibold text-gray-900">{selectedTutor.name}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="px-3 py-0.5 text-xs font-semibold rounded-full bg-white border border-gray-200 text-gray-700">{selectedTutor.status}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isTutorEditing ? (
+                    <>
+                      <button
+                        onClick={handleTutorSave}
+                        className={`btn-primary text-sm px-4 py-2 ${isSavingTutor ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        disabled={isSavingTutor}
+                      >
+                        {isSavingTutor ? 'Đang lưu...' : 'Lưu'}
+                      </button>
+                      <button onClick={cancelTutorEditing} className="btn-secondary text-sm px-4 py-2">
+                        Hủy
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={startTutorEditing} className="btn-primary text-sm px-4 py-2">
+                      Chỉnh sửa
+                    </button>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 space-y-5">
+              <div className="w-full rounded-3xl border border-gray-100 bg-gray-50/70 p-5 flex flex-col gap-4 md:flex-row md:items-center md:gap-5 shadow-inner">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-24 h-24 rounded-3xl overflow-hidden border-4 border-white shadow-lg flex-shrink-0">
+                    <img src={tutorEditData?.avatar ?? selectedTutor.avatar} alt={selectedTutor.name} className="w-full h-full object-cover" />
+                  </div>
+                  {isTutorEditing && (
+                    <label className="text-xs font-semibold text-primary-600 cursor-pointer flex items-center gap-1 hover:text-primary-700">
+                      {tutorAvatarUploading ? (
+                        <>
+                          <Clock className="w-3 h-3 animate-spin" />
+                          Đang upload...
+                        </>
+                      ) : (
+                        <>
+                          <ImageIcon className="w-3 h-3" />
+                          Đổi ảnh
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={tutorAvatarUploading}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+                          const maxSize = 5 * 1024 * 1024
+                          if (!validTypes.includes(file.type)) {
+                            alert('Vui lòng chọn file ảnh (jpg, png, gif, webp)')
+                            e.target.value = ''
+                            return
+                          }
+                          if (file.size > maxSize) {
+                            alert('Kích thước ảnh không được vượt quá 5MB')
+                            e.target.value = ''
+                            return
+                          }
+                          handleTutorAvatarUpload(file)
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Tutor</p>
+                  {isTutorEditing ? (
+                    <>
+                      <input className="input text-base font-semibold mb-2" value={tutorEditData?.name ?? ''} onChange={(e) => handleTutorFieldChange('name', e.target.value)} />
+                      <input
+                        className="input text-sm mb-2"
+                        value={tutorEditData?.qualification ?? ''}
+                        onChange={(e) => handleTutorFieldChange('qualification', e.target.value)}
+                        placeholder="Nhập học vị/chuyên môn (ví dụ: Thạc sĩ Toán ứng dụng)"
+                      />
+                      <select className="input text-sm" value={tutorEditData?.status ?? 'Đang dạy'} onChange={(e) => handleTutorFieldChange('status', e.target.value)}>
+                        <option value="Đang dạy">Đang dạy</option>
+                        <option value="Tạm nghỉ">Tạm nghỉ</option>
+                      </select>
+                    </>
+                  ) : (
+                    <>
+                      <h4 className="text-2xl font-bold text-gray-900">{selectedTutor.name}</h4>
+                      <p className="text-sm text-gray-500">{selectedTutor.qualification?.trim() || 'Chưa cập nhật'}</p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
+                  <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Kinh nghiệm</p>
+                  {isTutorEditing ? (
+                    <textarea className="input text-sm" value={tutorEditData?.experience ?? ''} onChange={(e) => handleTutorFieldChange('experience', e.target.value)} />
+                  ) : (
+                    <p className="text-sm font-semibold text-gray-900 leading-relaxed">{selectedTutor.experience}</p>
+                  )}
+                </div>
+                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60 space-y-2">
+                  <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Liên hệ</p>
+                  {isTutorEditing ? (
+                    <div className="space-y-2">
+                      <input className="input text-sm" value={tutorEditData?.email ?? ''} onChange={(e) => handleTutorFieldChange('email', e.target.value)} placeholder="Email" />
+                      <input className="input text-sm" value={tutorEditData?.phone ?? ''} onChange={(e) => handleTutorFieldChange('phone', e.target.value)} placeholder="Số điện thoại" />
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-semibold text-gray-900">{selectedTutor.email}</p>
+                      <p className="text-sm text-gray-600">{selectedTutor.phone}</p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
+                  <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Môn phụ trách</p>
+                  {isTutorEditing ? (
+                    <input
+                      className="input text-sm"
+                      value={(tutorEditData?.subjects ?? []).join(', ')}
+                      onChange={(e) => handleTutorSubjectsChange(e.target.value)}
+                      placeholder="Ngăn cách bằng dấu phẩy"
+                    />
+                  ) : (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {selectedTutor.subjects.length > 0 ? (
+                        selectedTutor.subjects.map((subject) => (
+                          <span key={subject} className="px-3 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-600">
+                            {subject}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-gray-500">Chưa cập nhật</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
+                  <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Hồ sơ & CV</p>
+                  {isTutorEditing ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <label className={`flex-1 px-3 py-2 text-sm font-semibold rounded-lg border-2 border-gray-300 cursor-pointer text-center transition-all flex items-center justify-center gap-2 ${
+                          tutorCvUploading 
+                            ? 'opacity-50 cursor-not-allowed bg-gray-100' 
+                            : 'bg-white hover:border-primary-500 hover:bg-primary-50 text-gray-700'
+                        }`}>
+                          {tutorCvUploading ? (
+                            <>
+                              <Clock className="w-4 h-4 animate-spin" />
+                              Đang upload...
+                            </>
+                          ) : (
+                            <>
+                              <FileText className="w-4 h-4" />
+                              Upload CV
+                            </>
+                          )}
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx"
+                            className="hidden"
+                            disabled={tutorCvUploading}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (!file) return
+                              const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+                              const maxSize = 10 * 1024 * 1024 // 10MB
+                              if (!validTypes.includes(file.type)) {
+                                alert('Vui lòng chọn file PDF hoặc Word (.pdf, .doc, .docx)')
+                                e.target.value = ''
+                                return
+                              }
+                              if (file.size > maxSize) {
+                                alert('Kích thước file không được vượt quá 10MB')
+                                e.target.value = ''
+                                return
+                              }
+                              handleTutorCvUpload(file)
+                            }}
+                          />
+                        </label>
+                      </div>
+                      <div className="text-xs text-gray-500">Hoặc nhập link CV:</div>
+                      <input 
+                        className="input text-sm" 
+                        value={tutorEditData?.cvUrl ?? ''} 
+                        onChange={(e) => handleTutorFieldChange('cvUrl', e.target.value)} 
+                        placeholder="Link CV (Drive, PDF...)" 
+                      />
+                      {tutorEditData?.cvUrl && (
+                        <a href={tutorEditData.cvUrl} target="_blank" rel="noreferrer" className="inline-flex items-center text-primary-600 text-xs font-semibold hover:underline">
+                          <FileText className="w-3 h-3 mr-1" />
+                          Xem CV hiện tại
+                        </a>
+                      )}
+                    </div>
+                  ) : selectedTutor.cvUrl ? (
+                    <a href={selectedTutor.cvUrl} target="_blank" rel="noreferrer" className="inline-flex items-center text-primary-600 text-sm font-semibold hover:underline">
+                      <FileText className="w-4 h-4 mr-2" />
+                      Xem CV
+                    </a>
+                  ) : (
+                    <p className="text-sm text-gray-500">Chưa cập nhật CV</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
+                  <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Chuyên môn</p>
+                  {isTutorEditing ? (
+                    <input
+                      className="input text-sm"
+                      value={(tutorEditData?.specialties ?? []).join(', ')}
+                      onChange={(e) => handleTutorSpecialtiesChange(e.target.value)}
+                      placeholder="Ngăn cách bằng dấu phẩy"
+                    />
+                  ) : selectedTutor.specialties.length > 0 ? (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {selectedTutor.specialties.map((specialty) => (
+                        <span key={specialty} className="px-3 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-700">
+                          {specialty}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 mt-2">Chưa cập nhật</p>
+                  )}
+                </div>
+                <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
+                  <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Chỉ số giảng dạy</p>
+                  {isTutorEditing ? (
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500">Tổng học viên</label>
+                        <input
+                          type="number"
+                          min={0}
+                          className="input text-sm mt-1"
+                          value={tutorEditData?.totalStudents ?? 0}
+                          onChange={(e) => handleTutorTotalStudentsChange(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-5 h-5 text-blue-500" />
+                        <span className="text-2xl font-bold text-gray-900">{selectedTutor.totalStudents}</span>
+                        <span className="text-sm text-gray-500">học viên đã dạy</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-5 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Giới thiệu</p>
                 {isTutorEditing ? (
-                  <>
-                    <button onClick={handleTutorSave} className="btn-primary text-sm px-4 py-2">
-                      Lưu
-                    </button>
-                    <button onClick={cancelTutorEditing} className="btn-secondary text-sm px-4 py-2">
-                      Hủy
-                    </button>
-                  </>
+                  <textarea className="input text-sm" value={tutorEditData?.bio ?? ''} onChange={(e) => handleTutorFieldChange('bio', e.target.value)} />
                 ) : (
-                  <button onClick={startTutorEditing} className="btn-primary text-sm px-4 py-2">
-                    Chỉnh sửa
-                  </button>
+                  <p className="text-sm text-gray-700 leading-relaxed">{selectedTutor.bio}</p>
                 )}
               </div>
             </div>
           </div>
-
-          <div className="flex-1 overflow-y-auto pr-1 space-y-5">
-            <div className="w-full rounded-3xl border border-gray-100 bg-gray-50/70 p-5 flex flex-col gap-4 md:flex-row md:items-center md:gap-5 shadow-inner">
-              <div className="w-24 h-24 rounded-3xl overflow-hidden border-4 border-white shadow-lg flex-shrink-0">
-                <img src={selectedTutor.avatar} alt={selectedTutor.name} className="w-full h-full object-cover" />
-              </div>
-              <div className="flex-1">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Tutor</p>
-              {isTutorEditing ? (
-                <>
-                  <input className="input text-base font-semibold mb-2" value={tutorEditData?.name ?? ''} onChange={(e) => handleTutorFieldChange('name', e.target.value)} />
-                  <input className="input text-sm mb-2" value={tutorEditData?.qualification ?? ''} onChange={(e) => handleTutorFieldChange('qualification', e.target.value)} />
-                  <select className="input text-sm" value={tutorEditData?.status ?? 'Đang dạy'} onChange={(e) => handleTutorFieldChange('status', e.target.value)}>
-                    <option value="Đang dạy">Đang dạy</option>
-                    <option value="Tạm nghỉ">Tạm nghỉ</option>
-                  </select>
-                </>
-              ) : (
-                <>
-                  <h4 className="text-2xl font-bold text-gray-900">{selectedTutor.name}</h4>
-                  <p className="text-sm text-gray-500">{selectedTutor.qualification}</p>
-                </>
-              )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
-                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Kinh nghiệm</p>
-              {isTutorEditing ? (
-                <textarea className="input text-sm" value={tutorEditData?.experience ?? ''} onChange={(e) => handleTutorFieldChange('experience', e.target.value)} />
-              ) : (
-                <p className="text-sm font-semibold text-gray-900 leading-relaxed">{selectedTutor.experience}</p>
-              )}
-              </div>
-              <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60 space-y-2">
-                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Liên hệ</p>
-              {isTutorEditing ? (
-                <div className="space-y-2">
-                  <input className="input text-sm" value={tutorEditData?.email ?? ''} onChange={(e) => handleTutorFieldChange('email', e.target.value)} placeholder="Email" />
-                  <input className="input text-sm" value={tutorEditData?.phone ?? ''} onChange={(e) => handleTutorFieldChange('phone', e.target.value)} placeholder="Số điện thoại" />
-                </div>
-              ) : (
-                <>
-                  <p className="text-sm font-semibold text-gray-900">{selectedTutor.email}</p>
-                  <p className="text-sm text-gray-600">{selectedTutor.phone}</p>
-                </>
-              )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
-                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Môn phụ trách</p>
-              {isTutorEditing ? (
-                <input
-                  className="input text-sm"
-                  value={(tutorEditData?.subjects ?? []).join(', ')}
-                  onChange={(e) => handleTutorSubjectsChange(e.target.value)}
-                  placeholder="Ngăn cách bằng dấu phẩy"
-                />
-              ) : (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {selectedTutor.subjects.map((subject) => (
-                    <span key={subject} className="px-3 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-600">
-                      {subject}
-                    </span>
-                  ))}
-                </div>
-              )}
-              </div>
-              <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
-                <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em]">Hồ sơ & CV</p>
-              {isTutorEditing ? (
-                <input className="input text-sm" value={tutorEditData?.cvUrl ?? ''} onChange={(e) => handleTutorFieldChange('cvUrl', e.target.value)} placeholder="Link CV (Drive, PDF...)" />
-              ) : selectedTutor.cvUrl ? (
-                <a href={selectedTutor.cvUrl} target="_blank" rel="noreferrer" className="inline-flex items-center text-primary-600 text-sm font-semibold hover:underline">
-                  <FileText className="w-4 h-4 mr-2" />
-                  Xem CV
-                </a>
-              ) : (
-                <p className="text-sm text-gray-500">Chưa cập nhật CV</p>
-              )}
-              </div>
-            </div>
-
-            <div className="p-5 rounded-2xl border border-gray-100 bg-white shadow-inner space-y-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Giới thiệu</p>
-              {isTutorEditing ? (
-                <textarea className="input text-sm" value={tutorEditData?.bio ?? ''} onChange={(e) => handleTutorFieldChange('bio', e.target.value)} />
-              ) : (
-                <p className="text-sm text-gray-700 leading-relaxed">{selectedTutor.bio}</p>
-              )}
-            </div>
-          </div>
         </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const renderScheduleManagementSection = () => (
     <div className="space-y-6">
@@ -2259,244 +3406,6 @@ export default function AdminDashboard() {
       <div className="h-full overflow-hidden">
         <div className="h-full overflow-y-auto px-2 sm:px-3 lg:px-6 py-2">{renderSection()}</div>
       </div>
-
-      {showAddUserModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-3xl w-full shadow-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <p className="text-xs font-semibold text-primary-500 uppercase tracking-[0.4em]">Admin</p>
-                <h3 className="text-2xl font-bold text-gray-900">Thêm người dùng mới</h3>
-              </div>
-              <button onClick={() => setShowAddUserModal(false)} className="text-sm font-semibold text-gray-500 hover:text-gray-700 transition-colors">
-                Đóng
-              </button>
-            </div>
-
-            <form onSubmit={handleAddUser} className="space-y-6">
-              <section className="rounded-2xl border border-gray-100 bg-gray-50/80 p-5 sm:p-6 shadow-inner">
-                <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Thông tin đăng nhập</p>
-                    <h4 className="text-lg font-semibold text-gray-900">Tài khoản & phân quyền</h4>
-                  </div>
-                  <span className="px-3 py-1 text-xs font-semibold rounded-full bg-white text-primary-600 border border-primary-100">
-                    {newUser.role === 'student' ? 'Học sinh / Phụ huynh' : 'Tutor'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className={FIELD_LABEL_CLASS}>Tên người dùng</label>
-                    <input value={newUser.name} onChange={(e) => setNewUser((prev) => ({ ...prev, name: e.target.value }))} className="input" placeholder="Nhập tên" />
-                  </div>
-                  <div>
-                    <label className={FIELD_LABEL_CLASS}>Email</label>
-                    <input
-                      type="email"
-                      value={newUser.email}
-                      onChange={(e) => setNewUser((prev) => ({ ...prev, email: e.target.value }))}
-                      className="input"
-                      placeholder="example@skillar.com"
-                    />
-                  </div>
-                  <div>
-                    <label className={FIELD_LABEL_CLASS}>Mật khẩu</label>
-                    <input
-                      type="text"
-                      value={newUser.password}
-                      onChange={(e) => setNewUser((prev) => ({ ...prev, password: e.target.value }))}
-                      className="input"
-                      placeholder="Nhập mật khẩu"
-                    />
-                  </div>
-                  <div>
-                    <label className={FIELD_LABEL_CLASS}>Ngày tham gia</label>
-                    <input type="date" value={newUser.joinDate} onChange={(e) => setNewUser((prev) => ({ ...prev, joinDate: e.target.value }))} className="input" />
-                  </div>
-                  <div>
-                    <label className={FIELD_LABEL_CLASS}>Vai trò</label>
-                    <select
-                      value={newUser.role}
-                      onChange={(e) =>
-                        setNewUser((prev) => ({
-                          ...prev,
-                          role: e.target.value as User['role'],
-                        }))
-                      }
-                      className="input"
-                    >
-                      <option value="student">Học sinh / Phụ huynh</option>
-                      <option value="tutor">Tutor</option>
-                    </select>
-                  </div>
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-gray-100 bg-white p-5 sm:p-6 shadow-sm space-y-4">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Hồ sơ chi tiết</p>
-                    <h4 className="text-lg font-semibold text-gray-900">
-                      {newUser.role === 'student' ? 'Thông tin học sinh' : 'Thông tin tutor'}
-                    </h4>
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    {newUser.role === 'student' ? 'Điền thông tin phụ huynh & lớp học' : 'Cập nhật kinh nghiệm giảng dạy'}
-                  </p>
-                </div>
-
-                {newUser.role === 'student' && (
-                  <div className="space-y-4">
-                    <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 p-4 flex flex-col gap-3 md:flex-row md:items-center">
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-gray-800">Ảnh đại diện</p>
-                        <p className="text-xs text-gray-500">Tải ảnh học sinh (PNG, JPG, tối đa 5MB)</p>
-                        {uploadingFile && newUser.avatar && (
-                          <p className="mt-2 text-xs font-medium text-gray-500">Đang upload...</p>
-                        )}
-                        {!uploadingFile && newUser.avatar && (
-                          <p className="mt-2 text-xs font-medium text-primary-600">{newUser.avatar.name}</p>
-                        )}
-                        {newUser.avatarUrl && (
-                          <p className="mt-1 text-xs font-medium text-green-600">✓ Đã upload thành công</p>
-                        )}
-                      </div>
-                      <label className={`btn-secondary cursor-pointer text-center ${uploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                        {uploadingFile ? 'Đang upload...' : 'Chọn ảnh'}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          disabled={uploadingFile}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0] ?? null
-                            if (file) {
-                              handleFileChange(file, 'avatar')
-                            }
-                          }}
-                        />
-                      </label>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {studentFields.map((field) => (
-                        <div key={field.name}>
-                          <label className={FIELD_LABEL_CLASS}>{field.label}</label>
-                          <input
-                            type={field.type}
-                            value={newUser.studentInfo[field.name]}
-                            onChange={(e) =>
-                              setNewUser((prev) => ({
-                                ...prev,
-                                studentInfo: { ...prev.studentInfo, [field.name]: e.target.value },
-                              }))
-                            }
-                            className="input"
-                            placeholder={field.label}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {newUser.role === 'tutor' && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 p-4 flex flex-col gap-3">
-                        <p className="text-sm font-semibold text-gray-800">Ảnh đại diện</p>
-                        <p className="text-xs text-gray-500">Tải ảnh tutor (PNG, JPG, tối đa 5MB)</p>
-                        {uploadingFile && newUser.avatar && (
-                          <p className="text-xs font-medium text-gray-500">Đang upload...</p>
-                        )}
-                        {!uploadingFile && newUser.avatar && (
-                          <p className="text-xs font-medium text-primary-600">{newUser.avatar.name}</p>
-                        )}
-                        {newUser.avatarUrl && (
-                          <p className="text-xs font-medium text-green-600">✓ Đã upload thành công</p>
-                        )}
-                        <label className={`btn-secondary cursor-pointer text-center ${uploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                          {uploadingFile ? 'Đang upload...' : 'Chọn ảnh'}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            disabled={uploadingFile}
-                            onChange={(e) => {
-                              const file = e.target.files?.[0] ?? null
-                              if (file) {
-                                handleFileChange(file, 'avatar')
-                              }
-                            }}
-                          />
-                        </label>
-                      </div>
-                      <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 p-4 flex flex-col gap-3">
-                        <p className="text-sm font-semibold text-gray-800">Hồ sơ CV</p>
-                        <p className="text-xs text-gray-500">Tải CV (PDF, DOC, tối đa 10MB)</p>
-                        {uploadingFile && newUser.cvFile && (
-                          <p className="text-xs font-medium text-gray-500">Đang upload...</p>
-                        )}
-                        {!uploadingFile && newUser.cvFile && (
-                          <p className="text-xs font-medium text-primary-600">{newUser.cvFile.name}</p>
-                        )}
-                        {newUser.cvFileUrl && (
-                          <p className="text-xs font-medium text-green-600">✓ Đã upload thành công</p>
-                        )}
-                        <label className={`btn-secondary cursor-pointer text-center ${uploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                          {uploadingFile ? 'Đang upload...' : 'Chọn file'}
-                          <input
-                            type="file"
-                            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                            className="hidden"
-                            disabled={uploadingFile}
-                            onChange={(e) => {
-                              const file = e.target.files?.[0] ?? null
-                              if (file) {
-                                handleFileChange(file, 'cvFile')
-                              }
-                            }}
-                          />
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {tutorFields.map((field) => (
-                        <div key={field.name} className={field.colSpan ? 'md:col-span-2' : ''}>
-                          <label className={FIELD_LABEL_CLASS}>{field.label}</label>
-                          <input
-                            type={field.type}
-                            value={newUser.tutorInfo[field.name]}
-                            onChange={(e) =>
-                              setNewUser((prev) => ({
-                                ...prev,
-                                tutorInfo: { ...prev.tutorInfo, [field.name]: e.target.value },
-                              }))
-                            }
-                            className="input"
-                            placeholder={field.label}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </section>
-
-              <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
-                <button type="button" onClick={() => setShowAddUserModal(false)} className="btn-secondary">
-                  Hủy
-                </button>
-                <button type="submit" className="btn-primary">
-                  Lưu tài khoản
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {showScheduleModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={closeScheduleModal}>

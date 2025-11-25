@@ -13,7 +13,7 @@ export default function PerformanceSection({ onGetStarted }: PerformanceSectionP
           {/* Small Yellow Text */}
           <div className="mb-4">
             <span className="text-yellow-400 font-bold text-base tracking-wide" style={{ fontFamily: "'Comic Sans MS', cursive" }}>
-              Chúng tôi mang lại kết quả tốt nhất, chắc chắn.
+              Kết quả & Cam kết
             </span>
           </div>
           
@@ -39,7 +39,7 @@ export default function PerformanceSection({ onGetStarted }: PerformanceSectionP
           {/* Right Column - Innovative Approach */}
           <div className="space-y-6">
             <h3 className="text-3xl font-bold text-white mb-8 leading-tight" style={{ fontFamily: 'system-ui, -apple-system, sans-serif', letterSpacing: '0px', wordSpacing: '0px', textRendering: 'optimizeLegibility', whiteSpace: 'normal', wordBreak: 'keep-all' }}>
-              Phương Pháp Đổi Mới Đảm Bảo Con Bạn Đạt Kết Quả Xuất Sắc
+              Phương pháp SKILLAR Focus™:
             </h3>
             
             <div className="space-y-4">
@@ -48,7 +48,7 @@ export default function PerformanceSection({ onGetStarted }: PerformanceSectionP
                 <div className="w-10 h-10 bg-white rounded flex items-center justify-center flex-shrink-0">
                   <span className="text-gray-900 font-bold text-lg">1</span>
                 </div>
-                <span className="text-white font-bold text-lg flex-1">Đánh Giá SKILLAR Insights ™</span>
+                <span className="text-white font-bold text-lg flex-1">Đánh giá khả năng tập trung & thói quen học tập</span>
               </div>
 
               {/* Item 2 */}
@@ -56,7 +56,7 @@ export default function PerformanceSection({ onGetStarted }: PerformanceSectionP
                 <div className="w-10 h-10 bg-white rounded flex items-center justify-center flex-shrink-0">
                   <span className="text-gray-900 font-bold text-lg">2</span>
                 </div>
-                <span className="text-white font-bold text-lg flex-1">Kế Hoạch Học Tập Linh Hoạt</span>
+                <span className="text-white font-bold text-lg flex-1">Thiết kế kế hoạch học theo chu kỳ tập trung</span>
               </div>
 
               {/* Item 3 */}
@@ -64,7 +64,7 @@ export default function PerformanceSection({ onGetStarted }: PerformanceSectionP
                 <div className="w-10 h-10 bg-white rounded flex items-center justify-center flex-shrink-0">
                   <span className="text-gray-900 font-bold text-lg">3</span>
                 </div>
-                <span className="text-white font-bold text-lg flex-1">Học Tập Lấy Trẻ Làm Trung Tâm</span>
+                <span className="text-white font-bold text-lg flex-1">Kèm 1-1 – hướng dẫn hoàn thành từng bài tập</span>
               </div>
 
               {/* Item 4 */}
@@ -72,7 +72,7 @@ export default function PerformanceSection({ onGetStarted }: PerformanceSectionP
                 <div className="w-10 h-10 bg-white rounded flex items-center justify-center flex-shrink-0">
                   <span className="text-gray-900 font-bold text-lg">4</span>
                 </div>
-                <span className="text-white font-bold text-lg flex-1">Đánh Giá Định Kỳ</span>
+                <span className="text-white font-bold text-lg flex-1">Nhắc lịch thông minh và kiểm tra tiến độ</span>
               </div>
 
               {/* Item 5 */}
@@ -80,7 +80,7 @@ export default function PerformanceSection({ onGetStarted }: PerformanceSectionP
                 <div className="w-10 h-10 bg-white rounded flex items-center justify-center flex-shrink-0">
                   <span className="text-gray-900 font-bold text-lg">5</span>
                 </div>
-                <span className="text-white font-bold text-lg flex-1">Báo Cáo Tiến Độ & Đánh Giá</span>
+                <span className="text-white font-bold text-lg flex-1">Báo cáo hàng tuần cho phụ huynh</span>
               </div>
             </div>
             
