@@ -6,6 +6,8 @@ import MonthlyCalendar from '../components/MonthlyCalendar'
 import { ScheduleItem } from '../components/ScheduleWidget'
 import { Users, Calendar, FileText, Plus, Clock, TrendingUp, UserCircle, Download, Award, Copy, ChevronRight, Upload, BookOpen, ChevronUp, ChevronDown, Star, Mail, Phone, MapPin, MessageSquare, School, GraduationCap, Cake, Search, Filter } from 'lucide-react'
 import { format, isToday } from 'date-fns'
+import { useAuth } from '../contexts/AuthContext'
+import { apiCall } from '../config/api'
 
 interface TutorSchedule {
   id: string
@@ -15,6 +17,38 @@ interface TutorSchedule {
   time: string
   date: Date
   meetLink?: string
+  note?: string
+}
+
+interface SupplementaryMaterial {
+  name?: string
+  url?: string
+}
+
+interface AssignmentApiItem {
+  id: string
+  scheduleId?: string
+  studentId?: string
+  description?: string
+  supplementaryMaterials?: SupplementaryMaterial[]
+  createdAt?: string
+  updatedAt?: string
+}
+
+interface AssignmentPaginatedResponse {
+  results: AssignmentApiItem[]
+  page: number
+  limit: number
+  totalPages: number
+  totalResults: number
+}
+
+interface ScheduleMaterialItem {
+  id: string
+  name: string
+  url: string
+  uploadedAt?: string
+  note?: string
 }
 
 interface TutorChecklistDetail {
@@ -78,12 +112,49 @@ type ScheduleSlotGroup = {
 
 const SCHEDULE_STUDENTS_PER_PAGE = 5
 
+interface ScheduleApiItem {
+  id: string
+  startTime: string
+  duration: number
+  subjectCode: string
+  studentId: string | { id: string; name: string }
+  tutorId: string | { id: string; name: string }
+  note?: string
+  meetingURL?: string
+  status: 'upcoming' | 'ongoing' | 'completed' | 'cancelled'
+  reportURL?: string
+  createdAt: string
+  updatedAt: string
+}
+
+interface SchedulePaginatedResponse {
+  results: ScheduleApiItem[]
+  page: number
+  limit: number
+  totalPages: number
+  totalResults: number
+}
+
+interface StudentInfo {
+  id: string
+  name: string
+  email: string
+  phone?: string
+  avatarUrl?: string
+}
+
 export default function TutorDashboard() {
+  const { user } = useAuth()
   const [activeSection, setActiveSection] = useState('home')
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState<string>('1')
   const [studentSearch, setStudentSearch] = useState('')
   const [subjectFilter, setSubjectFilter] = useState<'all' | string>('all')
+  const [tutorSchedules, setTutorSchedules] = useState<TutorSchedule[]>([])
+  const [schedulesLoading, setSchedulesLoading] = useState(true)
+  const [studentInfoMap, setStudentInfoMap] = useState<Record<string, StudentInfo>>({})
+  const [scheduleMaterials, setScheduleMaterials] = useState<Record<string, ScheduleMaterialItem[]>>({})
+  const [scheduleMaterialsLoading, setScheduleMaterialsLoading] = useState(false)
   const [showChecklistForm, setShowChecklistForm] = useState(false)
   const [checklistForm, setChecklistForm] = useState({
     studentId: '1',
@@ -212,129 +283,128 @@ export default function TutorDashboard() {
 
   ]
 
-  const [tutorSchedules] = useState<TutorSchedule[]>([
-    // Khung giờ 14:00 - 15:30: 4 học sinh
-    {
-      id: 'ts-1',
-      studentId: '1',
-      subject: 'Toán',
-      student: 'Nguyễn Văn A',
-      time: '14:00 - 15:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/abc-defg-hij',
-    },
-    {
-      id: 'ts-1b',
-      studentId: '4',
-      subject: 'Toán',
-      student: 'Phạm Thị D',
-      time: '14:00 - 15:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/abc-defg-hij',
-    },
-    {
-      id: 'ts-1c',
-      studentId: '8',
-      subject: 'Toán',
-      student: 'Bùi Thị H',
-      time: '14:00 - 15:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/abc-defg-hij',
-    },
-    {
-      id: 'ts-1d',
-      studentId: '11',
-      subject: 'Toán',
-      student: 'Mai Văn K',
-      time: '14:00 - 15:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/abc-defg-hij',
-    },
-    // Khung giờ 16:00 - 17:30: 4 học sinh
-    {
-      id: 'ts-2',
-      studentId: '2',
-      subject: 'Lý',
-      student: 'Trần Thị B',
-      time: '16:00 - 17:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/xyz-uvw-rst',
-    },
-    {
-      id: 'ts-2b',
-      studentId: '5',
-      subject: 'Lý',
-      student: 'Ngô Văn E',
-      time: '16:00 - 17:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/xyz-uvw-rst',
-    },
-    {
-      id: 'ts-2c',
-      studentId: '9',
-      subject: 'Lý',
-      student: 'Hà Văn I',
-      time: '16:00 - 17:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/xyz-uvw-rst',
-    },
-    {
-      id: 'ts-2d',
-      studentId: '12',
-      subject: 'Lý',
-      student: 'Phan Thị L',
-      time: '16:00 - 17:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/xyz-uvw-rst',
-    },
-    // Khung giờ 18:00 - 19:30: 3 học sinh
-    {
-      id: 'ts-3',
-      studentId: '3',
-      subject: 'Hóa',
-      student: 'Lê Văn C',
-      time: '18:00 - 19:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/hij-klm-nop',
-    },
-    {
-      id: 'ts-3b',
-      studentId: '6',
-      subject: 'Hóa',
-      student: 'Đinh Thị F',
-      time: '18:00 - 19:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/hij-klm-nop',
-    },
-    {
-      id: 'ts-3c',
-      studentId: '10',
-      subject: 'Hóa',
-      student: 'Nguyễn Thị J',
-      time: '18:00 - 19:30',
-      date: new Date(),
-      meetLink: 'https://meet.google.com/hij-klm-nop',
-    },
-    // Ngày mai
-    {
-      id: 'ts-4',
-      studentId: '4',
-      subject: 'Toán',
-      student: 'Phạm Hoàng D',
-      time: '09:00 - 10:30',
-      date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/abc-123',
-    },
-    {
-      id: 'ts-5',
-      studentId: '3',
-      subject: 'Hóa',
-      student: 'Lê Văn C',
-      time: '13:00 - 14:30',
-      date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
-      meetLink: 'https://meet.google.com/xyz-456',
-    },
-  ])
+  // Fetch schedules from API
+  useEffect(() => {
+    const fetchSchedules = async () => {
+      if (!user?.id) return
+      
+      try {
+        setSchedulesLoading(true)
+        const response = await apiCall<SchedulePaginatedResponse>(
+          `/schedules?tutorId=${user.id}&limit=100&sortBy=startTime:asc`
+        )
+        
+        // Fetch student info for each schedule
+        const studentIds = new Set<string>()
+        response.results.forEach((schedule) => {
+          const studentId = typeof schedule.studentId === 'string' 
+            ? schedule.studentId 
+            : schedule.studentId.id
+          studentIds.add(studentId)
+        })
+        
+        // Fetch all student info in parallel
+        const studentInfoPromises = Array.from(studentIds).map(async (studentId) => {
+          try {
+            const studentInfo = await apiCall<StudentInfo>(`/users/${studentId}`)
+            return { studentId, studentInfo }
+          } catch (error) {
+            console.error(`Failed to fetch student info for ${studentId}:`, error)
+            return null
+          }
+        })
+        
+        const studentInfoResults = await Promise.all(studentInfoPromises)
+        const newStudentInfoMap: Record<string, StudentInfo> = {}
+        studentInfoResults.forEach((result) => {
+          if (result) {
+            newStudentInfoMap[result.studentId] = result.studentInfo
+          }
+        })
+        setStudentInfoMap(newStudentInfoMap)
+        
+        // Map API response to TutorSchedule format
+        const mappedSchedules: TutorSchedule[] = response.results.map((schedule) => {
+          const studentId = typeof schedule.studentId === 'string' 
+            ? schedule.studentId 
+            : schedule.studentId.id
+          const studentInfo = newStudentInfoMap[studentId]
+          const startTime = new Date(schedule.startTime)
+          const endTime = new Date(startTime.getTime() + schedule.duration * 60 * 1000)
+          const timeString = `${format(startTime, 'HH:mm')} - ${format(endTime, 'HH:mm')}`
+          
+          // Map subject code to Vietnamese name
+          const subjectMap: Record<string, string> = {
+            'MATH101': 'Toán',
+            'PHYSICS101': 'Lý',
+            'CHEMISTRY101': 'Hóa',
+            'BIOLOGY101': 'Sinh',
+            'ENGLISH101': 'Anh',
+            'GENERAL': 'Chung',
+          }
+          const subject = subjectMap[schedule.subjectCode] || schedule.subjectCode
+          
+          return {
+            id: schedule.id,
+            studentId: studentId,
+            subject: subject,
+            student: studentInfo?.name || 'Chưa có tên',
+            time: timeString,
+            date: startTime,
+            meetLink: schedule.meetingURL,
+            note: schedule.note,
+          }
+        })
+        
+        setTutorSchedules(mappedSchedules)
+      } catch (error) {
+        console.error('Failed to fetch schedules:', error)
+      } finally {
+        setSchedulesLoading(false)
+      }
+    }
+    
+    fetchSchedules()
+  }, [user?.id])
+
+  useEffect(() => {
+    const fetchScheduleMaterials = async () => {
+      if (!user?.id) return
+      try {
+        setScheduleMaterialsLoading(true)
+        const query = new URLSearchParams({
+          tutorId: user.id,
+          limit: '200',
+          sortBy: 'updatedAt:desc',
+        }).toString()
+        const response = await apiCall<AssignmentPaginatedResponse>(`/assignments?${query}`)
+        const grouped: Record<string, ScheduleMaterialItem[]> = {}
+        response.results?.forEach((assignment) => {
+          const scheduleId = assignment.scheduleId
+          if (!scheduleId || !assignment.supplementaryMaterials?.length) return
+
+          assignment.supplementaryMaterials.forEach((material, index) => {
+            if (!material.url) return
+            if (!grouped[scheduleId]) grouped[scheduleId] = []
+            grouped[scheduleId].push({
+              id: `${assignment.id}-${index}`,
+              name: material.name || `Tài liệu ${index + 1}`,
+              url: material.url,
+              uploadedAt: assignment.updatedAt || assignment.createdAt,
+              note: assignment.description,
+            })
+          })
+        })
+        setScheduleMaterials(grouped)
+      } catch (error) {
+        console.error('Failed to fetch supplementary materials:', error)
+      } finally {
+        setScheduleMaterialsLoading(false)
+      }
+    }
+
+    fetchScheduleMaterials()
+  }, [user?.id])
 
   const [studentPage, setStudentPage] = useState(1)
   const studentsPerPage = 12
@@ -613,14 +683,23 @@ export default function TutorDashboard() {
         date: schedule.date,
         meetLink: schedule.meetLink,
         tutor: schedule.student, // Display student name in calendar
-        note: `Học sinh: ${schedule.student}`,
+        note: schedule.note || `Học sinh: ${schedule.student}`, // Use note from API if available, otherwise show student name
         status: statusMap[status] || 'upcoming',
       }
     })
   }, [tutorSchedules, getScheduleStatus])
 
+  // Filter schedules to only show today's schedules for home section
   const todayTutorSchedules = useMemo(
-    () => tutorSchedules.filter(schedule => isToday(schedule.date)),
+    () => {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      return tutorSchedules.filter(schedule => {
+        const scheduleDate = new Date(schedule.date)
+        scheduleDate.setHours(0, 0, 0, 0)
+        return scheduleDate.getTime() === today.getTime()
+      })
+    },
     [tutorSchedules]
   )
   const todayStudentIds = useMemo(() => new Set(todayTutorSchedules.map((schedule) => schedule.studentId)), [todayTutorSchedules])
@@ -737,47 +816,6 @@ export default function TutorDashboard() {
       return { ...prev, [selectedScheduleSlot.id]: next }
     })
   }, [selectedScheduleSlot])
-
-  const studentAttachments: Record<string, { id: string; name: string; uploadedAt: string }[]> = useMemo(() => ({
-    '1': [
-      { id: 'att-1', name: 'Bai_tap_Toan_15_11.pdf', uploadedAt: '15/11/2025 08:30' },
-      { id: 'att-2', name: 'Ghi_chu_phu_huynh.txt', uploadedAt: '15/11/2025 09:00' },
-    ],
-    '2': [
-      { id: 'att-3', name: 'De_cuong_Ly.pdf', uploadedAt: '14/11/2025 19:40' },
-    ],
-    '3': [
-      { id: 'att-4', name: 'Bai_tap_hoa.docx', uploadedAt: '13/11/2025 20:10' },
-    ],
-    '4': [
-      { id: 'att-5', name: 'Bai_tap_Toan_chuong_2.pdf', uploadedAt: '16/11/2025 10:15' },
-      { id: 'att-6', name: 'Ghi_chu_phu_huynh_D.txt', uploadedAt: '16/11/2025 11:00' },
-    ],
-    '5': [
-      { id: 'att-7', name: 'De_kiem_tra_Ly.pdf', uploadedAt: '15/11/2025 14:20' },
-    ],
-    '8': [
-      { id: 'att-8', name: 'Bai_tap_Toan_nang_cao.pdf', uploadedAt: '17/11/2025 08:45' },
-    ],
-    '9': [
-      { id: 'att-9', name: 'On_tap_Ly_chuong_3.pdf', uploadedAt: '16/11/2025 15:30' },
-    ],
-    '11': [
-      { id: 'att-10', name: 'Bai_tap_Toan_ve_nha.pdf', uploadedAt: '17/11/2025 09:20' },
-      { id: 'att-11', name: 'Ghi_chu_phu_huynh_K.txt', uploadedAt: '17/11/2025 10:00' },
-    ],
-    '12': [
-      { id: 'att-12', name: 'De_kiem_tra_Ly_chuong_4.pdf', uploadedAt: '16/11/2025 13:45' },
-      { id: 'att-13', name: 'Ghi_chu_phu_huynh_L.txt', uploadedAt: '16/11/2025 14:20' },
-    ],
-    '6': [
-      { id: 'att-14', name: 'Bai_tap_Hoa_nang_cao.pdf', uploadedAt: '15/11/2025 16:30' },
-    ],
-    '10': [
-      { id: 'att-15', name: 'On_tap_Hoa_chuong_2.pdf', uploadedAt: '17/11/2025 11:15' },
-      { id: 'att-16', name: 'Ghi_chu_phu_huynh_J.txt', uploadedAt: '17/11/2025 12:00' },
-    ],
-  }), [])
 
   // Detail items theo studentId và subject
   const [tutorDetailItemsByStudentAndSubject, setTutorDetailItemsByStudentAndSubject] = useState<Record<string, Record<string, TutorChecklistDetail[]>>>({
@@ -1490,7 +1528,12 @@ export default function TutorDashboard() {
               </button>
             </div>
 
-            {scheduleSlots.length === 0 ? (
+            {schedulesLoading ? (
+              <div className="text-center py-10">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-3"></div>
+                <p className="text-gray-500 font-medium">Đang tải lịch học...</p>
+              </div>
+            ) : scheduleSlots.length === 0 ? (
               <div className="text-center py-10">
                 <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                 <p className="text-gray-500 font-medium">Không có lịch dạy hôm nay</p>
@@ -1556,7 +1599,7 @@ export default function TutorDashboard() {
                         completed: { label: 'Đã xong', className: 'bg-gray-100 text-gray-600' },
                       }[status]
                       const isExpanded = expandedStudentId === schedule.studentId
-                      const studentAttachmentsList = studentAttachments[schedule.studentId] || []
+                      const scheduleMaterialsList = scheduleMaterials[schedule.id] || []
 
                       return (
                         <div
@@ -1621,28 +1664,43 @@ export default function TutorDashboard() {
                             </div>
 
                             {/* Expand button to show documents */}
-                            {studentAttachmentsList.length > 0 && (
+                            {scheduleMaterialsLoading && scheduleMaterialsList.length === 0 && (
+                              <p className="mt-3 text-xs text-gray-500">Đang tải tài liệu học sinh gửi...</p>
+                            )}
+                            {scheduleMaterialsList.length > 0 && (
                               <button
                                 onClick={() => setExpandedStudentId(isExpanded ? null : schedule.studentId)}
                                 className="mt-3 w-full flex items-center justify-between text-left text-xs font-semibold text-primary-600 hover:text-primary-700 transition-colors"
                               >
-                                <span>Tài liệu phụ huynh đã gửi ({studentAttachmentsList.length})</span>
+                                <span>Tài liệu phụ huynh đã gửi ({scheduleMaterialsList.length})</span>
                                 <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                               </button>
                             )}
                           </div>
 
                           {/* Expanded documents section */}
-                          {isExpanded && studentAttachmentsList.length > 0 && (
+                          {isExpanded && scheduleMaterialsList.length > 0 && (
                             <div className="border-t border-gray-200 bg-gray-50 p-4 space-y-2">
                               <p className="text-xs font-semibold text-gray-700 mb-2">Tài liệu phụ huynh đã gửi</p>
-                              {studentAttachmentsList.map((file) => (
-                                <div key={file.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-200">
-                                  <div>
-                                    <p className="text-sm font-semibold text-gray-900">{file.name}</p>
-                                    <p className="text-xs text-gray-500">Tải lên: {file.uploadedAt}</p>
+                              {scheduleMaterialsList.map((file) => (
+                                <div key={file.id} className="flex flex-col md:flex-row md:items-center md:justify-between p-3 bg-white rounded-xl border border-gray-200 gap-3">
+                                  <div className="text-sm text-gray-700">
+                                    <p className="font-semibold text-gray-900 break-all">{file.name}</p>
+                                    {file.note && <p className="text-xs text-gray-500 mt-0.5">Ghi chú: {file.note}</p>}
+                                    {file.uploadedAt && (
+                                      <p className="text-xs text-gray-400 mt-0.5">
+                                        Gửi: {format(new Date(file.uploadedAt), 'dd/MM/yyyy HH:mm')}
+                                      </p>
+                                    )}
                                   </div>
-                                  <button className="text-sm text-primary-600 hover:text-primary-700">Tải xuống</button>
+                                  <a
+                                    href={file.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm font-semibold text-primary-600 hover:text-primary-700"
+                                  >
+                                    Xem tài liệu
+                                  </a>
                                 </div>
                               ))}
                             </div>
@@ -2992,10 +3050,19 @@ const renderStudentsSection = () => (
   const renderScheduleSection = () => (
     <div className="h-full overflow-hidden">
       <div className="h-full flex flex-col bg-white rounded-2xl shadow-lg overflow-hidden">
-        <MonthlyCalendar
-          schedules={calendarSchedules}
-          onJoinClass={handleJoinSchedule}
-        />
+        {schedulesLoading ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-3"></div>
+              <p className="text-gray-500 font-medium">Đang tải lịch học...</p>
+            </div>
+          </div>
+        ) : (
+          <MonthlyCalendar
+            schedules={calendarSchedules}
+            onJoinClass={handleJoinSchedule}
+          />
+        )}
       </div>
     </div>
   )
