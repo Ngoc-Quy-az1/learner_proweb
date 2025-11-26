@@ -62,12 +62,6 @@ export default function TutoringSection({ onGetTutor }: TutoringSectionProps) {
               >
                 Tìm gia sư phù hợp
               </button>
-              <button className="flex items-center space-x-2 text-gray-700 hover:text-blue-600 font-semibold text-base sm:text-lg">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-100 rounded-full flex items-center justify-center hover:bg-blue-100 transition-colors">
-                  <Play className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" />
-          </div>
-                <span>Xem cách<br className="hidden sm:block"/>hoạt động</span>
-              </button>
             </div>
           </div>
 

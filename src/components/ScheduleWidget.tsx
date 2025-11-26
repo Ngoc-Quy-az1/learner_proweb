@@ -8,6 +8,7 @@ export interface ScheduleItem {
   date: Date
   meetLink?: string
   tutor?: string
+  tutorId?: string
   note?: string
   status?: 'upcoming' | 'ongoing' | 'completed'
 }

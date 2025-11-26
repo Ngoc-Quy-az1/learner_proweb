@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { ReactNode, useEffect, useMemo, useState } from 'react'
 import Layout from '../components/Layout'
 import TutorSidebar from '../components/TutorSidebar'
-import ChecklistTable, { ChecklistItem } from '../components/ChecklistTable'
+import { ChecklistItem } from '../components/ChecklistTable'
 import MonthlyCalendar from '../components/MonthlyCalendar'
 import { ScheduleItem } from '../components/ScheduleWidget'
-import { Users, Calendar, FileText, Plus, Clock, TrendingUp, UserCircle, Download, Award, Copy, ChevronRight, Upload, BookOpen, ChevronUp, ChevronDown, Star, Mail, Phone, MapPin, MessageSquare, School, GraduationCap, Cake, Search, Filter } from 'lucide-react'
-import { format, isToday } from 'date-fns'
+import { Users, Calendar, FileText, Plus, Clock, TrendingUp, UserCircle, Download, Award, Copy, ChevronRight, Upload, BookOpen, ChevronUp, ChevronDown, Star, Phone, MapPin, MessageSquare, School, GraduationCap, Cake, Search, Filter, Trash2 } from 'lucide-react'
+import { format, isToday, differenceInYears } from 'date-fns'
 import { useAuth } from '../contexts/AuthContext'
 import { apiCall } from '../config/api'
 
@@ -18,19 +18,55 @@ interface TutorSchedule {
   date: Date
   meetLink?: string
   note?: string
+  materials?: ScheduleMaterialItem[]
 }
 
-interface SupplementaryMaterial {
+interface ScheduleMaterialItem {
+  id: string
+  name: string
+  url: string
+  uploadedAt?: string
+  note?: string
+}
+
+type AssignmentStatus = 'pending' | 'in-progress' | 'completed'
+type AssignmentTaskStatus = 'pending' | 'in-progress' | 'completed'
+
+interface AssignmentTaskApiItem {
+  id?: string
   name?: string
-  url?: string
+  description?: string
+  status?: AssignmentTaskStatus
+  assignmentUrl?: string
+  solutionUrl?: string
+  estimatedTime?: number
+  actualTime?: number
+   answerURL?: string
 }
 
 interface AssignmentApiItem {
   id: string
-  scheduleId?: string
-  studentId?: string
+  scheduleId?:
+    | string
+    | {
+        _id: string
+        studentId?: {
+          _id: string
+          name?: string
+        }
+      }
+  studentId?: string | { _id: string; name?: string }
+  tutorId?: string
+  name?: string
   description?: string
-  supplementaryMaterials?: SupplementaryMaterial[]
+  subject?: string
+  status?: AssignmentStatus
+  tasks?: AssignmentTaskApiItem[]
+  supplementaryMaterials?: Array<{
+    name?: string
+    url?: string
+    requirement?: string
+  }>
   createdAt?: string
   updatedAt?: string
 }
@@ -41,14 +77,6 @@ interface AssignmentPaginatedResponse {
   limit: number
   totalPages: number
   totalResults: number
-}
-
-interface ScheduleMaterialItem {
-  id: string
-  name: string
-  url: string
-  uploadedAt?: string
-  note?: string
 }
 
 interface TutorChecklistDetail {
@@ -112,6 +140,40 @@ type ScheduleSlotGroup = {
 
 const SCHEDULE_STUDENTS_PER_PAGE = 5
 
+const SUBJECT_LABELS: Record<string, string> = {
+  MATH101: 'Toán',
+  PHYSICS101: 'Lý',
+  CHEMISTRY101: 'Hóa',
+  BIOLOGY101: 'Sinh',
+  ENGLISH101: 'Anh',
+  GENERAL: 'Chung',
+  TOAN: 'Toán',
+  HOA: 'Hóa',
+  LY: 'Lý',
+}
+
+const getSubjectDisplayName = (code?: string, fallback?: string) => {
+  if (!code) return fallback || 'Chung'
+  const normalized = code.toUpperCase()
+  return SUBJECT_LABELS[normalized] || fallback || code
+}
+
+const mapAssignmentStatusToChecklist = (
+  status?: AssignmentStatus | AssignmentTaskStatus
+): ChecklistItem['status'] => {
+  if (!status || status === 'pending') return 'not_done'
+  if (status === 'in-progress') return 'in_progress'
+  return 'done'
+}
+
+const mapChecklistStatusToAssignment = (
+  status: ChecklistItem['status']
+): AssignmentTaskStatus => {
+  if (status === 'in_progress') return 'in-progress'
+  if (status === 'done') return 'completed'
+  return 'pending'
+}
+
 interface ScheduleApiItem {
   id: string
   startTime: string
@@ -125,6 +187,12 @@ interface ScheduleApiItem {
   reportURL?: string
   createdAt: string
   updatedAt: string
+  supplementaryMaterials?: Array<{
+    _id?: string
+    name?: string
+    documentURL?: string
+    description?: string
+  }>
 }
 
 interface SchedulePaginatedResponse {
@@ -141,6 +209,25 @@ interface StudentInfo {
   email: string
   phone?: string
   avatarUrl?: string
+  address?: string
+  birthday?: string
+  currentLevel?: string
+  moreInfo?: string
+  isEmailVerified?: boolean
+  isActive?: boolean
+}
+
+interface DashboardStudent extends StudentInfo {
+  subject?: string
+  subjects: string[]
+  progress?: number
+  parent?: string
+  contact?: string
+  preferredChannel?: string
+  age?: number
+  dateOfBirth?: string
+  school?: string
+  grade?: string
 }
 
 export default function TutorDashboard() {
@@ -153,9 +240,8 @@ export default function TutorDashboard() {
   const [tutorSchedules, setTutorSchedules] = useState<TutorSchedule[]>([])
   const [schedulesLoading, setSchedulesLoading] = useState(true)
   const [studentInfoMap, setStudentInfoMap] = useState<Record<string, StudentInfo>>({})
-  const [scheduleMaterials, setScheduleMaterials] = useState<Record<string, ScheduleMaterialItem[]>>({})
-  const [scheduleMaterialsLoading, setScheduleMaterialsLoading] = useState(false)
   const [showChecklistForm, setShowChecklistForm] = useState(false)
+  const [isSubmittingChecklist, setIsSubmittingChecklist] = useState(false)
   const [checklistForm, setChecklistForm] = useState({
     studentId: '1',
     lesson: '',
@@ -172,10 +258,7 @@ export default function TutorDashboard() {
       } as TutorChecklistExercise,
     ],
   })
-  const [showAttachmentPreview, setShowAttachmentPreview] = useState(true)
   const [copiedScheduleLink, setCopiedScheduleLink] = useState<string | null>(null)
-  const [expandedChecklistSubject, setExpandedChecklistSubject] = useState<string | null>(null)
-  const [showStudentAttachmentCard, setShowStudentAttachmentCard] = useState(true)
   const [selectedScheduleSlotId, setSelectedScheduleSlotId] = useState<string | null>(null)
   const [scheduleStudentPage, setScheduleStudentPage] = useState<Record<string, number>>({})
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null)
@@ -249,39 +332,141 @@ export default function TutorDashboard() {
     }
   })
 
-  const students = [
-    { id: '1', name: 'Nguyễn Văn A', subject: 'Toán', progress: 67, parent: 'Phạm Văn X', contact: '0123 456 789', email: 'phu_huynh_a@example.com', address: 'Hà Nội', preferredChannel: 'Zalo', age: 16, dateOfBirth: '15/03/2009', school: 'THPT Chuyên Hà Nội - Amsterdam', grade: 'Lớp 10A1' },
-    { id: '2', name: 'Trần Thị B', subject: 'Lý', progress: 85, parent: 'Trần Văn C', contact: '0987 654 321', email: 'phu_huynh_b@example.com', address: 'Đà Nẵng', preferredChannel: 'Email', age: 17, dateOfBirth: '22/07/2008', school: 'THPT Nguyễn Hiền', grade: 'Lớp 11B2' },
-    { id: '3', name: 'Lê Văn C', subject: 'Hóa', progress: 45, parent: 'Lê Minh D', contact: '0909 888 777', email: 'phu_huynh_c@example.com', address: 'TP. HCM', preferredChannel: 'Điện thoại', age: 15, dateOfBirth: '08/11/2009', school: 'THPT Lê Hồng Phong', grade: 'Lớp 10A3' },
-    { id: '4', name: 'Phạm Thị D', subject: 'Toán', progress: 72, parent: 'Phạm Văn E', contact: '0911 223 344', email: 'phuhuynh_d@example.com', address: 'Hà Nội', preferredChannel: 'Zalo', age: 16, dateOfBirth: '30/01/2009', school: 'THPT Chu Văn An', grade: 'Lớp 10A5' },
-    { id: '5', name: 'Ngô Văn E', subject: 'Lý', progress: 58, parent: 'Ngô Minh F', contact: '0905 112 113', email: 'phuhuynh_e@example.com', address: 'Buôn Ma Thuột', preferredChannel: 'SMS', age: 18, dateOfBirth: '14/05/2007', school: 'THPT Buôn Ma Thuột', grade: 'Lớp 12A2' },
-    { id: '6', name: 'Đinh Thị F', subject: 'Hóa', progress: 91, parent: 'Đinh Văn G', contact: '0988 123 456', email: 'phuhuynh_f@example.com', address: 'Hải Phòng', preferredChannel: 'Email', age: 17, dateOfBirth: '19/09/2008', school: 'THPT Trần Phú', grade: 'Lớp 11A1' },
-    { id: '7', name: 'Trịnh Văn G', subject: 'Sinh', progress: 63, parent: 'Trịnh Thị H', contact: '0933 456 789', email: 'phuhuynh_g@example.com', address: 'Bắc Ninh', preferredChannel: 'Zalo', age: 16, dateOfBirth: '03/12/2009', school: 'THPT Hàn Thuyên', grade: 'Lớp 10B1' },
-    { id: '8', name: 'Bùi Thị H', subject: 'Toán', progress: 76, parent: 'Bùi Văn I', contact: '0977 888 666', email: 'phuhuynh_h@example.com', address: 'Nha Trang', preferredChannel: 'Điện thoại', age: 17, dateOfBirth: '25/06/2008', school: 'THPT Nguyễn Văn Trỗi', grade: 'Lớp 11A4' },
-    { id: '9', name: 'Hà Văn I', subject: 'Lý', progress: 54, parent: 'Hà Thị K', contact: '0912 334 556', email: 'phuhuynh_i@example.com', address: 'Huế', preferredChannel: 'Zalo', age: 15, dateOfBirth: '11/04/2010', school: 'THPT Quốc Học', grade: 'Lớp 10A6' },
-    { id: '10', name: 'Nguyễn Thị J', subject: 'Hóa', progress: 82, parent: 'Nguyễn Văn L', contact: '0922 556 778', email: 'phuhuynh_j@example.com', address: 'Quảng Ninh', preferredChannel: 'Email', age: 16, dateOfBirth: '28/08/2009', school: 'THPT Hòn Gai', grade: 'Lớp 10B3' },
-    { id: '11', name: 'Mai Văn K', subject: 'Toán', progress: 61, parent: 'Mai Thị M', contact: '0901 223 334', email: 'phuhuynh_k@example.com', address: 'Đà Lạt', preferredChannel: 'Zalo', age: 17, dateOfBirth: '07/02/2008', school: 'THPT Chuyên Thăng Long', grade: 'Lớp 11B1' },
-    { id: '12', name: 'Phan Thị L', subject: 'Lý', progress: 88, parent: 'Phan Văn N', contact: '0944 667 778', email: 'phuhuynh_l@example.com', address: 'Vũng Tàu', preferredChannel: 'Điện thoại' },
-    { id: '13', name: 'Vũ Văn M', subject: 'Hóa', progress: 47, parent: 'Vũ Thị O', contact: '0938 998 887', email: 'phuhuynh_m@example.com', address: 'Cần Thơ', preferredChannel: 'Zalo' },
-    { id: '14', name: 'Đỗ Thị N', subject: 'Toán', progress: 79, parent: 'Đỗ Văn P', contact: '0966 774 441', email: 'phuhuynh_n@example.com', address: 'Hà Nam', preferredChannel: 'Email' },
-    { id: '15', name: 'Lâm Văn O', subject: 'Lý', progress: 69, parent: 'Lâm Thị Q', contact: '0955 332 211', email: 'phuhuynh_o@example.com', address: 'Thanh Hóa', preferredChannel: 'Điện thoại' },
-    { id: '16', name: 'Hoàng Thị P', subject: 'Hóa', progress: 93, parent: 'Hoàng Văn R', contact: '0949 443 332', email: 'phuhuynh_p@example.com', address: 'Hà Giang', preferredChannel: 'Zalo' },
-    { id: '17', name: 'Cao Văn Q', subject: 'Toán', progress: 52, parent: 'Cao Thị S', contact: '0902 556 223', email: 'phuhuynh_q@example.com', address: 'Nam Định', preferredChannel: 'Email' },
-    { id: '18', name: 'Lý Thị R', subject: 'Lý', progress: 74, parent: 'Lý Văn T', contact: '0935 663 447', email: 'phuhuynh_r@example.com', address: 'Phú Quốc', preferredChannel: 'Zalo' },
-    { id: '19', name: 'Trương Văn S', subject: 'Hóa', progress: 66, parent: 'Trương Thị U', contact: '0919 884 552', email: 'phuhuynh_s@example.com', address: 'Cà Mau', preferredChannel: 'Điện thoại' },
-    { id: '20', name: 'Đào Thị T', subject: 'Toán', progress: 57, parent: 'Đào Văn V', contact: '0981 234 567', email: 'phuhuynh_t@example.com', address: 'Bình Dương', preferredChannel: 'Zalo' },
-    { id: '21', name: 'Trần Văn U', subject: 'Anh', progress: 83, parent: 'Trần Thị W', contact: '0907 556 778', email: 'phuhuynh_u@example.com', address: 'Long An', preferredChannel: 'Email' },
-    { id: '22', name: 'Nguyễn Thị V', subject: 'Sinh', progress: 71, parent: 'Nguyễn Văn X', contact: '0913 224 466', email: 'phuhuynh_v@example.com', address: 'Hưng Yên', preferredChannel: 'Zalo' },
-    { id: '23', name: 'Đinh Văn W', subject: 'Sử', progress: 64, parent: 'Đinh Thị Y', contact: '0931 443 556', email: 'phuhuynh_w@example.com', address: 'Nghệ An', preferredChannel: 'Điện thoại' },
-    { id: '24', name: 'Võ Thị X', subject: 'Địa', progress: 58, parent: 'Võ Văn Z', contact: '0925 889 001', email: 'phuhuynh_x@example.com', address: 'Quảng Bình', preferredChannel: 'Zalo' },
-    { id: '25', name: 'Ngô Văn Y', subject: 'Toán', progress: 82, parent: 'Ngô Thị A1', contact: '0968 776 554', email: 'phuhuynh_y@example.com', address: 'Gia Lai', preferredChannel: 'Email' },
-    { id: '26', name: 'Phạm Thị Z', subject: 'Lý', progress: 49, parent: 'Phạm Văn B1', contact: '0958 332 110', email: 'phuhuynh_z@example.com', address: 'Quảng Trị', preferredChannel: 'Điện thoại' },
-    { id: '27', name: 'Hoàng Văn A1', subject: 'Hóa', progress: 77, parent: 'Hoàng Thi B1', contact: '0970 112 114', email: 'phuhuynh_aa@example.com', address: 'Kon Tum', preferredChannel: 'Zalo' },
-    { id: '28', name: 'Lê Thị B1', subject: 'Toán', progress: 65, parent: 'Lê Văn C1', contact: '0904 889 992', email: 'phuhuynh_bb@example.com', address: 'Bình Định', preferredChannel: 'Email' },
-    { id: '29', name: 'Đỗ Văn C1', subject: 'Lý', progress: 73, parent: 'Đỗ Thị D1', contact: '0916 223 667', email: 'phuhuynh_cc@example.com', address: 'Tuyên Quang', preferredChannel: 'Điện thoại' },
-    { id: '30', name: 'Nguyễn Thị D1', subject: 'Hóa', progress: 88, parent: 'Nguyễn Văn E1', contact: '0940 112 330', email: 'phuhuynh_dd@example.com', address: 'Lạng Sơn', preferredChannel: 'Zalo' },
+  const [checklistItemsByStudent, setChecklistItemsByStudent] = useState<Record<string, ChecklistItem[]>>({})
+  const [checklistItemMeta, setChecklistItemMeta] = useState<Record<string, { assignmentId: string; taskId?: string }>>({})
+  const [assignments, setAssignments] = useState<AssignmentApiItem[]>([])
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false)
+  const [assignmentsError, setAssignmentsError] = useState<string | null>(null)
+  const [assignmentFetchTrigger, setAssignmentFetchTrigger] = useState(0)
 
-  ]
+  const students = useMemo<DashboardStudent[]>(() => {
+    if (Object.keys(studentInfoMap).length === 0) return []
+
+    const subjectsByStudent: Record<string, Set<string>> = {}
+    tutorSchedules.forEach((schedule) => {
+      const studentId = schedule.studentId
+      if (!subjectsByStudent[studentId]) {
+        subjectsByStudent[studentId] = new Set()
+      }
+      if (schedule.subject) {
+        subjectsByStudent[studentId].add(schedule.subject)
+      }
+    })
+
+    return Object.entries(studentInfoMap).map(([studentId, info]) => {
+      const subjects = Array.from(subjectsByStudent[studentId] || [])
+      const checklistItems = checklistItemsByStudent[studentId] || []
+      const completedItems = checklistItems.filter((item) => item.status === 'done').length
+      const progress =
+        checklistItems.length > 0 ? Math.round((completedItems / checklistItems.length) * 100) : undefined
+      const birthday = info.birthday ? new Date(info.birthday) : null
+      const hasValidBirthday = birthday && !isNaN(birthday.getTime())
+      const age = hasValidBirthday ? differenceInYears(new Date(), birthday) : undefined
+
+      return {
+        id: studentId,
+        name: info.name || 'Chưa có tên',
+        email: info.email,
+        phone: info.phone,
+        avatarUrl: info.avatarUrl,
+        address: info.address,
+        subject: subjects[0],
+        subjects,
+        progress,
+        parent: info.moreInfo || 'Chưa cập nhật',
+        contact: info.phone || info.email || 'Chưa cập nhật',
+        preferredChannel: info.moreInfo ? 'Ghi chú' : 'Chưa cập nhật',
+        moreInfo: info.moreInfo,
+        age,
+        dateOfBirth: hasValidBirthday ? format(birthday as Date, 'dd/MM/yyyy') : undefined,
+        school: info.currentLevel || 'Chưa cập nhật',
+        grade: info.currentLevel || 'Chưa cập nhật',
+      }
+    })
+  }, [studentInfoMap, tutorSchedules, checklistItemsByStudent])
+
+  const scheduleInfoById = useMemo(() => {
+    const map: Record<string, { studentId: string; subject: string }> = {}
+    tutorSchedules.forEach((schedule) => {
+      map[schedule.id] = { studentId: schedule.studentId, subject: schedule.subject }
+    })
+    return map
+  }, [tutorSchedules])
+
+  useEffect(() => {
+    if (assignments.length === 0) {
+      setChecklistItemsByStudent({})
+      setChecklistItemMeta({})
+      return
+    }
+
+    const nextByStudent: Record<string, ChecklistItem[]> = {}
+    const nextMeta: Record<string, { assignmentId: string; taskId?: string }> = {}
+
+    assignments.forEach((assignment) => {
+      let scheduleIdString: string | undefined
+      if (typeof assignment.scheduleId === 'string') {
+        scheduleIdString = assignment.scheduleId
+      } else if (assignment.scheduleId && typeof assignment.scheduleId === 'object') {
+        scheduleIdString = assignment.scheduleId._id
+      }
+
+      const relatedSchedule = scheduleIdString ? scheduleInfoById[scheduleIdString] : undefined
+
+      let studentId: string | undefined
+      if (typeof assignment.studentId === 'string') {
+        studentId = assignment.studentId
+      } else if (assignment.studentId && typeof assignment.studentId === 'object') {
+        studentId = assignment.studentId._id
+      } else if (
+        assignment.scheduleId &&
+        typeof assignment.scheduleId === 'object' &&
+        assignment.scheduleId.studentId &&
+        typeof assignment.scheduleId.studentId === 'object'
+      ) {
+        studentId = assignment.scheduleId.studentId._id
+      } else if (relatedSchedule) {
+        studentId = relatedSchedule.studentId
+      }
+      if (!studentId) return
+
+      const subject = getSubjectDisplayName(assignment.subject, relatedSchedule?.subject)
+
+      if (!nextByStudent[studentId]) {
+        nextByStudent[studentId] = []
+      }
+
+      if (assignment.tasks && assignment.tasks.length > 0) {
+        assignment.tasks.forEach((task, index) => {
+          const itemId = task.id || `${assignment.id}-task-${index}`
+          nextByStudent[studentId].push({
+            id: itemId,
+            subject,
+            lesson: assignment.name || 'Bài học',
+            task: task.name || assignment.description || 'Nhiệm vụ',
+            status: mapAssignmentStatusToChecklist(task.status),
+            note: task.description || assignment.description,
+            attachment: task.assignmentUrl || task.solutionUrl,
+          })
+          nextMeta[itemId] = { assignmentId: assignment.id, taskId: task.id }
+        })
+      } else {
+        const itemId = assignment.id
+        nextByStudent[studentId].push({
+          id: itemId,
+          subject,
+          lesson: assignment.name || 'Bài học',
+          task: assignment.description || 'Nhiệm vụ',
+          status: mapAssignmentStatusToChecklist(assignment.status),
+          note: assignment.description,
+        })
+        nextMeta[itemId] = { assignmentId: assignment.id }
+      }
+    })
+
+    setChecklistItemsByStudent(nextByStudent)
+    setChecklistItemMeta(nextMeta)
+  }, [assignments, scheduleInfoById])
 
   // Fetch schedules from API
   useEffect(() => {
@@ -332,17 +517,17 @@ export default function TutorDashboard() {
           const startTime = new Date(schedule.startTime)
           const endTime = new Date(startTime.getTime() + schedule.duration * 60 * 1000)
           const timeString = `${format(startTime, 'HH:mm')} - ${format(endTime, 'HH:mm')}`
+          const materials = (schedule.supplementaryMaterials || [])
+            .map((material, index) => ({
+              id: material._id || `${schedule.id}-${index}`,
+              name: material.name || `Tài liệu ${index + 1}`,
+              url: material.documentURL || '',
+              uploadedAt: schedule.updatedAt,
+              note: material.description,
+            }))
+            .filter((item) => item.url)
           
-          // Map subject code to Vietnamese name
-          const subjectMap: Record<string, string> = {
-            'MATH101': 'Toán',
-            'PHYSICS101': 'Lý',
-            'CHEMISTRY101': 'Hóa',
-            'BIOLOGY101': 'Sinh',
-            'ENGLISH101': 'Anh',
-            'GENERAL': 'Chung',
-          }
-          const subject = subjectMap[schedule.subjectCode] || schedule.subjectCode
+        const subject = getSubjectDisplayName(schedule.subjectCode, schedule.subjectCode)
           
           return {
             id: schedule.id,
@@ -353,6 +538,7 @@ export default function TutorDashboard() {
             date: startTime,
             meetLink: schedule.meetingURL,
             note: schedule.note,
+            materials,
           }
         })
         
@@ -368,48 +554,55 @@ export default function TutorDashboard() {
   }, [user?.id])
 
   useEffect(() => {
-    const fetchScheduleMaterials = async () => {
-      if (!user?.id) return
+    if (!user?.id) return
+    let cancelled = false
+
+    const fetchAssignments = async () => {
+      setAssignmentsLoading(true)
+      setAssignmentsError(null)
       try {
-        setScheduleMaterialsLoading(true)
         const query = new URLSearchParams({
           tutorId: user.id,
           limit: '200',
           sortBy: 'updatedAt:desc',
         }).toString()
         const response = await apiCall<AssignmentPaginatedResponse>(`/assignments?${query}`)
-        const grouped: Record<string, ScheduleMaterialItem[]> = {}
-        response.results?.forEach((assignment) => {
-          const scheduleId = assignment.scheduleId
-          if (!scheduleId || !assignment.supplementaryMaterials?.length) return
-
-          assignment.supplementaryMaterials.forEach((material, index) => {
-            if (!material.url) return
-            if (!grouped[scheduleId]) grouped[scheduleId] = []
-            grouped[scheduleId].push({
-              id: `${assignment.id}-${index}`,
-              name: material.name || `Tài liệu ${index + 1}`,
-              url: material.url,
-              uploadedAt: assignment.updatedAt || assignment.createdAt,
-              note: assignment.description,
-            })
-          })
-        })
-        setScheduleMaterials(grouped)
+        if (!cancelled) {
+          setAssignments(response.results || [])
+        }
       } catch (error) {
-        console.error('Failed to fetch supplementary materials:', error)
+        if (!cancelled) {
+          console.error('Failed to fetch assignments:', error)
+          const message = error instanceof Error ? error.message : 'Không thể tải checklist'
+          setAssignmentsError(message)
+          setAssignments([])
+        }
       } finally {
-        setScheduleMaterialsLoading(false)
+        if (!cancelled) {
+          setAssignmentsLoading(false)
+        }
       }
     }
 
-    fetchScheduleMaterials()
-  }, [user?.id])
+    fetchAssignments()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, assignmentFetchTrigger])
+
+  // supplementaryMaterials are included directly in the schedules payload
 
   const [studentPage, setStudentPage] = useState(1)
   const studentsPerPage = 12
   const subjectOptions = useMemo(
-    () => Array.from(new Set(students.map((student) => student.subject))).sort(),
+    () =>
+      Array.from(
+        new Set(
+          students
+            .map((student) => student.subject)
+            .filter((subject): subject is string => Boolean(subject))
+        )
+      ).sort(),
     [students]
   )
   const filteredStudents = useMemo(() => {
@@ -431,176 +624,232 @@ export default function TutorDashboard() {
   )
   const selectedStudentDetail = students.find(student => student.id === selectedStudent)
 
-  // Checklist data theo studentId
-  const [checklistItemsByStudent, setChecklistItemsByStudent] = useState<Record<string, ChecklistItem[]>>({
-    '1': [ // Nguyễn Văn A
-      {
-        id: '1-1',
-        subject: 'Toán',
-        lesson: 'Giải hệ phương trình',
-        task: 'Bài tập SGK 2,3,5',
-        status: 'not_done',
-      },
-      {
-        id: '1-2',
-        subject: 'Toán',
-        lesson: 'Ôn lý thuyết chương 2',
-        task: 'Đọc lại trang 34-36',
-        status: 'done',
-        note: 'Hiểu 80%',
-      },
-      {
-        id: '1-3',
-        subject: 'Toán',
-        lesson: 'Luyện đề 1',
-        task: 'Làm phần A',
-        status: 'in_progress',
-        note: 'Cần hỗ trợ',
-      },
-      {
-        id: '1-4',
-        subject: 'Hóa',
-        lesson: 'Cân bằng phương trình hóa học',
-        task: 'Bài tập SGK 1,2,3',
-        status: 'done',
-        note: 'Làm tốt',
-      },
-      {
-        id: '1-5',
-        subject: 'Hóa',
-        lesson: 'Tính toán mol',
-        task: 'Bài tập nâng cao trang 45',
-        status: 'in_progress',
-        note: 'Cần kiểm tra lại',
-      },
-    ],
-    '4': [ // Phạm Thị D
-      {
-        id: '4-1',
-        subject: 'Toán',
-        lesson: 'Phương trình bậc hai',
-        task: 'Bài tập SGK 1,2,3',
-        status: 'done',
-        note: 'Làm tốt',
-      },
-      {
-        id: '4-2',
-        subject: 'Toán',
-        lesson: 'Hệ phương trình bậc nhất',
-        task: 'Bài tập nâng cao trang 45',
-        status: 'in_progress',
-        note: 'Cần kiểm tra lại',
-      },
-    ],
-    '8': [ // Bùi Thị H
-      {
-        id: '8-1',
-        subject: 'Toán',
-        lesson: 'Bất phương trình',
-        task: 'Bài tập SGK 4,5,6',
-        status: 'not_done',
-      },
-      {
-        id: '8-2',
-        subject: 'Toán',
-        lesson: 'Ôn tập chương 3',
-        task: 'Làm đề kiểm tra',
-        status: 'done',
-        note: 'Đạt 85 điểm',
-      },
-      {
-        id: '8-3',
-        subject: 'Toán',
-        lesson: 'Luyện đề 2',
-        task: 'Làm phần B và C',
-        status: 'in_progress',
-        note: 'Đang làm',
-      },
-    ],
-    '11': [ // Mai Văn K
-      {
-        id: '11-1',
-        subject: 'Toán',
-        lesson: 'Hàm số bậc nhất',
-        task: 'Bài tập SGK 7,8,9',
-        status: 'done',
-        note: 'Hoàn thành tốt',
-      },
-      {
-        id: '11-2',
-        subject: 'Toán',
-        lesson: 'Đồ thị hàm số',
-        task: 'Vẽ đồ thị các hàm số',
-        status: 'not_done',
-      },
-      {
-        id: '11-3',
-        subject: 'Toán',
-        lesson: 'Bài toán thực tế',
-        task: 'Giải 3 bài toán ứng dụng',
-        status: 'in_progress',
-        note: 'Cần hướng dẫn thêm',
-      },
-    ],
-  })
+  useEffect(() => {
+    if (students.length === 0) return
+    setSelectedStudent((prev) => (students.some((student) => student.id === prev) ? prev : students[0].id))
+  }, [students])
 
-  // Lấy checklist items của học sinh được chọn
-  const checklistItems = checklistItemsByStudent[selectedStudent] || []
+  // Map assignments (tasks) -> chi tiết bài tập cho từng học sinh / môn
+  useEffect(() => {
+    if (!assignments.length) {
+      setTutorDetailItemsByStudentAndSubject({})
+      return
+    }
 
-  const handleStatusChange = (id: string, status: ChecklistItem['status']) => {
-    setChecklistItemsByStudent(prev => {
-      const newData = { ...prev }
-      if (newData[selectedStudent]) {
-        newData[selectedStudent] = newData[selectedStudent].map(item =>
-          item.id === id ? { ...item, status } : item
-        )
+    const next: Record<string, Record<string, TutorChecklistDetail[]>> = {}
+
+    const getFileNameFromUrl = (url?: string) => {
+      if (!url) return undefined
+      try {
+        const withoutQuery = url.split('?')[0]
+        const segments = withoutQuery.split('/')
+        return segments[segments.length - 1] || url
+      } catch {
+        return url
       }
-      return newData
+    }
+
+    assignments.forEach((assignment) => {
+      // Chuẩn hóa scheduleId
+      let scheduleIdString: string | undefined
+      if (typeof assignment.scheduleId === 'string') {
+        scheduleIdString = assignment.scheduleId
+      } else if (assignment.scheduleId && typeof assignment.scheduleId === 'object') {
+        scheduleIdString = assignment.scheduleId._id
+      }
+
+      const relatedSchedule = scheduleIdString ? scheduleInfoById[scheduleIdString] : undefined
+
+      // Lấy studentId giống logic checklist
+      let studentId: string | undefined
+      if (typeof assignment.studentId === 'string') {
+        studentId = assignment.studentId
+      } else if (assignment.studentId && typeof assignment.studentId === 'object') {
+        studentId = assignment.studentId._id
+      } else if (
+        assignment.scheduleId &&
+        typeof assignment.scheduleId === 'object' &&
+        assignment.scheduleId.studentId &&
+        typeof assignment.scheduleId.studentId === 'object'
+      ) {
+        studentId = assignment.scheduleId.studentId._id
+      } else if (relatedSchedule) {
+        studentId = relatedSchedule.studentId
+      }
+
+      if (!studentId) return
+
+      const subject = getSubjectDisplayName(assignment.subject, relatedSchedule?.subject)
+
+      if (!next[studentId]) next[studentId] = {}
+      if (!next[studentId][subject]) next[studentId][subject] = []
+
+      const tasks = assignment.tasks || []
+      if (!tasks.length) return
+
+      tasks.forEach((task, index) => {
+        const id = task.id || `${assignment.id}-task-${index}`
+
+        const estimatedMinutes =
+          typeof task.estimatedTime === 'number' && !Number.isNaN(task.estimatedTime)
+            ? task.estimatedTime
+            : 0
+        const actualMinutes =
+          typeof task.actualTime === 'number' && !Number.isNaN(task.actualTime)
+            ? task.actualTime
+            : 0
+
+        const estimatedTime = `${estimatedMinutes} phút`
+        const actualTime = `${actualMinutes} phút`
+
+        let result: TutorChecklistDetail['result'] = 'not_done'
+        const taskStatusStr = String(task.status)
+        if (taskStatusStr === 'completed') {
+          result = 'completed'
+        } else if (
+          taskStatusStr === 'in-progress' ||
+          taskStatusStr === 'in_progress' ||
+          taskStatusStr === 'in progress'
+        ) {
+          result = 'in_progress'
+        } else if (taskStatusStr === 'incorrect' || taskStatusStr === 'wrong') {
+          result = 'incorrect'
+        }
+
+        next[studentId][subject].push({
+          id,
+          lesson: task.name || assignment.name || 'Bài tập',
+          estimatedTime,
+          actualTime,
+          result,
+          solution: task.description || assignment.description || '',
+          note: assignment.description || '',
+          uploadedFile: getFileNameFromUrl(task.answerURL),
+          assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
+        })
+      })
     })
+
+    setTutorDetailItemsByStudentAndSubject(next)
+  }, [assignments, scheduleInfoById])
+
+  const updateChecklistItemById = (
+    id: string,
+    updater: (item: ChecklistItem) => ChecklistItem
+  ) => {
+    setChecklistItemsByStudent((prev) => {
+      let updated = false
+      const next: typeof prev = {}
+      Object.entries(prev).forEach(([studentId, items]) => {
+        const index = items.findIndex((item) => item.id === id)
+        if (index !== -1) {
+          const nextItems = [...items]
+          nextItems[index] = updater(items[index])
+          next[studentId] = nextItems
+          updated = true
+        } else {
+          next[studentId] = items
+        }
+      })
+      return updated ? next : prev
+    })
+  }
+
+  const handleStatusChange = async (id: string, status: ChecklistItem['status']) => {
+    updateChecklistItemById(id, (item) => ({ ...item, status }))
+    const meta = checklistItemMeta[id]
+    if (!meta) return
+    try {
+      const payload = meta.taskId
+        ? { tasks: [{ id: meta.taskId, status: mapChecklistStatusToAssignment(status) }] }
+        : { status: mapChecklistStatusToAssignment(status) }
+      await apiCall(`/assignments/${meta.assignmentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      })
+      setAssignmentFetchTrigger((prev) => prev + 1)
+    } catch (error) {
+      console.error('Failed to update checklist status:', error)
+      setAssignmentsError('Không thể cập nhật trạng thái checklist.')
+      setAssignmentFetchTrigger((prev) => prev + 1)
+    }
   }
 
   const handleNoteChange = (id: string, note: string) => {
-    setChecklistItemsByStudent(prev => {
-      const newData = { ...prev }
-      if (newData[selectedStudent]) {
-        newData[selectedStudent] = newData[selectedStudent].map(item =>
-          item.id === id ? { ...item, note } : item
-        )
-      }
-      return newData
+    updateChecklistItemById(id, (item) => ({ ...item, note }))
+    const meta = checklistItemMeta[id]
+    if (!meta) return
+    const payload = meta.taskId
+      ? {
+          tasks: [
+            {
+              id: meta.taskId,
+              description: note,
+            },
+          ],
+        }
+      : { description: note }
+    apiCall(`/assignments/${meta.assignmentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
     })
+      .then(() => setAssignmentFetchTrigger((prev) => prev + 1))
+      .catch((error) => {
+        console.error('Failed to update note:', error)
+        setAssignmentsError('Không thể lưu ghi chú checklist.')
+      })
   }
 
   const handleLessonChange = (id: string, lesson: string) => {
-    setChecklistItemsByStudent(prev => {
-      const newData = { ...prev }
-      if (newData[selectedStudent]) {
-        newData[selectedStudent] = newData[selectedStudent].map(item =>
-          item.id === id ? { ...item, lesson } : item
-        )
-      }
-      return newData
+    updateChecklistItemById(id, (item) => ({ ...item, lesson }))
+    const meta = checklistItemMeta[id]
+    if (!meta) return
+    apiCall(`/assignments/${meta.assignmentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: lesson }),
     })
+      .then(() => setAssignmentFetchTrigger((prev) => prev + 1))
+      .catch((error) => {
+        console.error('Failed to update lesson name:', error)
+        setAssignmentsError('Không thể cập nhật tên bài học.')
+      })
   }
 
   const handleTaskChange = (id: string, task: string) => {
-    setChecklistItemsByStudent(prev => {
-      const newData = { ...prev }
-      if (newData[selectedStudent]) {
-        newData[selectedStudent] = newData[selectedStudent].map(item =>
-          item.id === id ? { ...item, task } : item
-        )
-      }
-      return newData
+    updateChecklistItemById(id, (item) => ({ ...item, task }))
+    const meta = checklistItemMeta[id]
+    if (!meta) return
+    const payload = meta.taskId
+      ? { tasks: [{ id: meta.taskId, name: task }] }
+      : { description: task }
+    apiCall(`/assignments/${meta.assignmentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
     })
+      .then(() => setAssignmentFetchTrigger((prev) => prev + 1))
+      .catch((error) => {
+        console.error('Failed to update task name:', error)
+        setAssignmentsError('Không thể cập nhật nhiệm vụ.')
+      })
+  }
+
+  const handleDeleteChecklistItem = async (id: string) => {
+    const meta = checklistItemMeta[id]
+    if (!meta) return
+    try {
+      await apiCall(`/assignments/${meta.assignmentId}`, {
+        method: 'DELETE',
+      })
+      setAssignmentFetchTrigger((prev) => prev + 1)
+    } catch (error) {
+      console.error('Failed to delete assignment:', error)
+      setAssignmentsError('Không thể xóa checklist. Vui lòng thử lại.')
+    }
   }
 
   const handleFileUpload = (id: string, file: File) => {
     console.log('Upload file for item:', id, file.name)
   }
-
-
-  const selectedStudentData = students.find(s => s.id === selectedStudent)
 
   // Lấy danh sách học sinh khung giờ 14h
   const studentsAt14h = useMemo(() => {
@@ -647,25 +896,6 @@ export default function TutorDashboard() {
     if (now < startTime) return 'upcoming'
     return 'completed'
   }
-
-  const schedulesByDate = useMemo(() => {
-    return tutorSchedules.reduce<Record<string, TutorSchedule[]>>((acc, schedule) => {
-      const key = format(schedule.date, 'yyyy-MM-dd')
-      if (!acc[key]) {
-        acc[key] = []
-      }
-      acc[key].push(schedule)
-      return acc
-    }, {})
-  }, [tutorSchedules])
-
-  const scheduleDates = useMemo(
-    () =>
-      Object.keys(schedulesByDate).sort(
-        (a, b) => new Date(a).getTime() - new Date(b).getTime()
-      ),
-    [schedulesByDate]
-  )
 
   // Convert TutorSchedule to ScheduleItem for MonthlyCalendar
   const calendarSchedules = useMemo<ScheduleItem[]>(() => {
@@ -817,128 +1047,9 @@ export default function TutorDashboard() {
     })
   }, [selectedScheduleSlot])
 
-  // Detail items theo studentId và subject
-  const [tutorDetailItemsByStudentAndSubject, setTutorDetailItemsByStudentAndSubject] = useState<Record<string, Record<string, TutorChecklistDetail[]>>>({
-    '1': {
-      Toán: [
-        {
-          id: 'd1-1',
-          lesson: 'Bài 3 – Giải hệ bằng phương pháp thế',
-          estimatedTime: '10 phút',
-          actualTime: '12 phút',
-          result: 'completed',
-          solution: 'Áp dụng phương pháp thế, trình bày từng bước.',
-          note: 'Làm đúng, trình bày rõ.',
-          uploadedFile: 'bai_3_giai_he_phuong_trinh.pdf',
-        },
-        {
-          id: 'd1-2',
-          lesson: 'Bài 4 – Giải hệ bằng cộng đại số',
-          estimatedTime: '15 phút',
-          actualTime: '20 phút',
-          result: 'incorrect',
-          solution: 'Nhắc lại quy tắc cộng đại số và kiểm tra dấu.',
-          note: 'Sai bước chuyển vế, cần sửa.',
-          uploadedFile: 'bai_4_cong_dai_so.pdf',
-        },
-        {
-          id: 'd1-3',
-          lesson: 'Bài 5 – Bài nâng cao',
-          estimatedTime: '20 phút',
-          actualTime: '25 phút',
-          result: 'not_done',
-          solution: 'Đề xuất luyện thêm 3 bài tương tự với tutor.',
-          note: 'Cần luyện thêm phần rút gọn.',
-        },
-      ],
-      Hóa: [
-        {
-          id: 'd1-h1',
-          lesson: 'Bài 1 – Cân bằng phương trình',
-          estimatedTime: '10 phút',
-          actualTime: '8 phút',
-          result: 'completed',
-          solution: 'Cân bằng đúng, hiểu rõ phương pháp.',
-          note: 'Làm tốt',
-        },
-        {
-          id: 'd1-h2',
-          lesson: 'Bài 2 – Tính toán mol',
-          estimatedTime: '15 phút',
-          actualTime: '18 phút',
-          result: 'in_progress',
-          solution: 'Cần kiểm tra lại công thức tính mol.',
-          note: 'Cần kiểm tra lại',
-        },
-      ],
-    },
-    '4': {
-      Toán: [
-        {
-          id: 'd4-1',
-          lesson: 'Bài 1 – Phương trình bậc hai',
-          estimatedTime: '12 phút',
-          actualTime: '10 phút',
-          result: 'completed',
-          solution: 'Giải đúng, trình bày rõ ràng.',
-          note: 'Làm tốt',
-        },
-        {
-          id: 'd4-2',
-          lesson: 'Bài 2 – Hệ phương trình',
-          estimatedTime: '15 phút',
-          actualTime: '18 phút',
-          result: 'in_progress',
-          solution: 'Cần kiểm tra lại các bước giải.',
-          note: 'Cần kiểm tra lại',
-        },
-      ],
-    },
-    '8': {
-      Toán: [
-        {
-          id: 'd8-1',
-          lesson: 'Bài 4 – Bất phương trình',
-          estimatedTime: '15 phút',
-          actualTime: '20 phút',
-          result: 'not_done',
-          solution: 'Cần ôn lại kiến thức về bất phương trình.',
-          note: 'Chưa làm',
-        },
-        {
-          id: 'd8-2',
-          lesson: 'Đề kiểm tra chương 3',
-          estimatedTime: '45 phút',
-          actualTime: '50 phút',
-          result: 'completed',
-          solution: 'Làm tốt, đạt 85 điểm.',
-          note: 'Đạt 85 điểm',
-        },
-      ],
-    },
-    '11': {
-      Toán: [
-        {
-          id: 'd11-1',
-          lesson: 'Bài 7 – Hàm số bậc nhất',
-          estimatedTime: '12 phút',
-          actualTime: '11 phút',
-          result: 'completed',
-          solution: 'Hoàn thành tốt, hiểu rõ khái niệm.',
-          note: 'Hoàn thành tốt',
-        },
-        {
-          id: 'd11-2',
-          lesson: 'Vẽ đồ thị hàm số',
-          estimatedTime: '20 phút',
-          actualTime: '0 phút',
-          result: 'not_done',
-          solution: 'Chưa làm',
-          note: 'Chưa làm',
-        },
-      ],
-    },
-  })
+  // Detail items theo studentId và subject - map từ /assignments
+  const [tutorDetailItemsByStudentAndSubject, setTutorDetailItemsByStudentAndSubject] =
+    useState<Record<string, Record<string, TutorChecklistDetail[]>>>({})
 
   const handleDetailChange = (studentId: string, subject: string, detailId: string, field: keyof TutorChecklistDetail, value: string) => {
     setTutorDetailItemsByStudentAndSubject(prev => {
@@ -1401,9 +1512,52 @@ export default function TutorDashboard() {
     })
   }
 
-  const handleChecklistFormSubmit = () => {
-    console.log('Checklist form data:', checklistForm)
-    setShowChecklistForm(false)
+  const handleChecklistFormSubmit = async () => {
+    if (!checklistForm.studentId) {
+      setAssignmentsError('Vui lòng chọn học sinh để tạo checklist.')
+      return
+    }
+
+    const relatedSchedule =
+      tutorSchedules.find((schedule) => schedule.studentId === checklistForm.studentId) ||
+      tutorSchedules[0]
+
+    if (!relatedSchedule) {
+      setAssignmentsError('Không tìm thấy buổi học phù hợp để gắn checklist.')
+      return
+    }
+
+    const tasksPayload =
+      checklistForm.exercises.map((exercise, index) => ({
+        name: exercise.title || `Bài ${index + 1}`,
+        description: exercise.requirement || checklistForm.tasks || undefined,
+        estimatedTime: exercise.estimatedTime ? Number(exercise.estimatedTime) : undefined,
+        status: 'pending' as AssignmentTaskStatus,
+      })) || []
+
+    const payload = {
+      scheduleId: relatedSchedule.id,
+      subject: checklistForm.lesson || relatedSchedule.subject,
+      name: checklistForm.tasks || 'Checklist mới',
+      description: checklistForm.tasks || undefined,
+      status: 'pending',
+      tasks: tasksPayload,
+    }
+
+    try {
+      setIsSubmittingChecklist(true)
+      await apiCall('/assignments', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+      setShowChecklistForm(false)
+      setAssignmentFetchTrigger((prev) => prev + 1)
+    } catch (error) {
+      console.error('Failed to create checklist:', error)
+      setAssignmentsError('Không thể tạo checklist mới. Vui lòng thử lại.')
+    } finally {
+      setIsSubmittingChecklist(false)
+    }
   }
 
   // Render content based on active section
@@ -1599,7 +1753,7 @@ export default function TutorDashboard() {
                         completed: { label: 'Đã xong', className: 'bg-gray-100 text-gray-600' },
                       }[status]
                       const isExpanded = expandedStudentId === schedule.studentId
-                      const scheduleMaterialsList = scheduleMaterials[schedule.id] || []
+                      const scheduleMaterialsList = schedule.materials || []
 
                       return (
                         <div
@@ -1664,9 +1818,6 @@ export default function TutorDashboard() {
                             </div>
 
                             {/* Expand button to show documents */}
-                            {scheduleMaterialsLoading && scheduleMaterialsList.length === 0 && (
-                              <p className="mt-3 text-xs text-gray-500">Đang tải tài liệu học sinh gửi...</p>
-                            )}
                             {scheduleMaterialsList.length > 0 && (
                               <button
                                 onClick={() => setExpandedStudentId(isExpanded ? null : schedule.studentId)}
@@ -1949,6 +2100,7 @@ export default function TutorDashboard() {
                                           <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Nhiệm vụ</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Trạng thái</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Ghi chú</th>
+                                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Thao tác</th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-gray-100 bg-white">
@@ -2047,6 +2199,15 @@ export default function TutorDashboard() {
                                                   {item.note || <span className="text-gray-400">—</span>}
                                                 </div>
                                               )}
+                                            </td>
+                                            <td className="px-4 py-2">
+                                              <button
+                                                onClick={() => handleDeleteChecklistItem(item.id)}
+                                                className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-700"
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                                Xóa
+                                              </button>
                                             </td>
                                           </tr>
                                         ))}
@@ -2440,6 +2601,7 @@ export default function TutorDashboard() {
                                           <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Nhiệm vụ</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Trạng thái</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Ghi chú</th>
+                                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Thao tác</th>
                           </tr>
                         </thead>
                                       <tbody className="divide-y divide-gray-100 bg-white">
@@ -2539,6 +2701,15 @@ export default function TutorDashboard() {
                                   </div>
                                 )}
                               </td>
+                                    <td className="px-4 py-2">
+                                      <button
+                                        onClick={() => handleDeleteChecklistItem(item.id)}
+                                        className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-700"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                        Xóa
+                                      </button>
+                                    </td>
                             </tr>
                           ))}
                         </tbody>
@@ -2563,33 +2734,41 @@ export default function TutorDashboard() {
                   </div>
                               )}
 
-                  {detailItems.length > 0 && (
-                                <div className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
-                                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-white">
-                        <p className="text-sm font-semibold text-gray-900">Chi tiết bài tập</p>
-                        <div className="flex items-center space-x-2">
-                          <button className="text-xs font-semibold text-primary-600 hover:text-primary-700">
-                            Upload bài làm
-                          </button>
-                          <button className="text-xs font-semibold text-primary-600 hover:text-primary-700">
-                            Thêm bài tập
-                          </button>
-                        </div>
+                  <div className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-white">
+                      <p className="text-sm font-semibold text-gray-900">Chi tiết bài tập</p>
+                      <div className="flex items-center space-x-2">
+                        <button className="text-xs font-semibold text-primary-600 hover:text-primary-700">
+                          Upload bài làm
+                        </button>
+                        <button className="text-xs font-semibold text-primary-600 hover:text-primary-700">
+                          Thêm bài tập
+                        </button>
                       </div>
-                      <div className="overflow-x-auto">
-                                    <table className="min-w-[1000px] w-full text-sm text-left">
-                          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[1000px] w-full text-sm text-left">
+                        <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                          <tr>
+                            <th className="px-4 py-2 font-semibold min-w-[200px]">Bài tập</th>
+                            <th className="px-4 py-2 font-semibold min-w-[150px] whitespace-nowrap">
+                              Thời gian (ước/thực)
+                            </th>
+                            <th className="px-4 py-2 font-semibold min-w-[250px]">Upload bài làm</th>
+                            <th className="px-4 py-2 font-semibold min-w-[250px]">Lời giải</th>
+                            <th className="px-4 py-2 font-semibold min-w-[150px]">Kết quả</th>
+                            <th className="px-4 py-2 font-semibold min-w-[200px]">Nhận xét</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 bg-white">
+                          {detailItems.length === 0 && (
                             <tr>
-                                          <th className="px-4 py-2 font-semibold min-w-[200px]">Bài tập</th>
-                                          <th className="px-4 py-2 font-semibold min-w-[150px] whitespace-nowrap">Thời gian (ước/thực)</th>
-                                          <th className="px-4 py-2 font-semibold min-w-[250px]">Upload bài làm</th>
-                                          <th className="px-4 py-2 font-semibold min-w-[250px]">Lời giải</th>
-                                          <th className="px-4 py-2 font-semibold min-w-[150px]">Kết quả</th>
-                                          <th className="px-4 py-2 font-semibold min-w-[200px]">Nhận xét</th>
+                              <td className="px-4 py-4 text-sm text-gray-500 text-center" colSpan={6}>
+                                Chưa có chi tiết bài tập.
+                              </td>
                             </tr>
-                          </thead>
-                                      <tbody className="divide-y divide-gray-100 bg-white">
-                            {detailItems.map((detail) => (
+                          )}
+                          {detailItems.map((detail) => (
                               <tr key={detail.id} className="hover:bg-gray-50">
                                             <td className="px-4 py-3 min-w-[200px]">
                                   <input
@@ -2736,9 +2915,7 @@ export default function TutorDashboard() {
                         </table>
                       </div>
                     </div>
-                  )}
-
-                          {/* Giao bài tập về nhà */}
+                  {/* Giao bài tập về nhà */}
                           {renderHomeworkSection(studentId, subject)}
                 </div>
               )
@@ -2789,263 +2966,294 @@ export default function TutorDashboard() {
     );
   }
 
-  const getSubjectColor = (subject: string) => {
-    const colors: Record<string, { bg: string; text: string; badge: string }> = {
-      'Toán': { bg: 'bg-blue-50', text: 'text-blue-700', badge: 'bg-blue-500' },
-      'Lý': { bg: 'bg-purple-50', text: 'text-purple-700', badge: 'bg-purple-500' },
-      'Hóa': { bg: 'bg-green-50', text: 'text-green-700', badge: 'bg-green-500' },
-      'Sinh': { bg: 'bg-emerald-50', text: 'text-emerald-700', badge: 'bg-emerald-500' },
-      'Anh': { bg: 'bg-yellow-50', text: 'text-yellow-700', badge: 'bg-yellow-500' },
-      'Sử': { bg: 'bg-amber-50', text: 'text-amber-700', badge: 'bg-amber-500' },
-      'Địa': { bg: 'bg-teal-50', text: 'text-teal-700', badge: 'bg-teal-500' },
-    }
-    return colors[subject] || { bg: 'bg-gray-50', text: 'text-gray-700', badge: 'bg-gray-500' }
-  }
-
 const getStudentAvatar = (studentId: string) => {
   const numericId = parseInt(studentId, 10)
   const avatarIndex = isNaN(numericId) ? 1 : (numericId % 70) + 1
   return `https://i.pravatar.cc/150?img=${avatarIndex}`
 }
 
-const renderStudentsSection = () => (
-    <div className="h-full overflow-hidden">
-      <div className="grid grid-cols-1 xl:grid-cols-[55%_45%] gap-6 h-full">
-        {/* Left: Student List */}
-        <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
-          <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-1">Quản lý học sinh</h2>
-              <p className="text-sm text-gray-500">
-                Trang {studentPage}/{studentPages} · {students.length} học sinh
-              </p>
-            </div>
-          </div>
+const InfoCard = ({
+  icon,
+  label,
+  value,
+  helper,
+}: {
+  icon: ReactNode
+  label: string
+  value: string | number
+  helper?: string | null
+}) => {
+  const displayValue =
+    value === undefined || value === null || value === '' ? 'Chưa cập nhật' : value
+  return (
+    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+      <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{label}</p>
+        <p className="text-sm font-semibold text-gray-900 break-words">{displayValue}</p>
+        {helper && <p className="text-xs text-gray-500 break-all">{helper}</p>}
+      </div>
+    </div>
+  )
+}
 
-          <div className="flex-1 overflow-y-auto pr-1">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {paginatedStudents.map((student) => {
-                const isSelected = selectedStudent === student.id
-                return (
-                  <button
-                    key={student.id}
-                    onClick={() => setSelectedStudent(student.id)}
-                    className={`text-left rounded-xl p-4 transition-all duration-200 ${
-                      isSelected
-                        ? 'bg-gradient-to-br from-primary-50 to-blue-50 border-2 border-primary-500 shadow-lg ring-2 ring-primary-100'
-                        : 'bg-white border-2 border-gray-200 hover:border-primary-300 hover:shadow-md'
-                    }`}
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-200">
-                        <img
-                          src={getStudentAvatar(student.id)}
-                          alt={student.name}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3
-                          className={`text-lg font-bold truncate ${
-                            isSelected ? 'text-primary-700' : 'text-gray-900'
-                          }`}
-                        >
-                          {student.name}
-                        </h3>
-                      </div>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+const StatCard = ({
+  icon,
+  label,
+  value,
+  helper,
+}: {
+  icon: ReactNode
+  label: string
+  value: string | number
+  helper?: string
+}) => (
+  <div className="p-4 rounded-2xl border border-gray-100 bg-gradient-to-br from-white to-gray-50 shadow-sm">
+    <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shadow-inner mb-2">
+      {icon}
+    </div>
+    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">{label}</p>
+    <p className="text-xl font-extrabold text-gray-900">{value}</p>
+    {helper && <p className="text-xs text-gray-500 mt-1">{helper}</p>}
+  </div>
+)
 
-          {/* Pagination */}
-          <div className="flex flex-wrap items-center gap-3 justify-between pt-4 border-t border-gray-200 mt-4">
-            <button
-              onClick={() => setStudentPage((page) => Math.max(1, page - 1))}
-              disabled={studentPage === 1}
-              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-1 sm:flex-auto"
-            >
-              <ChevronRight className="w-4 h-4 rotate-180" />
-              Trang trước
-            </button>
-            <div className="flex items-center justify-center gap-2 text-sm font-semibold text-gray-700 flex-none">
-              <span>Trang</span>
-              <span className="w-10 text-center bg-gray-100 rounded-lg py-1 text-gray-900">{studentPage}</span>
-              <span>/ {studentPages}</span>
-            </div>
-            <button
-              onClick={() => setStudentPage((page) => Math.min(studentPages, page + 1))}
-              disabled={studentPage === studentPages}
-              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-1 sm:flex-auto"
-            >
-              Trang sau
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+const renderStudentsSection = () => {
+    const selectedDetail = selectedStudentDetail
+    const selectedChecklist = selectedDetail ? checklistItemsByStudent[selectedDetail.id] || [] : []
+    const totalChecklist = selectedChecklist.length
+    const completedChecklist = selectedChecklist.filter((item) => item.status === 'done').length
+    const checklistProgress = totalChecklist > 0 ? Math.round((completedChecklist / totalChecklist) * 100) : 0
+    const studentSchedules = selectedDetail
+      ? tutorSchedules.filter((schedule) => schedule.studentId === selectedDetail.id)
+      : []
+    const upcomingSchedules = studentSchedules.filter((schedule) => schedule.date >= new Date())
+    const nextSchedule = upcomingSchedules
+      .slice()
+      .sort((a, b) => a.date.getTime() - b.date.getTime())[0]
+
+    return (
+      <div className="h-full overflow-hidden">
+        <div className="flex flex-col gap-2 mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Hồ sơ học sinh</h2>
+          <p className="text-sm text-gray-600">Danh sách học sinh được lấy trực tiếp từ lịch dạy của bạn</p>
         </div>
 
-        {/* Right: Student Details */}
-        <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
-          <div>
-            <h3 className="text-xl font-bold text-gray-900 mb-6 pb-4 border-b border-gray-200">
-              Thông tin chi tiết học sinh
-            </h3>
+        <div className="grid grid-cols-1 xl:grid-cols-[50%_50%] gap-6 h-full">
+          {/* Left: Student List */}
+          <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
+            <div className="flex items-center justify-between gap-3 flex-wrap border-b border-gray-200 pb-4">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Danh sách học sinh</p>
+                <h3 className="text-lg font-semibold text-gray-900">Tổng quan lớp học · {students.length} học sinh</h3>
+              </div>
+              <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-3 py-1 text-xs text-gray-600 font-semibold">
+                <div className="w-2 h-2 rounded-full bg-primary-500" /> Đang hoạt động
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-col lg:flex-row gap-3">
+              <div className="flex items-center bg-white border border-gray-200 rounded-2xl px-3 py-2 shadow-sm flex-1">
+                <Search className="w-4 h-4 text-gray-500 mr-2" />
+                <input
+                  value={studentSearch}
+                  onChange={(e) => setStudentSearch(e.target.value)}
+                  placeholder="Tìm kiếm học sinh theo tên..."
+                  className="text-sm text-gray-700 outline-none bg-transparent flex-1"
+                />
+              </div>
+              <select
+                value={subjectFilter}
+                onChange={(e) => setSubjectFilter(e.target.value as typeof subjectFilter)}
+                className="px-3 py-2 border border-gray-200 rounded-2xl text-sm text-gray-700 bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+              >
+                <option value="all">Tất cả môn học</option>
+                {subjectOptions.map((subject) => (
+                  <option key={subject} value={subject}>
+                    {subject}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 mt-5">
+              {paginatedStudents.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-center text-sm text-gray-500">
+                  Chưa có học sinh nào từ lịch dạy của bạn.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {paginatedStudents.map((student) => {
+                    const isSelected = selectedStudent === student.id
+                    return (
+                      <button
+                        key={student.id}
+                        onClick={() => setSelectedStudent(student.id)}
+                        className={`text-left rounded-xl p-4 transition-all duration-200 ${
+                          isSelected
+                            ? 'bg-gradient-to-br from-primary-50 to-blue-50 border-2 border-primary-500 shadow-lg ring-2 ring-primary-100'
+                            : 'bg-white border-2 border-gray-200 hover:border-primary-300 hover:shadow-md'
+                        }`}
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-200">
+                            <img
+                              src={getStudentAvatar(student.id)}
+                              alt={student.name}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <h3
+                              className={`text-lg font-bold truncate ${
+                                isSelected ? 'text-primary-700' : 'text-gray-900'
+                              }`}
+                            >
+                              {student.name}
+                            </h3>
+                            <p className="text-sm text-gray-500">{student.grade || 'Chưa cập nhật lớp'}</p>
+                            <p className="text-xs text-gray-400 truncate">{student.address || 'Chưa có địa chỉ'}</p>
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Pagination */}
+            <div className="flex flex-wrap items-center gap-3 justify-between pt-4 border-t border-gray-200 mt-4">
+              <button
+                onClick={() => setStudentPage((page) => Math.max(1, page - 1))}
+                disabled={studentPage === 1}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-1 sm:flex-auto"
+              >
+                <ChevronRight className="w-4 h-4 rotate-180" />
+                Trang trước
+              </button>
+              <div className="flex items-center justify-center gap-2 text-sm font-semibold text-gray-700 flex-none">
+                <span>Trang</span>
+                <span className="w-10 text-center bg-gray-100 rounded-lg py-1 text-gray-900">{studentPage}</span>
+                <span>/ {studentPages}</span>
+              </div>
+              <button
+                onClick={() => setStudentPage((page) => Math.min(studentPages, page + 1))}
+                disabled={studentPage === studentPages}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-1 sm:flex-auto"
+              >
+                Trang sau
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-          {selectedStudentDetail ? (
-            <div className="flex-1 overflow-y-auto pr-1 space-y-5">
-              {/* Header with Name and Progress */}
-              <div className="bg-gradient-to-r from-primary-50 to-blue-50 rounded-xl p-5 border border-primary-100">
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
-                  <div className="flex items-start gap-4 flex-1">
-                    <div className="w-16 h-16 rounded-full overflow-hidden border border-primary-200 bg-white flex-shrink-0">
+
+          {/* Right: Student Details */}
+          <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
+            {selectedDetail ? (
+              <>
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-6 pb-4 border-b border-gray-200">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Thông tin chi tiết</p>
+                    <h3 className="text-xl font-bold text-gray-900">{selectedDetail.name}</h3>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {(selectedDetail.subjects || []).map((subject) => (
+                        <span key={subject} className="px-3 py-1 rounded-full text-xs font-semibold bg-primary-50 text-primary-700 border border-primary-200">
+                          {subject}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-3 py-1 rounded-full bg-primary-50 text-primary-700 text-xs font-semibold">
+                      Tiến độ {checklistProgress}%
+                    </span>
+                    <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold">
+                      {upcomingSchedules.length} buổi sắp tới
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto pr-1 space-y-4">
+                  <div className="w-full rounded-2xl border border-gray-100 bg-gray-50/70 p-4 flex flex-col gap-3 md:flex-row md:items-center md:gap-4 shadow-inner">
+                    <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-white shadow-md flex-shrink-0 bg-white">
                       <img
-                        src={getStudentAvatar(selectedStudentDetail.id)}
-                        alt={selectedStudentDetail.name}
+                        src={getStudentAvatar(selectedDetail.id)}
+                        alt={selectedDetail.name}
                         className="w-full h-full object-cover"
                         loading="lazy"
                       />
                     </div>
-                    <div className="flex-1">
-                      <p className="text-xs font-semibold text-primary-600 uppercase tracking-wide mb-1">
-                        Học sinh
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Học sinh</p>
+                      <h4 className="text-2xl font-bold text-gray-900">{selectedDetail.name}</h4>
+                      <p className="text-sm text-gray-500">
+                        {selectedDetail.grade || 'Đang cập nhật'} · {selectedDetail.school || 'Chưa có thông tin trường'}
                       </p>
-                      <h4 className="text-2xl font-bold text-gray-900 mb-2">
-                        {selectedStudentDetail.name}
-                      </h4>
+                      {(selectedDetail.subjects || []).length === 0 && (
+                        <p className="text-xs text-gray-400 mt-1">Chưa có môn học cụ thể</p>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right flex-shrink-0 space-y-2">
-                    <div>
-                      <p className="text-xs font-semibold text-primary-600 uppercase tracking-wide mb-1">
-                        Địa chỉ
-                      </p>
-                      <p className="text-lg font-bold text-gray-900">
-                        {selectedStudentDetail.address || 'Chưa cập nhật'}
-                      </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <InfoCard icon={<Cake className="w-4 h-4 text-primary-600" />} label="Tuổi" value={(selectedDetail as any).age || 'Chưa cập nhật'} />
+                    <InfoCard icon={<Calendar className="w-4 h-4 text-primary-600" />} label="Ngày sinh" value={(selectedDetail as any).dateOfBirth || 'Chưa cập nhật'} />
+                    <InfoCard icon={<School className="w-4 h-4 text-primary-600" />} label="Trường học" value={(selectedDetail as any).school || 'Chưa cập nhật'} />
+                    <InfoCard icon={<GraduationCap className="w-4 h-4 text-primary-600" />} label="Lớp học" value={(selectedDetail as any).grade || 'Chưa cập nhật'} />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <InfoCard icon={<UserCircle className="w-4 h-4 text-primary-600" />} label="Phụ huynh" value={selectedDetail.parent || 'Chưa cập nhật'} />
+                    <InfoCard icon={<Phone className="w-4 h-4 text-primary-600" />} label="Liên hệ" value={selectedDetail.contact || 'Chưa có'} helper={selectedDetail.email} />
+                    <InfoCard icon={<MapPin className="w-4 h-4 text-primary-600" />} label="Địa chỉ" value={selectedDetail.address || 'Chưa cập nhật'} />
+                    <InfoCard icon={<MessageSquare className="w-4 h-4 text-primary-600" />} label="Kênh ưu tiên" value={selectedDetail.preferredChannel || 'Chưa cập nhật'} />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <StatCard icon={<Award className="w-4 h-4 text-amber-600" />} label="Checklist" value={`${completedChecklist}/${totalChecklist}`} helper="Nhiệm vụ đã xong" />
+                    <StatCard icon={<Clock className="w-4 h-4 text-blue-600" />} label="Buổi sắp tới" value={upcomingSchedules.length} helper="Trong lịch hôm nay" />
+                    <StatCard icon={<BookOpen className="w-4 h-4 text-emerald-600" />} label="Môn học" value={selectedDetail.subjects?.length || 1} helper="Đang theo học" />
+                  </div>
+
+                  {nextSchedule && (
+                    <div className="p-4 border border-gray-200 rounded-2xl bg-gradient-to-br from-white to-gray-50 space-y-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-1">Buổi học sắp tới</p>
+                      <p className="text-base font-bold text-gray-900">{nextSchedule.subject}</p>
+                      <p className="text-sm text-gray-600">{format(nextSchedule.date, 'EEEE, dd/MM/yyyy')} · {nextSchedule.time}</p>
+                      {nextSchedule.meetLink && (
+                        <button
+                          onClick={() => handleJoinSchedule(nextSchedule.id)}
+                          className="btn-primary text-xs px-4 py-2 mt-2"
+                        >
+                          Vào lớp
+                        </button>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-primary-600 uppercase tracking-wide mb-1">
-                        Số điện thoại
-                      </p>
-                      <p className="text-2xl font-extrabold text-primary-600">
-                        {selectedStudentDetail.contact || 'Chưa có thông tin'}
-                      </p>
-                    </div>
+                  )}
+
+                  <div className="p-4 border border-dashed border-gray-300 rounded-2xl bg-white shadow-inner">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">Ghi chú thêm</p>
+                    <p className="text-sm text-gray-700 leading-relaxed">
+                      {selectedDetail.moreInfo || 'Chưa có ghi chú nào từ phụ huynh.'}
+                    </p>
                   </div>
                 </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <UserCircle className="w-16 h-16 text-gray-300 mb-4" />
+                <p className="text-sm font-medium text-gray-500">Chọn học sinh trong danh sách để xem chi tiết.</p>
               </div>
-
-              {/* Personal Information */}
-              <div className="space-y-3">
-                <h5 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Thông tin cá nhân</h5>
-                
-                <div className="grid grid-cols-1 gap-3">
-                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Cake className="w-5 h-5 text-primary-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Tuổi</p>
-                      <p className="text-sm font-semibold text-gray-900">{(selectedStudentDetail as any).age || 'Chưa có thông tin'}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Calendar className="w-5 h-5 text-primary-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Ngày tháng năm sinh</p>
-                      <p className="text-sm font-semibold text-gray-900">{(selectedStudentDetail as any).dateOfBirth || 'Chưa có thông tin'}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <School className="w-5 h-5 text-primary-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Trường</p>
-                      <p className="text-sm font-semibold text-gray-900">{(selectedStudentDetail as any).school || 'Chưa có thông tin'}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <GraduationCap className="w-5 h-5 text-primary-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Lớp</p>
-                      <p className="text-sm font-semibold text-gray-900">{(selectedStudentDetail as any).grade || 'Chưa có thông tin'}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Contact Information */}
-              <div className="space-y-3 pt-2">
-                <h5 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Thông tin liên hệ</h5>
-                
-                <div className="grid grid-cols-1 gap-3">
-                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <UserCircle className="w-5 h-5 text-primary-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Phụ huynh</p>
-                      <p className="text-sm font-semibold text-gray-900">{selectedStudentDetail.parent}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Phone className="w-5 h-5 text-primary-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Liên hệ</p>
-                      <p className="text-sm text-gray-900 mb-1">{selectedStudentDetail.contact}</p>
-                      <p className="text-sm text-gray-600 flex items-center gap-1">
-                        <Mail className="w-3.5 h-3.5" />
-                        {selectedStudentDetail.email}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <MapPin className="w-5 h-5 text-primary-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Địa chỉ</p>
-                      <p className="text-sm font-semibold text-gray-900">{selectedStudentDetail.address}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <MessageSquare className="w-5 h-5 text-primary-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Kênh ưu tiên</p>
-                      <p className="text-sm font-semibold text-gray-900">{selectedStudentDetail.preferredChannel}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <UserCircle className="w-16 h-16 text-gray-300 mb-4" />
-              <p className="text-sm font-medium text-gray-500">Chọn học sinh trong danh sách để xem chi tiết.</p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const renderScheduleSection = () => (
     <div className="h-full overflow-hidden">
@@ -3067,30 +3275,30 @@ const renderStudentsSection = () => (
     </div>
   )
 
-  // Tổ chức dữ liệu theo môn học cho checklist section (khung giờ 14:00 - 15:30)
+  // Tổ chức dữ liệu theo môn học cho checklist section (tất cả học sinh)
   const subjectsData = useMemo(() => {
     const subjectsMap: Record<string, SubjectData> = {}
-    
-    studentsAt14h.forEach(student => {
+
+    students.forEach((student) => {
       if (!student) return
       const studentChecklistItems = checklistItemsByStudent[student.id] || []
-      
+
       // Nhóm checklist items theo môn học
       const itemsBySubject = studentChecklistItems.reduce<Record<string, ChecklistItem[]>>((acc, item) => {
         if (!acc[item.subject]) acc[item.subject] = []
         acc[item.subject].push(item)
         return acc
       }, {})
-      
+
       // Thêm dữ liệu vào mỗi môn học
       Object.entries(itemsBySubject).forEach(([subject, items]) => {
         if (!subjectsMap[subject]) {
           subjectsMap[subject] = {
             subject,
-            students: []
+            students: [],
           }
         }
-        
+
         const detailItems = tutorDetailItemsByStudentAndSubject[student.id]?.[subject] || []
         const homeworkItems = homeworkItemsByStudentAndSubject[student.id]?.[subject] || []
         const evaluation = subjectEvaluations[student.id]?.[subject] || {
@@ -3099,21 +3307,21 @@ const renderStudentsSection = () => (
           taskCompletion: 0,
           attitude: 0,
           presentation: 0,
-          generalComment: ''
+          generalComment: '',
         }
-        
+
         subjectsMap[subject].students.push({
           studentId: student.id,
           checklistItems: items,
           detailItems,
           homeworkItems,
-          evaluation
+          evaluation,
         })
       })
     })
-    
+
     return Object.values(subjectsMap)
-  }, [studentsAt14h, checklistItemsByStudent, tutorDetailItemsByStudentAndSubject, homeworkItemsByStudentAndSubject, subjectEvaluations])
+  }, [students, checklistItemsByStudent, tutorDetailItemsByStudentAndSubject, homeworkItemsByStudentAndSubject, subjectEvaluations])
 
   // Tổ chức dữ liệu theo môn học cho home section (chỉ hôm nay)
   const subjectsDataToday = useMemo(() => {
@@ -3203,6 +3411,16 @@ const renderStudentsSection = () => (
     
     return (
       <div className="h-full overflow-y-auto space-y-4">
+        {assignmentsError && (
+          <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700">
+            {assignmentsError}
+          </div>
+        )}
+        {assignmentsLoading && (
+          <div className="p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-600">
+            Đang tải checklist từ máy chủ...
+          </div>
+        )}
         <div className="card-no-transition space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -4033,9 +4251,10 @@ const renderStudentsSection = () => (
               </button>
               <button
                 onClick={handleChecklistFormSubmit}
-                className="btn-primary text-sm px-6 py-3 rounded-xl"
+                disabled={isSubmittingChecklist}
+                className="btn-primary text-sm px-6 py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Gửi checklist
+                {isSubmittingChecklist ? 'Đang gửi...' : 'Gửi checklist'}
               </button>
             </div>
           </div>

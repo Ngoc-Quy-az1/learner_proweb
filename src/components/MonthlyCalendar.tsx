@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
-import { ChevronLeft, ChevronRight, Filter, Play } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Filter, Play, Copy, Check } from 'lucide-react'
 import { ScheduleItem } from './ScheduleWidget'
 
 interface MonthlyCalendarProps {
@@ -9,7 +9,33 @@ interface MonthlyCalendarProps {
   onViewChecklist?: (scheduleId: string) => void
 }
 
-const SCHEDULES_PER_DAY = 5
+const SCHEDULES_PER_DAY = 4
+
+// Component for copy link button with feedback
+const CopyLinkButton = ({ link }: { link: string }) => {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigator.clipboard.writeText(link)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex-shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2.5 rounded-lg transition-colors"
+      title={copied ? "Đã copy!" : "Copy link"}
+    >
+      {copied ? (
+        <Check className="w-4 h-4 text-green-500" />
+      ) : (
+        <Copy className="w-4 h-4" />
+      )}
+    </button>
+  )
+}
 
 export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
@@ -48,10 +74,11 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
   }
 
   const getScheduleStatus = (schedule: ScheduleItem, date: Date) => {
-    const statusMap: Record<'upcoming' | 'ongoing' | 'completed', { label: string; color: string }> = {
+    const statusMap: Record<'upcoming' | 'ongoing' | 'completed' | 'cancelled', { label: string; color: string }> = {
       upcoming: { label: 'Sắp tới', color: 'bg-blue-100 text-blue-700' },
       ongoing: { label: 'Đang diễn ra', color: 'bg-green-100 text-green-700' },
       completed: { label: 'Đã kết thúc', color: 'bg-gray-100 text-gray-600' },
+      cancelled: { label: 'Đã hủy', color: 'bg-red-100 text-red-700' },
     }
 
     if (schedule.status && statusMap[schedule.status]) {
@@ -77,6 +104,21 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
     } else {
       return { status: 'completed', ...statusMap.completed }
     }
+  }
+
+  const isNearStartTime = (schedule: ScheduleItem, date: Date, minutesThreshold: number = 15) => {
+    const status = schedule.status || 'upcoming'
+    if (status === 'completed') return false
+    
+    const now = new Date()
+    const [startTime] = schedule.time.split(' - ')
+    const [startHour, startMinute] = startTime.split(':').map(Number)
+    
+    const startDateTime = new Date(date)
+    startDateTime.setHours(startHour, startMinute, 0, 0)
+    
+    const diffMinutes = (startDateTime.getTime() - now.getTime()) / (1000 * 60)
+    return diffMinutes > 0 && diffMinutes <= minutesThreshold
   }
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -111,7 +153,7 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
 
       <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4 min-h-0 overflow-hidden">
         {/* Left: Calendar */}
-        <div className="w-full lg:w-80 flex-shrink-0 flex flex-col border-b lg:border-b-0 lg:border-r border-gray-200 pb-4 lg:pb-0 lg:pr-4">
+        <div className="w-full lg:w-1/2 flex-shrink-0 flex flex-col border-b lg:border-b-0 lg:border-r border-gray-200 pb-4 lg:pb-0 lg:pr-4">
           {/* Calendar Grid */}
           <div className="flex-1 min-h-0">
             {/* Month Navigation */}
@@ -134,16 +176,16 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
             </div>
 
             {/* Day names header */}
-            <div className="grid grid-cols-7 gap-0.5 mb-1">
+            <div className="grid grid-cols-7 gap-1 mb-2">
               {dayNames.map((day) => (
-                <div key={day} className="text-center text-[10px] font-semibold text-gray-600 py-1">
+                <div key={day} className="text-center text-xs font-semibold text-gray-600 py-2">
                   {day}
                 </div>
               ))}
             </div>
 
             {/* Calendar days */}
-            <div className="grid grid-cols-7 gap-0.5">
+            <div className="grid grid-cols-7 gap-2">
               {daysInMonth.map((day) => {
                 const isCurrentMonth = isSameMonth(day, currentMonth)
                 const isSelected = selectedDate && isSameDay(day, selectedDate)
@@ -154,7 +196,7 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
                   <button
                     key={day.toISOString()}
                     onClick={() => setSelectedDate(day)}
-                    className={`relative h-8 rounded transition-all ${
+                    className={`relative h-16 rounded-lg transition-all ${
                       !isCurrentMonth
                         ? 'text-gray-300'
                         : isSelected
@@ -165,9 +207,9 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
                     }`}
                   >
                     <div className="flex flex-col items-center justify-center h-full">
-                      <span className="text-xs">{format(day, 'd')}</span>
+                      <span className="text-base">{format(day, 'd')}</span>
                       {hasEvents && isCurrentMonth && (
-                        <div className={`absolute bottom-0.5 left-1/2 transform -translate-x-1/2 w-1 h-1 rounded-full ${
+                        <div className={`absolute bottom-2 left-1/2 transform -translate-x-1/2 w-2 h-2 rounded-full ${
                           isSelected ? 'bg-white' : 'bg-primary-500'
                         }`}></div>
                       )}
@@ -180,13 +222,13 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
         </div>
 
         {/* Right: Details */}
-        <div className="flex-1 overflow-y-auto min-h-[780px] mt-2 lg:mt-0 flex flex-col">
+        <div className="w-full lg:w-1/2 overflow-y-auto min-h-[780px] mt-2 lg:mt-0 flex flex-col">
           {selectedDate ? (
             <div>
-              <h4 className="text-base font-bold text-gray-900 mb-3">
+              <h4 className="text-lg font-bold text-gray-900 mb-4">
                 Ngày {format(selectedDate, 'dd')} tháng {format(selectedDate, 'MM')}
               </h4>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {getSelectedDateSchedules().length > 0 ? (() => {
                   const schedulesForDay = getSelectedDateSchedules()
                   const key = format(selectedDate, 'yyyy-MM-dd')
@@ -206,47 +248,80 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
                     <>
                       {paginatedSchedules.map((schedule) => {
                     const statusInfo = getScheduleStatus(schedule, selectedDate)
+                    const nearStart = isNearStartTime(schedule, selectedDate)
+                    const getSubjectColor = (subject: string) => {
+                      if (!subject) return null
+                      const colors: Record<string, { bg: string; text: string }> = {
+                        'Toán': { bg: 'bg-blue-500', text: 'text-white' },
+                        'Lý': { bg: 'bg-green-500', text: 'text-white' },
+                        'Hóa': { bg: 'bg-purple-500', text: 'text-white' },
+                        'Anh': { bg: 'bg-yellow-500', text: 'text-white' },
+                        'Văn': { bg: 'bg-pink-500', text: 'text-white' },
+                        'Sinh': { bg: 'bg-teal-500', text: 'text-white' },
+                      }
+                      return colors[subject] || null
+                    }
+                    const subjectColor = getSubjectColor(schedule.subject)
+                    const showSubject = schedule.subject && schedule.subject.trim() !== ''
+                    
                     return (
                       <div
                         key={schedule.id}
-                        className="bg-gray-50 rounded-lg p-4 border border-gray-200 hover:shadow-md transition-all"
+                        className="bg-white rounded-xl p-5 border-2 border-gray-200 hover:border-primary-400 hover:shadow-lg transition-all"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 space-y-2">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex-1 space-y-3">
                             <div className="flex items-center gap-2 flex-wrap">
-                              {schedule.tutor && (
-                                <div className="text-sm font-semibold text-gray-900">
-                                  {schedule.tutor}
-                                </div>
+                              {showSubject && subjectColor && (
+                                <span className={`px-3 py-1.5 rounded-lg text-xs font-bold ${subjectColor.bg} ${subjectColor.text} shadow-sm`}>
+                                  {schedule.subject}
+                                </span>
                               )}
-                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusInfo.color}`}>
+                              <span className={`text-sm font-semibold px-4 py-2 rounded-full ${statusInfo.color} ${
+                                nearStart && statusInfo.status === 'upcoming' ? 'animate-pulse' : ''
+                              }`}>
                                 {statusInfo.label}
                               </span>
                             </div>
-                            <div className="text-sm text-gray-700">
-                              {schedule.subject}
+                            <div className="flex items-center gap-2">
+                              <span className="text-4xl font-bold text-primary-600">{schedule.time}</span>
                             </div>
-                            <div className="text-xs text-gray-600">
-                              Tuần {getWeekNumber(selectedDate)}
-                            </div>
-                            {schedule.note && (
-                              <div className="text-xs text-gray-600">
-                                {schedule.note}
+                            {schedule.tutor && (
+                              <div className="text-sm text-gray-700">
+                                <span className="font-semibold">Học sinh:</span> {schedule.tutor}
                               </div>
                             )}
                           </div>
-                          {schedule.meetLink && onJoinClass && statusInfo.status !== 'completed' && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onJoinClass(schedule.id)
-                              }}
-                              className="flex-shrink-0 bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-colors shadow-sm hover:shadow-md"
-                            >
-                              <Play className="w-3 h-3" />
-                              <span>Vào lớp</span>
-                            </button>
-                          )}
+                          <div className="flex flex-col items-end gap-3">
+                            {schedule.note && (
+                              <div className="text-sm text-gray-700 bg-gray-50 rounded-lg px-4 py-2.5 border border-gray-200 max-w-2xl text-right">
+                                {schedule.note}
+                              </div>
+                            )}
+                            {schedule.meetLink && onJoinClass && statusInfo.status !== 'completed' && (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    onJoinClass(schedule.id)
+                                  }}
+                                  className="w-full max-w-2xl bg-primary-500 hover:bg-primary-600 text-white px-6 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg"
+                                >
+                                  <Play className="w-5 h-5" />
+                                  <span>Vào lớp</span>
+                                </button>
+                                <div className="flex items-center gap-2 w-full max-w-2xl">
+                                  <input
+                                    type="text"
+                                    value={schedule.meetLink}
+                                    readOnly
+                                    className="flex-1 bg-gray-50 border-2 border-gray-200 rounded-lg px-4 py-2.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-500"
+                                  />
+                                  <CopyLinkButton link={schedule.meetLink || ''} />
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )

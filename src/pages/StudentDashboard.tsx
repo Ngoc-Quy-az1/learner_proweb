@@ -1,17 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Layout from '../components/Layout'
 import Sidebar from '../components/Sidebar'
 import { ScheduleItem } from '../components/ScheduleWidget'
-import WeeklyCalendar from '../components/WeeklyCalendar'
 import MonthlyCalendar from '../components/MonthlyCalendar'
-import ChecklistTable, { ChecklistItem } from '../components/ChecklistTable'
-
+import { ChecklistItem } from '../components/ChecklistTable'
 import { TaskItem } from '../components/TaskTable'
-import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, Upload, FileText, AlertTriangle, Star, Eye, Download, Search, Filter } from 'lucide-react'
+import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, Upload, FileText, AlertTriangle, Star, Eye, Download, Search, Filter, ExternalLink } from 'lucide-react'
 import { format, isToday } from 'date-fns'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { apiCall } from '../config/api'
+import { apiCall, API_BASE_URL } from '../config/api'
 import { useAuth } from '../contexts/AuthContext'
+import { getCookie } from '../utils/cookies'
 
 // Giả định kiểu dữ liệu cho ChecklistDetailItem nếu chưa có trong file gốc
 interface ChecklistDetailItem {
@@ -56,6 +55,9 @@ interface ScheduleApiItem {
   meetingURL?: string
   note?: string
   status?: 'upcoming' | 'ongoing' | 'completed' | 'cancelled'
+  reportURL?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 interface SchedulePaginatedResponse {
@@ -64,6 +66,18 @@ interface SchedulePaginatedResponse {
   limit: number
   totalPages: number
   totalResults: number
+}
+
+interface TutorInfo {
+  id: string
+  name?: string
+  email?: string
+  phone?: string
+  avatarUrl?: string
+  address?: string
+  moreInfo?: string
+  currentLevel?: string
+  cvUrl?: string
 }
 
 type AssignmentStatus = 'pending' | 'in-progress' | 'completed'
@@ -78,6 +92,12 @@ interface AssignmentTaskApiItem {
   actualTime?: number
   assignmentUrl?: string
   solutionUrl?: string
+  answerURL?: string
+}
+
+interface SupplementaryMaterialApiItem {
+  name?: string
+  url?: string
 }
 
 interface AssignmentApiItem {
@@ -87,6 +107,8 @@ interface AssignmentApiItem {
   subject?: string
   status?: AssignmentStatus
   tasks?: AssignmentTaskApiItem[]
+  scheduleId?: string
+  supplementaryMaterials?: SupplementaryMaterialApiItem[]
   createdAt?: string
   updatedAt?: string
 }
@@ -136,6 +158,14 @@ type HomeworkTaskItem = TaskItem & { sessionDate?: Date; sessionTime?: string; s
 
 type ChecklistWithDate = ChecklistItem & { date: Date }
 
+type ScheduleMaterialItem = {
+  id: string
+  name: string
+  url: string
+  uploadedAt?: string
+  description?: string
+}
+
 const SUBJECT_LABELS: Record<string, string> = {
   math: 'Toán',
   physics: 'Lý',
@@ -146,9 +176,10 @@ const SUBJECT_LABELS: Record<string, string> = {
 }
 
 const getSubjectLabel = (subjectCode?: string) => {
-  if (!subjectCode) return 'Chưa xác định'
+  if (!subjectCode) return ''
   const normalizedCode = subjectCode.toLowerCase()
-  return SUBJECT_LABELS[normalizedCode] || subjectCode
+  if (normalizedCode === 'general' || normalizedCode === 'string') return ''
+  return SUBJECT_LABELS[normalizedCode] || ''
 }
 
 const ensureValidDate = (value?: string | Date) => {
@@ -224,6 +255,62 @@ const mapHomeworkStatusToResult = (status?: HomeworkTaskStatus): HomeworkDetailI
   return 'not_completed'
 }
 
+const uploadSupplementaryFiles = async (files: File[]): Promise<{ name: string; url: string }[]> => {
+  if (files.length === 0) return []
+
+  const formData = new FormData()
+  files.forEach((file) => {
+    formData.append('files', file)
+  })
+
+  const accessToken = getCookie('accessToken')
+
+  const response = await fetch(`${API_BASE_URL}/files/upload-multiple`, {
+    method: 'POST',
+    headers: {
+      ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+    },
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}))
+    throw new Error(errorData.message || 'Không thể tải file. Vui lòng thử lại.')
+  }
+
+  const data = await response.json()
+
+  const normalizeFiles = (items: Array<{ name?: string; url?: string }> = []) =>
+    items
+      .map((item, index) => ({
+        name: item.name || files[index]?.name || `Tài liệu ${index + 1}`,
+        url: item.url || '',
+      }))
+      .filter((item) => item.url)
+
+  if (Array.isArray(data.files)) {
+    const normalized = normalizeFiles(data.files)
+    if (normalized.length > 0) return normalized
+  }
+
+  if (Array.isArray(data.file)) {
+    const normalized = normalizeFiles(data.file)
+    if (normalized.length > 0) return normalized
+  }
+
+  if (Array.isArray(data.urls)) {
+    const normalized = normalizeFiles(data.urls.map((url: string) => ({ url })))
+    if (normalized.length > 0) return normalized
+  }
+
+  const singleUrl = data.url || data.file?.url
+  if (singleUrl) {
+    return [{ name: files[0].name, url: singleUrl }]
+  }
+
+  throw new Error('Không nhận được link file từ máy chủ.')
+}
+
 const getFileNameFromUrl = (url?: string) => {
   if (!url) return undefined
   try {
@@ -241,10 +328,12 @@ const mapScheduleFromApi = (schedule: ScheduleApiItem): ScheduleItem => {
   const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000)
   const formatTimeRange = `${format(startDate, 'HH:mm')} - ${format(endDate, 'HH:mm')}`
 
-  const tutorName =
-    typeof schedule.tutorId === 'object' && schedule.tutorId !== null
-      ? schedule.tutorId.name || schedule.tutorId.fullName
-      : undefined
+  const tutorObject = typeof schedule.tutorId === 'object' && schedule.tutorId !== null ? schedule.tutorId : null
+  const tutorName = tutorObject?.name || tutorObject?.fullName
+  const tutorId =
+    typeof schedule.tutorId === 'string'
+      ? schedule.tutorId
+      : tutorObject?.id
 
   const normalizedStatus =
     schedule.status && ['upcoming', 'ongoing', 'completed'].includes(schedule.status)
@@ -258,6 +347,7 @@ const mapScheduleFromApi = (schedule: ScheduleApiItem): ScheduleItem => {
     date: startDate,
     meetLink: schedule.meetingURL,
     tutor: tutorName,
+    tutorId,
     note: schedule.note,
     status: normalizedStatus,
   }
@@ -592,8 +682,6 @@ const HomeworkDetailTable = ({
 export default function StudentDashboard() {
   const { user } = useAuth()
   const [activeSection, setActiveSection] = useState('home')
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [selectedDateType, setSelectedDateType] = useState<'schedule' | 'checklist' | 'homework' | null>(null)
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null)
   const [expandedHomeworkSession, setExpandedHomeworkSession] = useState<string | null>(null)
   const [expandedChecklistDate, setExpandedChecklistDate] = useState<string | null>(null)
@@ -622,9 +710,16 @@ export default function StudentDashboard() {
   const [checklistError, setChecklistError] = useState<string | null>(null)
   // Schedules data fetched from API
   const [schedules, setSchedules] = useState<ScheduleItem[]>([])
+  const [tutorInfoMap, setTutorInfoMap] = useState<Record<string, TutorInfo>>({})
   const [isSchedulesLoading, setIsSchedulesLoading] = useState<boolean>(false)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [scheduleFetchTrigger, setScheduleFetchTrigger] = useState(0)
+  const [assignmentMaterials, setAssignmentMaterials] = useState<AssignmentApiItem[]>([])
+  const [selectedUploadScheduleId, setSelectedUploadScheduleId] = useState<string | null>(null)
+  const [filesToUpload, setFilesToUpload] = useState<File[]>([])
+  const [uploadingMaterials, setUploadingMaterials] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     let isActive = true
@@ -644,10 +739,48 @@ export default function StudentDashboard() {
           `/schedules?studentId=${user.id}&limit=100&sortBy=startTime:asc`
         )
         if (!isActive) return
-        const mappedSchedules = (response.results || [])
+        const scheduleResults = response.results || []
+        const mappedSchedules = scheduleResults
           .map((schedule) => mapScheduleFromApi(schedule))
           .sort((a, b) => a.date.getTime() - b.date.getTime())
+
+        const tutorIds = new Set<string>()
+        scheduleResults.forEach((schedule) => {
+          const tutorRef = schedule.tutorId
+          const tutorId = typeof tutorRef === 'string' ? tutorRef : tutorRef?.id
+          if (tutorId) {
+            tutorIds.add(tutorId)
+          }
+        })
+
         setSchedules(mappedSchedules)
+
+        if (tutorIds.size > 0) {
+          const tutorInfoResults = await Promise.all(
+            Array.from(tutorIds).map(async (tutorId) => {
+              try {
+                const tutorInfo = await apiCall<TutorInfo>(`/users/${tutorId}`)
+                return { tutorId, tutorInfo }
+              } catch (error) {
+                console.error(`Failed to fetch tutor info for ${tutorId}:`, error)
+                return null
+              }
+            })
+          )
+          if (!isActive) return
+          const nextTutorInfoMap: Record<string, TutorInfo> = {}
+          tutorInfoResults.forEach((entry) => {
+            if (entry) {
+              nextTutorInfoMap[entry.tutorId] = {
+                ...entry.tutorInfo,
+                id: entry.tutorId,
+              }
+            }
+          })
+          setTutorInfoMap(nextTutorInfoMap)
+        } else if (isActive) {
+          setTutorInfoMap({})
+        }
       } catch (error) {
         if (!isActive) return
         const message = error instanceof Error ? error.message : 'Không thể tải lịch học'
@@ -675,6 +808,7 @@ export default function StudentDashboard() {
         if (isActive) {
           setChecklistItems([])
           setChecklistError(null)
+          setAssignmentMaterials([])
         }
         return
       }
@@ -691,12 +825,15 @@ export default function StudentDashboard() {
       try {
         const response = await apiCall<AssignmentPaginatedResponse>(`/assignments?${query}`)
         if (!isActive) return
-        setChecklistItems(mapAssignmentsToChecklistItems(response.results || []))
+        const assignments = response.results || []
+        setChecklistItems(mapAssignmentsToChecklistItems(assignments))
+        setAssignmentMaterials(assignments)
       } catch (error) {
         if (!isActive) return
         const message = error instanceof Error ? error.message : 'Không thể tải checklist'
         setChecklistError(message)
         setChecklistItems([])
+        setAssignmentMaterials([])
       } finally {
         if (isActive) {
           setIsChecklistLoading(false)
@@ -835,44 +972,58 @@ export default function StudentDashboard() {
     )
   }
 
-  // Dữ liệu chi tiết tutor
-  const tutorDetails = {
-    'Tutor B': {
-      name: 'Tutor B',
-      email: 'tutorb@learnerpro.com',
-      phone: '0901 234 567',
-      subjects: ['Toán'],
-      experience: '5 năm kinh nghiệm dạy Toán',
-      education: 'Thạc sĩ Toán học - Đại học Bách Khoa',
-      rating: 4.8,
-      totalStudents: 45,
-      specialties: ['Toán 10-12', 'Ôn thi Đại học', 'Toán nâng cao'],
-      bio: 'Giáo viên nhiệt tình, có kinh nghiệm lâu năm trong việc dạy Toán cho học sinh THPT. Chuyên về luyện thi Đại học và Toán nâng cao.',
-    },
-    'Tutor C': {
-      name: 'Tutor C',
-      email: 'tutorc@learnerpro.com',
-      phone: '0902 345 678',
-      subjects: ['Hóa'],
-      experience: '7 năm kinh nghiệm dạy Hóa',
-      education: 'Thạc sĩ Hóa học - Đại học Khoa học Tự nhiên',
-      rating: 4.9,
-      totalStudents: 52,
-      specialties: ['Hóa 10-12', 'Hóa vô cơ', 'Hóa hữu cơ'],
-      bio: 'Giáo viên chuyên về Hóa học, từng đạt giải cao trong các kỳ thi Olympic Hóa học. Có phương pháp giảng dạy dễ hiểu, giúp học sinh nắm vững kiến thức.',
-    },
-    'Tutor D': {
-      name: 'Tutor D',
-      email: 'tutord@learnerpro.com',
-      phone: '0903 456 789',
-      subjects: ['Lý'],
-      experience: '6 năm kinh nghiệm dạy Vật lý',
-      education: 'Thạc sĩ Vật lý - Đại học Sư phạm',
-      rating: 4.7,
-      totalStudents: 38,
-      specialties: ['Vật lý 10-12', 'Cơ học', 'Điện học'],
-      bio: 'Giáo viên tận tâm, có phương pháp giảng dạy hiện đại, sử dụng nhiều ví dụ thực tế để giúp học sinh hiểu rõ các khái niệm Vật lý.',
-    },
+  const handleMaterialFilesSelected = (fileList: FileList | null) => {
+    if (!fileList) return
+    const selectedFiles = Array.from(fileList)
+    setFilesToUpload((prev) => [...prev, ...selectedFiles])
+  }
+
+  const handleRemovePendingFile = (index: number) => {
+    setFilesToUpload((prev) => prev.filter((_, idx) => idx !== index))
+  }
+
+  const handleUploadMaterials = async () => {
+    if (!user?.id) {
+      setUploadError('Vui lòng đăng nhập để gửi tài liệu.')
+      return
+    }
+    if (!selectedUploadScheduleId) {
+      setUploadError('Vui lòng chọn buổi học muốn gửi tài liệu.')
+      return
+    }
+    if (filesToUpload.length === 0) {
+      setUploadError('Vui lòng chọn ít nhất một tài liệu trước khi gửi.')
+      return
+    }
+
+    setUploadingMaterials(true)
+    setUploadError(null)
+    setUploadSuccess(null)
+
+    try {
+      const uploadedMaterials = await uploadSupplementaryFiles(filesToUpload)
+
+    await apiCall(`/schedules/${selectedUploadScheduleId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        supplementaryMaterials: uploadedMaterials.map((file, index) => ({
+          name: file.name || `Tài liệu ${index + 1}`,
+          documentURL: file.url,
+          description: parentNote || undefined,
+        })),
+      }),
+    })
+
+      setUploadSuccess('Đã gửi tài liệu cho Tutor thành công!')
+      setFilesToUpload([])
+      setParentNote('')
+    setScheduleFetchTrigger((prev) => prev + 1)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể gửi tài liệu cho Tutor'
+      setUploadError(message)
+    } finally {
+      setUploadingMaterials(false)
+    }
   }
 
   const [detailItemsBySubject, setDetailItemsBySubject] = useState<Record<string, ChecklistDetailItem[]>>({
@@ -1008,21 +1159,6 @@ export default function StudentDashboard() {
         }
       })
     )
-  }
-
-  const handleAddItem = () => {
-    console.log('Add new item')
-    // TODO: Implement add functionality
-  }
-
-  const handleEditItem = (id: string) => {
-    console.log('Edit item:', id)
-    // TODO: Implement edit functionality
-  }
-
-  const handleDeleteItem = (id: string) => {
-    // Delete checklist item (this would normally update state)
-    console.log('Delete item:', id)
   }
 
   const handleJoinClass = (scheduleId: string) => {
@@ -1310,12 +1446,8 @@ useEffect(() => {
   const filteredChecklistByDate = groupByDate(filteredChecklistItems)
   
   // Get sorted date keys - hiển thị tất cả ngày sau khi lọc
-  const today = new Date()
   const allDates = Object.keys(filteredChecklistByDate).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
   const checklistDates = allDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime()) // Sắp xếp mới nhất trước
-  
-  // Get selected date details
-  const selectedChecklistDetails = selectedDate && selectedDateType === 'checklist' ? checklistByDate[selectedDate] : []
 
   const checklistBySubject = checklistItems.reduce<Record<string, { total: number; completed: number }>>((acc, item) => {
     if (!acc[item.subject]) {
@@ -1369,6 +1501,65 @@ useEffect(() => {
     .filter((subject) => subject.completionRate < 80)
     .sort((a, b) => a.completionRate - b.completionRate)
 
+  const uploadScheduleOptions = useMemo(() => {
+    if (schedules.length === 0) return []
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
+    const upcomingList = schedules.filter((schedule) => schedule.date >= startOfToday)
+    const targetList = upcomingList.length > 0 ? upcomingList : schedules
+    return [...targetList].sort((a, b) => a.date.getTime() - b.date.getTime())
+  }, [schedules])
+
+  useEffect(() => {
+    if (uploadScheduleOptions.length === 0) {
+      if (selectedUploadScheduleId !== null) {
+        setSelectedUploadScheduleId(null)
+      }
+      return
+    }
+
+    const exists = selectedUploadScheduleId
+      ? uploadScheduleOptions.some((schedule) => schedule.id === selectedUploadScheduleId)
+      : false
+
+    if (!selectedUploadScheduleId || !exists) {
+      setSelectedUploadScheduleId(uploadScheduleOptions[0].id)
+    }
+  }, [uploadScheduleOptions, selectedUploadScheduleId])
+
+  const materialsBySchedule = useMemo<Record<string, ScheduleMaterialItem[]>>(() => {
+    const grouped: Record<string, ScheduleMaterialItem[]> = {}
+
+    assignmentMaterials.forEach((assignment) => {
+      const scheduleId = assignment.scheduleId
+      if (!scheduleId || !assignment.supplementaryMaterials?.length) return
+
+      assignment.supplementaryMaterials.forEach((material, index) => {
+        if (!material.url) return
+        if (!grouped[scheduleId]) {
+          grouped[scheduleId] = []
+        }
+
+        grouped[scheduleId].push({
+          id: `${assignment.id}-${index}`,
+          name: material.name || `Tài liệu ${index + 1}`,
+          url: material.url,
+          uploadedAt: assignment.updatedAt || assignment.createdAt,
+          description: assignment.description,
+        })
+      })
+    })
+
+    return grouped
+  }, [assignmentMaterials])
+
+  const selectedUploadSchedule = selectedUploadScheduleId
+    ? schedules.find((schedule) => schedule.id === selectedUploadScheduleId) || null
+    : null
+  const materialsForSelectedSchedule = selectedUploadScheduleId
+    ? materialsBySchedule[selectedUploadScheduleId] || []
+    : []
+
   const getSubjectChecklistStats = (subject: string) => {
     const items = todayChecklist.filter((item) => item.subject === subject)
     const detailItems = getSubjectDetailItems(subject)
@@ -1400,16 +1591,6 @@ useEffect(() => {
     },
   ]
   
-  const handleDateClick = (date: string, type: 'schedule' | 'checklist') => {
-    setSelectedDate(date)
-    setSelectedDateType(type)
-  }
-  
-  const handleCloseDetail = () => {
-    setSelectedDate(null)
-    setSelectedDateType(null)
-  }
-  
   const handleOpenReportPreview = (report: DailyReport) => {
     setPreviewReport(report)
     setShowReportPreview(true)
@@ -1428,11 +1609,6 @@ useEffect(() => {
       'Hóa': { bg: 'bg-purple-500', text: 'text-white' },
     }
     return colors[subject] || { bg: 'bg-gray-500', text: 'text-white' }
-  }
-
-  // Helper function to get tutor avatar initial
-  const getTutorInitial = (tutorName: string) => {
-    return tutorName.charAt(tutorName.length - 1).toUpperCase()
   }
 
   const handleExportSubjectReport = (report: DailyReport) => {
@@ -1766,77 +1942,144 @@ useEffect(() => {
             <div className="flex items-center space-x-2 mb-4 sm:mb-6">
               <Upload className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600" />
               <h2 className="text-lg sm:text-xl font-bold text-gray-900">Tải tài liệu cho Tutor</h2>
-            </div>            
-            <div className="space-y-3">
-              <div>
-                <label className="text-sm font-semibold text-gray-700 mb-2 block">Ghi chú cho Tutor</label>
-                <textarea
-                  value={parentNote}
-                  onChange={(e) => setParentNote(e.target.value)}
-                  placeholder="Nhập ghi chú chi tiết (ví dụ: phần con cần ôn lại, vấn đề trong buổi trước...)"
-                  rows={3}
-                  className="w-full border-2 border-gray-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all bg-white"
-                />
-              </div>
+            </div>
+            {uploadScheduleOptions.length === 0 ? (
+              <p className="text-sm text-gray-500">Hiện chưa có buổi học nào để gửi tài liệu thêm cho Tutor.</p>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-2 block">Chọn buổi học</label>
+                  <select
+                    value={selectedUploadScheduleId ?? ''}
+                    onChange={(e) => setSelectedUploadScheduleId(e.target.value)}
+                    className="w-full border-2 border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all bg-white"
+                  >
+                    {uploadScheduleOptions.map((schedule) => (
+                      <option key={schedule.id} value={schedule.id}>
+                        {(schedule.subject && schedule.subject.length > 0 ? schedule.subject : 'Chung')}{' '}
+                        · {format(schedule.date, 'dd/MM/yyyy HH:mm')}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedUploadSchedule && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Buổi học: {selectedUploadSchedule.subject || 'Chung'} · {format(selectedUploadSchedule.date, 'EEEE, dd/MM/yyyy')}
+                    </p>
+                  )}
+                </div>
 
-              {/* Upload Area */}
-              <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-primary-400 transition-colors cursor-pointer bg-gray-50 hover:bg-gray-100">
-                <input
-                  type="file"
-                  id="document-upload"
-                  className="hidden"
-                  multiple
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                  onChange={(e) => {
-                    const files = e.target.files
-                    if (files) {
-                      console.log('Uploaded files:', Array.from(files).map(f => f.name))
-                      // TODO: Handle file upload
-                    }
-                  }}
-                />
-                <label htmlFor="document-upload" className="cursor-pointer">
-                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-sm font-medium text-gray-700 mb-1">
-                    Click để tải tài liệu
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    PDF, DOC, DOCX, JPG, PNG (tối đa 10MB)
-                  </p>
-                </label>
-              </div>
-              
-              {/* Uploaded Files List */}
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-700 mb-2">Tài liệu đã tải:</p>
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-2 block">Ghi chú cho Tutor</label>
+                  <textarea
+                    value={parentNote}
+                    onChange={(e) => setParentNote(e.target.value)}
+                    placeholder="Nhập ghi chú chi tiết (ví dụ: phần con cần ôn lại, vấn đề trong buổi trước...)"
+                    rows={3}
+                    className="w-full border-2 border-gray-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all bg-white"
+                  />
+                </div>
+
+                {/* Upload Area */}
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-primary-400 transition-colors cursor-pointer bg-gray-50 hover:bg-gray-100">
+                  <input
+                    type="file"
+                    id="document-upload"
+                    className="hidden"
+                    multiple
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    onChange={(e) => handleMaterialFilesSelected(e.target.files)}
+                  />
+                  <label htmlFor="document-upload" className="cursor-pointer flex flex-col items-center">
+                    <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    <p className="text-sm font-medium text-gray-700 mb-1">
+                      Click để chọn tài liệu
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      PDF, DOC, DOCX, JPG, PNG (tối đa 10MB/tệp)
+                    </p>
+                  </label>
+                </div>
+
+                {filesToUpload.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-gray-700">Tài liệu sẽ gửi ({filesToUpload.length})</p>
+                    {filesToUpload.map((file, index) => (
+                      <div key={`${file.name}-${index}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex items-center space-x-3">
+                          <FileText className="w-5 h-5 text-primary-600" />
+                          <div>
+                            <p className="text-sm font-medium text-gray-900 truncate max-w-[200px]">{file.name}</p>
+                            <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRemovePendingFile(index)}
+                          className="text-xs font-semibold text-red-500 hover:text-red-700"
+                        >
+                          Xóa
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {uploadError && (
+                  <p className="text-sm text-red-500">{uploadError}</p>
+                )}
+                {uploadSuccess && (
+                  <p className="text-sm text-green-600">{uploadSuccess}</p>
+                )}
+
+                <button
+                  onClick={handleUploadMaterials}
+                  disabled={uploadingMaterials || !selectedUploadSchedule || filesToUpload.length === 0}
+                  className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold transition-colors ${
+                    uploadingMaterials || !selectedUploadSchedule || filesToUpload.length === 0
+                      ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                      : 'bg-primary-500 text-white hover:bg-primary-600'
+                  }`}
+                >
+                  {uploadingMaterials ? 'Đang gửi tài liệu...' : 'Gửi tài liệu cho Tutor'}
+                </button>
+
+                {/* Uploaded Files List */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <div className="flex items-center space-x-3">
-                      <FileText className="w-5 h-5 text-primary-600" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">Bai_tap_Toan_15_11.pdf</p>
-                        <p className="text-xs text-gray-500">Tải lên: 15/11/2025 08:30</p>
-                      </div>
+                  <p className="text-sm font-semibold text-gray-700">Tài liệu đã gửi</p>
+                  {materialsForSelectedSchedule.length === 0 ? (
+                    <p className="text-sm text-gray-500">Chưa có tài liệu nào được gửi cho buổi học này.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {materialsForSelectedSchedule.map((material) => (
+                        <div key={material.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                          <div className="flex items-start space-x-3">
+                            <FileText className="w-5 h-5 text-primary-600 mt-1" />
+                            <div>
+                              <p className="text-sm font-medium text-gray-900 break-all">{material.name}</p>
+                              {material.description && (
+                                <p className="text-xs text-gray-500">{material.description}</p>
+                              )}
+                              {material.uploadedAt && (
+                                <p className="text-xs text-gray-400">
+                                  Tải lên: {format(new Date(material.uploadedAt), 'dd/MM/yyyy HH:mm')}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <a
+                            href={material.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary-600 hover:text-primary-700 text-sm font-semibold"
+                          >
+                            Xem
+                          </a>
+                        </div>
+                      ))}
                     </div>
-                    <button className="text-red-500 hover:text-red-700 text-sm">
-                      Xóa
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <div className="flex items-center space-x-3">
-                      <FileText className="w-5 h-5 text-green-600" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">Ghi_chu_Hoa.docx</p>
-                        <p className="text-xs text-gray-500">Tải lên: 15/11/2025 09:15</p>
-                      </div>
-                    </div>
-                    <button className="text-red-500 hover:text-red-700 text-sm">
-                      Xóa
-                    </button>
-                  </div>
+                  )}
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Today's Schedule (Vị trí mới: thứ hai) */}
@@ -1868,27 +2111,44 @@ useEffect(() => {
                     upcoming: { label: 'Sắp diễn ra', className: 'bg-yellow-100 text-yellow-700' },
                     completed: { label: 'Đã kết thúc', className: 'bg-gray-100 text-gray-600' },
                   }[status]
+                  const tutorProfile = schedule.tutorId ? tutorInfoMap[schedule.tutorId] : undefined
+                  const displayTutorName = tutorProfile?.name || schedule.tutor
+                  const canViewTutorDetail = Boolean(schedule.tutorId)
 
                   return (
                     <div
                       key={schedule.id}
-                      onClick={() => schedule.tutor && setSelectedTutorSchedule(schedule.id)}
-                      className="border-2 border-gray-200 rounded-xl p-4 hover:border-primary-300 hover:shadow-md transition-all bg-gradient-to-br from-white to-gray-50 cursor-pointer"
+                      onClick={() => {
+                        if (schedule.tutorId) {
+                          setSelectedTutorSchedule(schedule.id)
+                        }
+                      }}
+                      className={`border-2 border-gray-200 rounded-xl p-4 hover:border-primary-300 hover:shadow-md transition-all bg-gradient-to-br from-white to-gray-50 ${
+                        canViewTutorDetail ? 'cursor-pointer' : 'cursor-default'
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
                           <div className="flex items-center flex-wrap gap-3 mb-2">
-                            <span className={`px-3 py-1 rounded-lg text-sm font-bold ${
-                              schedule.subject === 'Toán' ? 'bg-blue-500 text-white' :
-                              schedule.subject === 'Hóa' ? 'bg-green-500 text-white' :
-                              'bg-gray-500 text-white'
-                            }`}>
+                            <span
+                              className={`px-3 py-1 rounded-lg text-sm font-bold ${
+                                schedule.subject === 'Toán'
+                                  ? 'bg-blue-500 text-white'
+                                  : schedule.subject === 'Hóa'
+                                    ? 'bg-green-500 text-white'
+                                    : 'bg-gray-500 text-white'
+                              }`}
+                            >
                               {schedule.subject}
                             </span>
                             <span className="text-sm font-semibold text-gray-700">{schedule.time}</span>
                           </div>
-                          {schedule.tutor && (
-                            <p className="text-sm text-gray-600">Tutor: {schedule.tutor}</p>
+                          {displayTutorName ? (
+                            <p className="text-sm text-gray-600">
+                              Tutor: <span className="font-semibold text-gray-900">{displayTutorName}</span>
+                            </p>
+                          ) : (
+                            <p className="text-sm text-gray-500">Tutor sẽ được cập nhật sớm</p>
                           )}
                         </div>
                         <div className="flex flex-col items-end space-y-2">
@@ -1939,6 +2199,9 @@ useEffect(() => {
                           )}
                         </div>
                       </div>
+                      {!canViewTutorDetail && (
+                        <p className="text-[11px] text-gray-400 mt-2">Tutor đang được hệ thống cập nhật.</p>
+                      )}
                     </div>
                   )
                 })}
@@ -1948,22 +2211,23 @@ useEffect(() => {
 
           {/* Modal chi tiết Tutor */}
           {selectedTutorSchedule && (() => {
-            const schedule = todaySchedules.find(s => s.id === selectedTutorSchedule)
-            if (!schedule || !schedule.tutor) return null
-            const tutorDetail = tutorDetails[schedule.tutor as keyof typeof tutorDetails]
-            if (!tutorDetail) return null
+            const schedule = todaySchedules.find((s) => s.id === selectedTutorSchedule)
+            if (!schedule || !schedule.tutorId) return null
+            const tutorProfile = tutorInfoMap[schedule.tutorId]
+            const displayTutorName = tutorProfile?.name || schedule.tutor || 'Tutor đang được cập nhật'
+            const tutorInitial = displayTutorName.charAt(0)?.toUpperCase() || 'T'
 
             return (
-              <div 
+              <div
                 className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
                 onClick={() => setSelectedTutorSchedule(null)}
               >
-                <div 
-                  className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+                <div
+                  className="bg-white rounded-[32px] shadow-2xl max-w-4xl w-full max-h-[92vh] overflow-y-auto"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
-                    <h2 className="text-xl font-bold text-gray-900">Thông tin chi tiết Tutor</h2>
+                  <div className="sticky top-0 bg-white border-b border-gray-100 px-8 py-6 flex items-center justify-between z-10">
+                    <h2 className="text-3xl font-bold text-gray-900">Thông tin chi tiết Tutor</h2>
                     <button
                       onClick={() => setSelectedTutorSchedule(null)}
                       className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -1973,82 +2237,77 @@ useEffect(() => {
                   </div>
 
                   <div className="p-6 space-y-6">
-                    {/* Header với thông tin buổi học */}
-                    <div className="border-b border-gray-200 pb-4">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className={`px-3 py-1 rounded-lg text-sm font-bold ${
-                          schedule.subject === 'Toán' ? 'bg-blue-500 text-white' :
-                          schedule.subject === 'Hóa' ? 'bg-green-500 text-white' :
-                          'bg-gray-500 text-white'
-                        }`}>
-                          {schedule.subject}
-                        </span>
-                        <span className="text-sm font-semibold text-gray-700">{schedule.time}</span>
-                      </div>
-                      <p className="text-sm text-gray-600">{format(schedule.date, 'EEEE, dd/MM/yyyy')}</p>
-                    </div>
+                    {/* Header placeholder (removed date/time per request) */}
+                    <div className="border-b border-gray-200 pb-2"></div>
 
-                    {/* Thông tin Tutor */}
-                    <div className="space-y-4">
-                      <div className="flex items-start gap-4">
-                        <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center text-white text-xl font-bold shadow-lg">
-                          {tutorDetail.name.charAt(tutorDetail.name.length - 1)}
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="text-2xl font-bold text-gray-900 mb-1">{tutorDetail.name}</h3>
-                          <p className="text-sm text-gray-600">{tutorDetail.experience}</p>
-                          <div className="flex items-center gap-2 mt-2">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <Star
-                                key={star}
-                                className={`w-5 h-5 ${star <= Math.floor(tutorDetail.rating) ? 'text-yellow-400 fill-yellow-400' : star <= tutorDetail.rating ? 'text-yellow-400 fill-yellow-200' : 'text-gray-300'}`}
-                              />
-                            ))}
-                            <span className="text-sm font-semibold text-gray-700 ml-1">{tutorDetail.rating}/5.0</span>
-                            <span className="text-xs text-gray-500">({tutorDetail.totalStudents} học sinh)</span>
+                    {tutorProfile ? (
+                      <>
+                        <div className="flex flex-col lg:flex-row items-start gap-6 border border-gray-100 rounded-3xl bg-gray-50 p-6">
+                          <div className="w-28 h-28 rounded-3xl overflow-hidden border-2 border-primary-100 shadow-lg flex-shrink-0 bg-gradient-to-br from-primary-500 to-primary-600 text-white text-4xl font-bold flex items-center justify-center">
+                            {tutorProfile.avatarUrl ? (
+                              <img src={tutorProfile.avatarUrl} alt={displayTutorName} className="w-full h-full object-cover" />
+                            ) : (
+                              tutorInitial
+                            )}
+                          </div>
+                          <div className="flex-1 space-y-4">
+                            <h3 className="text-4xl font-extrabold text-gray-900">{displayTutorName}</h3>
+                            <p className="text-lg text-gray-500">{tutorProfile.currentLevel || 'Tutor LearnerPro'}</p>
+                            {schedule.note && (
+                              <p className="text-base text-gray-600">
+                                <span className="font-semibold text-gray-800">Ghi chú buổi học:</span> {schedule.note}
+                              </p>
+                            )}
                           </div>
                         </div>
-                      </div>
 
-                      {/* Thông tin liên hệ */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
-                          <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Email</p>
-                          <p className="text-sm text-gray-900">{tutorDetail.email}</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                          <div className="p-5 border rounded-2xl bg-white shadow-sm">
+                            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Email</p>
+                            <p className="text-lg font-semibold text-gray-900">{tutorProfile.email || 'Chưa cập nhật'}</p>
+                          </div>
+                          <div className="p-5 border rounded-2xl bg-white shadow-sm">
+                            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Số điện thoại</p>
+                            <p className="text-lg font-semibold text-gray-900">{tutorProfile.phone || 'Chưa cập nhật'}</p>
+                          </div>
+                          <div className="p-5 border rounded-2xl bg-white shadow-sm">
+                            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Địa chỉ</p>
+                            <p className="text-lg font-semibold text-gray-900">{tutorProfile.address || 'Chưa cập nhật'}</p>
+                          </div>
+                          <div className="p-5 border rounded-2xl bg-white shadow-sm">
+                            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Môn phụ trách</p>
+                            <p className="text-lg font-semibold text-gray-900">{schedule.subject || 'Đang cập nhật'}</p>
+                          </div>
+                          <div className="p-5 border rounded-2xl bg-white shadow-sm md:col-span-2">
+                            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">CV / Hồ sơ</p>
+                            {tutorProfile.cvUrl ? (
+                              <a
+                                href={tutorProfile.cvUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center text-lg font-semibold text-primary-600 hover:text-primary-700"
+                              >
+                                Xem CV
+                                <ExternalLink className="w-4 h-4 ml-2" />
+                              </a>
+                            ) : (
+                              <p className="text-lg font-semibold text-gray-900">Tutor chưa cập nhật CV</p>
+                            )}
+                          </div>
                         </div>
-                        <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
-                          <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Số điện thoại</p>
-                          <p className="text-sm text-gray-900">{tutorDetail.phone}</p>
+
+                        <div className="p-5 border border-gray-100 rounded-3xl bg-gray-50">
+                          <p className="text-sm font-semibold text-gray-500 uppercase tracking-[0.3em] mb-3">Giới thiệu</p>
+                          <p className="text-lg text-gray-700 leading-relaxed">
+                            {tutorProfile.moreInfo || 'Tutor vẫn chưa cập nhật phần giới thiệu chi tiết.'}
+                          </p>
                         </div>
+                      </>
+                    ) : (
+                      <div className="p-4 border border-dashed border-gray-300 rounded-2xl bg-gray-50 text-sm text-gray-600">
+                        Hệ thống đang cập nhật thông tin chi tiết của tutor này. Vui lòng thử lại sau hoặc liên hệ bộ phận hỗ trợ nếu cần thêm thông tin.
                       </div>
-
-                      {/* Học vấn */}
-                      <div className="border border-gray-200 rounded-xl p-4 bg-gradient-to-r from-blue-50 to-blue-100">
-                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Học vấn</p>
-                        <p className="text-sm font-semibold text-gray-900">{tutorDetail.education}</p>
-                      </div>
-
-                      {/* Chuyên môn */}
-                      <div>
-                        <p className="text-sm font-bold text-gray-900 mb-3">Chuyên môn</p>
-                        <div className="flex flex-wrap gap-2">
-                          {tutorDetail.specialties.map((specialty, idx) => (
-                            <span
-                              key={idx}
-                              className="px-3 py-1.5 bg-primary-100 text-primary-700 rounded-lg text-xs font-semibold"
-                            >
-                              {specialty}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Giới thiệu */}
-                      <div>
-                        <p className="text-sm font-bold text-gray-900 mb-2">Giới thiệu</p>
-                        <p className="text-sm text-gray-700 leading-relaxed">{tutorDetail.bio}</p>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2380,7 +2639,7 @@ useEffect(() => {
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(value: number, name: string, props: any) => {
+                  formatter={(_value: number, _name: string, props: any) => {
                     const data = props.payload as { subject: string; hours: number }
                     return [`${data.hours.toFixed(1)} giờ`, data.subject]
                   }}
@@ -2422,11 +2681,8 @@ useEffect(() => {
   const handleViewChecklist = (scheduleId: string) => {
     const schedule = schedules.find(s => s.id === scheduleId)
     if (schedule) {
-      // Navigate to checklist section with the schedule date
-      const scheduleDateKey = format(schedule.date, 'yyyy-MM-dd')
       setActiveSection('checklist')
-      setSelectedDate(scheduleDateKey)
-      setSelectedDateType('checklist')
+      setSelectedSubject(schedule.subject || null)
     }
   }
 
@@ -2454,7 +2710,7 @@ useEffect(() => {
               onJoinClass={handleJoinClass}
               onViewChecklist={handleViewChecklist}
             />
-            {schedules.length === 0 && (
+            {schedules.length === 0 && !isSchedulesLoading && (
               <div className="p-4 text-center text-sm text-gray-500 border-t border-gray-100">
                 Chưa có lịch học nào được lên lịch.
               </div>
