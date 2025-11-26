@@ -26,8 +26,6 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode,
 }
 
 function AppRoutes() {
-  const { user } = useAuth()
-  
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />

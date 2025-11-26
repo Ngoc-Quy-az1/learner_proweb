@@ -66,13 +66,6 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
     })
   }
 
-  const getWeekNumber = (date: Date) => {
-    // Calculate week number in semester (assuming semester starts in September)
-    const semesterStart = new Date(date.getFullYear(), 8, 1) // September 1
-    const daysDiff = Math.floor((date.getTime() - semesterStart.getTime()) / (1000 * 60 * 60 * 24))
-    return Math.max(1, Math.ceil(daysDiff / 7) + 1)
-  }
-
   const getScheduleStatus = (schedule: ScheduleItem, date: Date) => {
     const statusMap: Record<'upcoming' | 'ongoing' | 'completed' | 'cancelled', { label: string; color: string }> = {
       upcoming: { label: 'Sắp tới', color: 'bg-blue-100 text-blue-700' },

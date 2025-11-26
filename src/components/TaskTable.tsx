@@ -1,4 +1,4 @@
-import { Calendar, BookOpen } from 'lucide-react'
+import { Calendar } from 'lucide-react'
 
 export interface TaskItem {
   id: string

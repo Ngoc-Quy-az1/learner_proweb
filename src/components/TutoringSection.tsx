@@ -1,4 +1,4 @@
-import { Check, Play } from 'lucide-react'
+import { Check } from 'lucide-react'
 
 interface TutoringSectionProps {
   onGetTutor?: () => void

@@ -1,5 +1,3 @@
-import { ChevronDown } from 'lucide-react'
-
 interface PerformanceSectionProps {
   onGetStarted?: () => void
 }
