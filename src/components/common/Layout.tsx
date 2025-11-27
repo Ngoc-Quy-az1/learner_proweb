@@ -1,6 +1,6 @@
 import { cloneElement, isValidElement, ReactElement, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth } from '../../contexts/AuthContext'
 import { LogOut, Menu, User } from 'lucide-react'
 
 interface LayoutProps {

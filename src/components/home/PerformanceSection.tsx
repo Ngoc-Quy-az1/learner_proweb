@@ -10,9 +10,9 @@ export default function PerformanceSection({ onGetStarted }: PerformanceSectionP
         <div className="text-center mb-16">
           {/* Small Yellow Text */}
           <div className="mb-4">
-            <span className="text-yellow-400 font-bold text-base tracking-wide" style={{ fontFamily: "'Comic Sans MS', cursive" }}>
+            {/* <span className="text-yellow-400 font-bold text-base tracking-wide" style={{ fontFamily: "'Comic Sans MS', cursive" }}>
               Kết quả & Cam kết
-            </span>
+            </span> */}
           </div>
           
           {/* Main Title */}
@@ -37,7 +37,7 @@ export default function PerformanceSection({ onGetStarted }: PerformanceSectionP
           {/* Right Column - Innovative Approach */}
           <div className="space-y-6">
             <h3 className="text-3xl font-bold text-white mb-8 leading-tight" style={{ fontFamily: 'system-ui, -apple-system, sans-serif', letterSpacing: '0px', wordSpacing: '0px', textRendering: 'optimizeLegibility', whiteSpace: 'normal', wordBreak: 'keep-all' }}>
-              Phương pháp SKILLAR Focus™:
+            Phương pháp tối ưu của Skillar:
             </h3>
             
             <div className="space-y-4">

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import Layout from '../components/Layout'
+import { useSearchParams } from 'react-router-dom'
+import { Layout } from '../components/common'
 import { apiCall, API_BASE_URL } from '../config/api'
 import { getCookie } from '../utils/cookies'
 import {
   Users,
-  UserPlus,
   Calendar,
   GraduationCap,
   UserCog,
@@ -17,11 +17,6 @@ import {
   FileText,
   Clock,
   X,
-  User,
-  Mail,
-  Lock,
-  Shield,
-  UserCircle,
   Image as ImageIcon,
   Edit,
   Save,
@@ -30,8 +25,9 @@ import {
 } from 'lucide-react'
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, addMinutes } from 'date-fns'
 import { vi } from 'date-fns/locale'
-import AdminSidebar, { AdminSection } from '../components/AdminSidebar'
+import { AdminSidebar, type AdminSection } from '../components/dashboard'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { UserManagementSection } from '../components/admin'
 
 interface User {
   id: string
@@ -214,13 +210,6 @@ interface ScheduleSession {
   note?: string
 }
 
-const ROLE_LABELS: Record<User['role'], string> = {
-  student: 'Học sinh / Phụ huynh',
-  tutor: 'Tutor',
-  parent: 'Phụ huynh',
-  admin: 'Admin',
-  teacher: 'Giáo viên',
-}
 
 const STUDENT_CARD_COLORS = [
   { subject: 'Toán', color: 'bg-blue-100 text-blue-600' },
@@ -383,9 +372,34 @@ const mapScheduleStatus = (status?: string): ScheduleSession['status'] => {
 const todayString = format(new Date(), 'yyyy-MM-dd')
 
 export default function AdminDashboard() {
-  const [activeSection, setActiveSection] = useState<AdminSection>('user-management')
+  const [searchParams, setSearchParams] = useSearchParams()
+  
+  // Get section from URL or default to 'user-management'
+  const sectionFromUrl = searchParams.get('section') as AdminSection | null
+  const validSections: AdminSection[] = ['user-management', 'student-management', 'tutor-management', 'schedule-management', 'analytics']
+  const defaultSection: AdminSection = 'user-management'
+  const initialSection = sectionFromUrl && validSections.includes(sectionFromUrl) ? sectionFromUrl : defaultSection
+  
+  const [activeSection, setActiveSection] = useState<AdminSection>(initialSection)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const [isAddingUser, setIsAddingUser] = useState(false)
+  
+  // Sync URL when section changes
+  const handleSectionChange = useCallback((section: AdminSection) => {
+    setActiveSection(section)
+    setSearchParams({ section }, { replace: false })
+  }, [setSearchParams])
+  
+  // Sync section when URL changes (e.g., back button)
+  useEffect(() => {
+    const section = searchParams.get('section') as AdminSection | null
+    if (section && validSections.includes(section)) {
+      setActiveSection(section)
+    } else if (!section) {
+      // If no section in URL, set default and update URL
+      setActiveSection(defaultSection)
+      setSearchParams({ section: defaultSection }, { replace: true })
+    }
+  }, [searchParams, validSections, defaultSection, setSearchParams])
   const [users, setUsers] = useState<User[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'tutor' | 'admin'>('all')
@@ -399,24 +413,7 @@ export default function AdminDashboard() {
     totalPages: 1,
     totalResults: 0,
   })
-  const INITIAL_NEW_USER = {
-    name: '',
-    email: '',
-    role: 'student' as User['role'],
-    password: '',
-    avatar: null as File | null,
-    avatarUrl: '' as string,
-  }
-  const [newUser, setNewUser] = useState(INITIAL_NEW_USER)
-  const [uploadingFile, setUploadingFile] = useState(false)
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [studentAvatarUploading, setStudentAvatarUploading] = useState(false)
-  const [isCreatingUser, setIsCreatingUser] = useState(false)
-  const [editUserId, setEditUserId] = useState<string | null>(null)
-  const [editData, setEditData] = useState<Partial<User>>({})
-  const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null)
-  const [newPassword, setNewPassword] = useState('')
-  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false)
   const [studentList, setStudentList] = useState<StudentListItem[]>([])
   const [studentProfiles, setStudentProfiles] = useState<Record<string, StudentProfile>>({})
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
@@ -566,24 +563,6 @@ useEffect(() => {
   fetchUsers()
 }, [refreshUsersList])
 
-  const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa tài khoản này?')) return
-
-    try {
-      await apiCall(`/users/${userId}`, {
-        method: 'DELETE',
-      })
-      alert('Đã xóa tài khoản thành công')
-      await refreshUsersList()
-    } catch (error) {
-      console.error('Error deleting user:', error)
-      let errorMessage = 'Có lỗi xảy ra khi xóa tài khoản'
-      if (error instanceof Error) {
-        errorMessage = error.message
-      }
-      alert(errorMessage)
-    }
-  }
 
   const fetchStudents = useCallback(async () => {
     try {
@@ -1122,148 +1101,7 @@ useEffect(() => {
     setCurrentPage(1)
   }
 
-  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(event.target.value)
-    setCurrentPage(1)
-  }
 
-  const startEditUser = (user: User) => {
-    setEditUserId(user.id)
-    // Convert createdAt to dd/mm/yyyy format for display
-    let joinDateForInput = ''
-    if (user.createdAt) {
-      const date = new Date(user.createdAt)
-      const day = String(date.getDate()).padStart(2, '0')
-      const month = String(date.getMonth() + 1).padStart(2, '0')
-      const year = date.getFullYear()
-      joinDateForInput = `${day}/${month}/${year}` // Format: dd/mm/yyyy
-    } else if (user.joinDate) {
-      // If joinDate exists, try to parse it
-      const date = new Date(user.joinDate)
-      if (!isNaN(date.getTime())) {
-        const day = String(date.getDate()).padStart(2, '0')
-        const month = String(date.getMonth() + 1).padStart(2, '0')
-        const year = date.getFullYear()
-        joinDateForInput = `${day}/${month}/${year}`
-      }
-    }
-    setEditData({ ...user, joinDate: joinDateForInput })
-  }
-
-  const cancelEditUser = () => {
-    setEditUserId(null)
-    setEditData({})
-  }
-
-  const updateEditField = (field: keyof User, value: string) => {
-    setEditData((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
-  }
-
-  const handleResetPassword = async (userId: string) => {
-    setResetPasswordUserId(userId)
-    setNewPassword('')
-    setShowResetPasswordModal(true)
-  }
-
-  const confirmResetPassword = async () => {
-    if (!resetPasswordUserId || !newPassword.trim()) {
-      alert('Vui lòng nhập mật khẩu mới')
-      return
-    }
-
-    // Log password for debugging (remove in production)
-    console.log('Password to reset:', newPassword)
-
-    try {
-      // Use PATCH /users/:id to reset password
-      await apiCall(`/users/${resetPasswordUserId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          password: newPassword.trim(),
-        }),
-      })
-      
-      alert('Đã reset mật khẩu thành công')
-      setShowResetPasswordModal(false)
-      setResetPasswordUserId(null)
-      setNewPassword('')
-      await refreshUsersList()
-    } catch (error) {
-      console.error('Error resetting password:', error)
-      let errorMessage = 'Có lỗi xảy ra khi reset mật khẩu'
-      if (error instanceof Error) {
-        errorMessage = error.message
-      }
-      alert(errorMessage)
-    }
-  }
-
-  const saveEditUser = async () => {
-    if (!editUserId) return
-    const requiredFields: Array<keyof User> = ['name', 'email', 'role']
-    const missing = requiredFields.some((field) => !editData[field])
-    if (missing) {
-      alert('Vui lòng điền đầy đủ thông tin trước khi lưu.')
-      return
-    }
-
-    // Find original user data
-    const originalUser = users.find((u) => u.id === editUserId)
-    if (!originalUser) return
-
-    // Check if there are any changes
-    const hasNameChange = editData.name !== originalUser.name
-    const hasEmailChange = editData.email !== originalUser.email
-    const hasPasswordChange = editData.password && editData.password.trim() && editData.password !== originalUser.password
-    const hasRoleChange = editData.role !== originalUser.role
-
-    // If no changes, just cancel edit without showing message
-    if (!hasNameChange && !hasEmailChange && !hasPasswordChange && !hasRoleChange) {
-      cancelEditUser()
-      return
-    }
-
-    try {
-      // Prepare update body with all fields
-      const updateBody: any = {
-        name: editData.name,
-        email: editData.email,
-      }
-      
-      // Add password if it's being changed
-      if (hasPasswordChange && editData.password && editData.password.trim()) {
-        // Log password for debugging (remove in production)
-        console.log('Password to update:', editData.password)
-        updateBody.password = editData.password.trim()
-      }
-      
-      // Add role if it's being changed
-      if (hasRoleChange) {
-        updateBody.role = editData.role
-      }
-
-      // Call PATCH /users/:id to update user
-      await apiCall(`/users/${editUserId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(updateBody),
-      })
-
-      await refreshUsersList()
-
-      cancelEditUser()
-      alert('Đã cập nhật thông tin thành công')
-    } catch (error) {
-      console.error('Error saving user:', error)
-      let errorMessage = 'Có lỗi xảy ra khi cập nhật thông tin'
-      if (error instanceof Error) {
-        errorMessage = error.message
-      }
-      alert(errorMessage)
-    }
-  }
 
   const handleStudentSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setStudentSearchTerm(event.target.value)
@@ -1901,112 +1739,6 @@ useEffect(() => {
     }
   }
 
-  const handleAddUserAvatarChange = async (file: File | null) => {
-    if (!file) {
-      setNewUser((prev) => ({
-        ...prev,
-        avatar: null,
-        avatarUrl: '',
-      }))
-      setAvatarPreview(null)
-      return
-    }
-
-    // Validate file type
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
-    if (!validTypes.includes(file.type)) {
-      alert('Vui lòng chọn file ảnh hợp lệ (PNG, JPG, GIF, WEBP)')
-      return
-    }
-    
-    // Validate file size (5MB = 5 * 1024 * 1024 bytes)
-    const maxSize = 5 * 1024 * 1024
-    if (file.size > maxSize) {
-      alert('Kích thước file không được vượt quá 5MB')
-      return
-    }
-
-    // Create preview immediately
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      setAvatarPreview(reader.result as string)
-    }
-    reader.readAsDataURL(file)
-
-    try {
-      setUploadingFile(true)
-      const url = await uploadFile(file)
-      setNewUser((prev) => ({
-        ...prev,
-        avatar: file,
-        avatarUrl: url,
-      }))
-      // Also set preview from uploaded URL if needed
-      if (url) {
-        setAvatarPreview(url)
-      }
-    } catch (error) {
-      console.error('Error uploading file:', error)
-      alert(error instanceof Error ? error.message : 'Có lỗi xảy ra khi upload file')
-      setNewUser((prev) => ({
-        ...prev,
-        avatar: null,
-        avatarUrl: '',
-      }))
-      setAvatarPreview(null)
-    } finally {
-      setUploadingFile(false)
-    }
-  }
-
-  const resetNewUser = () => {
-    setNewUser(INITIAL_NEW_USER)
-  }
-
-  const handleAddUser = async (event?: React.FormEvent<HTMLFormElement>) => {
-    event?.preventDefault()
-    if (isCreatingUser) return
-
-    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
-      alert('Vui lòng điền đầy đủ Tên, Email và Mật khẩu')
-      return
-    }
-
-    try {
-      setIsCreatingUser(true)
-      const userData: any = {
-        name: newUser.name.trim(),
-        email: newUser.email.trim(),
-        password: newUser.password.trim(),
-        role: newUser.role,
-      }
-
-      if (newUser.avatarUrl) {
-        userData.avatarUrl = newUser.avatarUrl
-      }
-
-      await apiCall('/users', {
-        method: 'POST',
-        body: JSON.stringify(userData),
-      })
-
-      await refreshUsersList()
-
-      setIsAddingUser(false)
-      resetNewUser()
-      setAvatarPreview(null)
-      alert('Đã tạo tài khoản thành công!')
-    } catch (error) {
-      console.error('Error creating user:', error)
-      let errorMessage = 'Có lỗi xảy ra khi tạo tài khoản. Vui lòng thử lại.'
-      if (error instanceof Error) {
-        errorMessage = error.message
-      }
-      alert(errorMessage)
-    } finally {
-      setIsCreatingUser(false)
-    }
-  }
 
   const displayedStudents = useMemo(() => {
     const keyword = studentSearchTerm.trim().toLowerCase()
@@ -2084,555 +1816,35 @@ useEffect(() => {
     [scheduleSessions, selectedScheduleDate],
   )
 
-  // Memoized onChange handlers to prevent re-renders
-  const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setNewUser((prev) => ({ ...prev, name: e.target.value }))
-  }, [])
-  
-  const handleEmailChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setNewUser((prev) => ({ ...prev, email: e.target.value }))
-  }, [])
-  
-  const handlePasswordChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setNewUser((prev) => ({ ...prev, password: e.target.value }))
-  }, [])
-  
-  const handleRoleChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setNewUser((prev) => ({
-      ...prev,
-      role: e.target.value as User['role'],
-    }))
-  }, [])
-  
-  // no-op handlers removed: user creation now only needs basic fields
 
-  const AddUserForm = (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-1">Thêm người dùng mới</h2>
-          <p className="text-sm text-gray-600">Điền thông tin để tạo tài khoản mới</p>
-        </div>
-        <button 
-          onClick={() => {
-            setIsAddingUser(false)
-            setAvatarPreview(null)
-            resetNewUser()
-          }} 
-          className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 transition-colors"
-        >
-          <X className="w-4 h-4" />
-          <span>Quay lại</span>
-        </button>
-      </div>
-
-      <form onSubmit={handleAddUser} className="space-y-6">
-        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-          <div className="flex items-center justify-between flex-wrap gap-3 mb-6 pb-4 border-b border-gray-200">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Shield className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Thông tin đăng nhập</p>
-                <h4 className="text-lg font-bold text-gray-900">Tài khoản & phân quyền</h4>
-              </div>
-            </div>
-            <span className="px-4 py-1.5 text-sm font-semibold rounded-lg bg-blue-50 text-blue-700 border border-blue-200">
-              {newUser.role === 'student' ? 'Học sinh / Phụ huynh' : 'Tutor'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                <User className="w-4 h-4 text-gray-500" />
-                Tên người dùng <span className="text-red-500">*</span>
-              </label>
-              <input 
-                id="add-user-name"
-                value={newUser.name} 
-                onChange={handleNameChange} 
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-900 placeholder-gray-400" 
-                placeholder="Nhập tên người dùng" 
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                <Mail className="w-4 h-4 text-gray-500" />
-                Email <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="add-user-email"
-                type="email"
-                value={newUser.email}
-                onChange={handleEmailChange}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-900 placeholder-gray-400"
-                placeholder="Nhập email"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                <Lock className="w-4 h-4 text-gray-500" />
-                Mật khẩu <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={newUser.password}
-                onChange={handlePasswordChange}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-900 placeholder-gray-400"
-                placeholder="Nhập mật khẩu"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                <Shield className="w-4 h-4 text-gray-500" />
-                Vai trò <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={newUser.role}
-                onChange={handleRoleChange}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-900"
-              >
-                <option value="student">Học sinh / Phụ huynh</option>
-                <option value="tutor">Tutor</option>
-              </select>
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8 space-y-6">
-          <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-gray-200">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                <UserCircle className="w-5 h-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Hồ sơ</p>
-                <h4 className="text-lg font-bold text-gray-900">Ảnh đại diện</h4>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gradient-to-br from-gray-50 to-gray-100/50 p-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center">
-              {avatarPreview || newUser.avatarUrl ? (
-                <div className="flex-shrink-0">
-                  <img 
-                    src={avatarPreview || newUser.avatarUrl} 
-                    alt="Preview" 
-                    className="w-32 h-32 object-cover rounded-lg border-2 border-gray-300"
-                  />
-                </div>
-              ) : (
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <ImageIcon className="w-6 h-6 text-blue-600" />
-                </div>
-              )}
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-gray-900 mb-1">Ảnh đại diện</p>
-                <p className="text-xs text-gray-600">Tải ảnh (PNG, JPG, tối đa 5MB)</p>
-                {uploadingFile && newUser.avatar && (
-                  <p className="mt-2 text-xs font-medium text-blue-600 flex items-center gap-1">
-                    <Clock className="w-3 h-3 animate-spin" />
-                    Đang upload...
-                  </p>
-                )}
-                {!uploadingFile && newUser.avatar && (
-                  <p className="mt-2 text-xs font-medium text-blue-600 flex items-center gap-1">
-                    <FileText className="w-3 h-3" />
-                    {newUser.avatar.name}
-                  </p>
-                )}
-                {newUser.avatarUrl && !uploadingFile && (
-                  <p className="mt-1 text-xs font-medium text-green-600 flex items-center gap-1">
-                    <span className="w-4 h-4 rounded-full bg-green-500 text-white flex items-center justify-center text-[10px]">✓</span>
-                    Đã upload thành công
-                  </p>
-                )}
-              </div>
-              <label className={`px-5 py-3 bg-white border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 cursor-pointer text-center font-semibold text-gray-700 transition-all flex items-center justify-center gap-2 ${uploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                <ImageIcon className="w-4 h-4" />
-                {uploadingFile ? 'Đang upload...' : (avatarPreview || newUser.avatarUrl) ? 'Đổi ảnh' : 'Chọn ảnh'}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  disabled={uploadingFile}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] ?? null
-                    handleAddUserAvatarChange(file)
-                  }}
-                />
-              </label>
-            </div>
-          </div>
-        </section>
-
-        <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pt-4 border-t border-gray-200">
-          <button 
-            type="button" 
-            onClick={() => {
-            setIsAddingUser(false)
-            setAvatarPreview(null)
-            resetNewUser()
-          }} 
-            className="px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all flex items-center justify-center gap-2"
-          >
-            <X className="w-4 h-4" />
-            Hủy
-          </button>
-          <button 
-            type="submit" 
-            disabled={isCreatingUser}
-            className={`px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg transition-all flex items-center justify-center gap-2 shadow-md ${isCreatingUser ? 'opacity-60 cursor-not-allowed' : 'hover:bg-blue-700 hover:shadow-lg'}`}
-          >
-            <UserPlus className="w-4 h-4" />
-            {isCreatingUser ? 'Đang tạo...' : 'Lưu tài khoản'}
-          </button>
-        </div>
-      </form>
-    </div>
-    )
 
   const renderUserManagementSection = () => {
     return (
-    <div className="space-y-6">
-      {/* Statistics Cards - Always visible */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Tổng số người dùng', value: statsLoading ? '...' : stats.total, icon: <Users className="w-7 h-7 text-white" />, gradient: 'from-blue-500 to-blue-600' },
-          { label: 'Số lượng học sinh', value: statsLoading ? '...' : totalStudents, icon: <GraduationCap className="w-7 h-7 text-white" />, gradient: 'from-green-500 to-green-600' },
-          { label: 'Số lượng tutor', value: statsLoading ? '...' : totalTutors, icon: <UserCog className="w-7 h-7 text-white" />, gradient: 'from-purple-500 to-purple-600' },
-          { label: 'Ca học hôm nay', value: statsLoading ? '...' : lessonsToday, icon: <Calendar className="w-7 h-7 text-white" />, gradient: 'from-yellow-500 to-yellow-600' },
-        ].map((card) => (
-          <div key={card.label} className="stat-card">
-            <div className="flex flex-col items-center text-center">
-              <div className={`w-14 h-14 bg-gradient-to-br ${card.gradient} rounded-2xl flex items-center justify-center shadow-lg mb-3`}>{card.icon}</div>
-              <p className="text-xs text-gray-600 font-medium mb-1">{card.label}</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {card.value}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Show AddUserForm or User Management Table based on isAddingUser */}
-      {isAddingUser ? (
-        AddUserForm
-      ) : (
-        <>
-          <div className="card">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-1">Quản lý tài khoản người dùng</h2>
-            <p className="text-sm text-gray-600">Danh sách tài khoản hiện có trên hệ thống</p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex items-center bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm">
-              <Search className="w-4 h-4 text-gray-500 mr-2" />
-              <input
-                value={searchTerm}
-                onChange={handleSearchChange}
-                placeholder="Tìm kiếm tên hoặc email"
-                className="text-sm text-gray-700 outline-none bg-transparent w-48"
-              />
-            </div>
-            <div className="flex bg-gray-100 rounded-xl p-1">
-              {[
-                { label: 'Tất cả', value: 'all' as const },
-                { label: 'Học sinh / PH', value: 'student' as const },
-                { label: 'Tutor', value: 'tutor' as const },
-                { label: 'Admin', value: 'admin' as const },
-              ].map((button) => (
-                <button
-                  key={button.value}
-                  onClick={() => handleFilterChange(button.value)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg ${
-                    roleFilter === button.value ? 'bg-white shadow text-primary-600' : 'text-gray-500'
-                  }`}
-                >
-                  {button.label}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm gap-2">
-              <span className="text-xs text-gray-500 font-semibold">Sắp xếp:</span>
-              <select
-                value={sortField}
-                onChange={(e) => {
-                  const newField = e.target.value as 'name' | 'email' | 'createdAt'
-                  setSortField(newField)
-                  // Reset sort order based on field type
-                  if (newField === 'createdAt') {
-                    // Default to "Gần nhất" (desc) for date
-                    setSortOrder('desc')
-                  } else {
-                    // Default to "A - Z" (asc) for name/email
-                    setSortOrder('asc')
-                  }
-                }}
-                className="text-sm text-gray-700 outline-none bg-transparent border-none"
-              >
-                <option value="name">Tên</option>
-                <option value="email">Email</option>
-                <option value="createdAt">Ngày tham gia</option>
-              </select>
-              <select
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
-                className="text-sm text-gray-700 outline-none bg-transparent border-none"
-              >
-                {sortField === 'createdAt' ? (
-                  <>
-                    <option value="desc">Gần nhất</option>
-                    <option value="asc">Muộn nhất</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="asc">A - Z</option>
-                    <option value="desc">Z - A</option>
-                  </>
-                )}
-              </select>
-            </div>
-            <button onClick={() => setIsAddingUser(true)} className="btn-primary flex items-center justify-center gap-2">
-              <UserPlus className="w-4 h-4" />
-              <span>Thêm tài khoản</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Email</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Tên người dùng</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Mật khẩu</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Vai trò</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Ngày tham gia</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {usersLoading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                    Đang tải dữ liệu...
-                  </td>
-                </tr>
-              ) : paginatedUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                    Không có dữ liệu
-                  </td>
-                </tr>
-              ) : (
-                paginatedUsers.map((user) => {
-                const isEditing = editUserId === user.id
-                return (
-                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                      {isEditing ? (
-                        <input 
-                          className="w-full min-w-[180px] h-9 px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
-                          value={editData.email ?? ''} 
-                          onChange={(e) => updateEditField('email', e.target.value)}
-                          placeholder="Nhập email"
-                        />
-                      ) : (
-                        user.email
-                      )}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {isEditing ? (
-                        <input 
-                          className="w-full min-w-[150px] h-9 px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
-                          value={editData.name ?? ''} 
-                          onChange={(e) => updateEditField('name', e.target.value)}
-                          placeholder="Nhập tên"
-                        />
-                      ) : (
-                        user.name
-                      )}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm">
-                      {isEditing ? (
-                        <input 
-                          type="password"
-                          className="w-full min-w-[120px] h-9 px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
-                          value={editData.password ?? ''} 
-                          onChange={(e) => updateEditField('password', e.target.value)}
-                          placeholder="Nhập mật khẩu mới"
-                        />
-                      ) : (
-                        <button 
-                          onClick={() => handleResetPassword(user.id)}
-                          className="text-xs text-gray-600 font-mono hover:text-gray-800 cursor-pointer"
-                          title="Click để đổi mật khẩu"
-                        >
-                          *****
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {isEditing ? (
-                        <select 
-                          className="w-full min-w-[150px] h-9 px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
-                          value={editData.role ?? 'student'} 
-                          onChange={(e) => updateEditField('role', e.target.value as User['role'])}
-                        >
-                          <option value="student">Học sinh / Phụ huynh</option>
-                          <option value="tutor">Tutor</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      ) : (
-                        ROLE_LABELS[user.role]
-                      )}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {isEditing ? (
-                        <input 
-                          className="w-full min-w-[160px] h-9 px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
-                          type="text" 
-                          value={editData.joinDate ?? ''} 
-                          onChange={(e) => {
-                            let value = e.target.value
-                            // Remove non-numeric characters except /
-                            value = value.replace(/[^\d/]/g, '')
-                            // Auto-format as user types: dd/mm/yyyy
-                            if (value.length > 2 && value[2] !== '/') {
-                              value = value.slice(0, 2) + '/' + value.slice(2)
-                            }
-                            if (value.length > 5 && value[5] !== '/') {
-                              value = value.slice(0, 5) + '/' + value.slice(5)
-                            }
-                            // Limit to dd/mm/yyyy format (10 characters)
-                            if (value.length <= 10) {
-                              updateEditField('joinDate', value)
-                            }
-                          }}
-                          placeholder="dd/mm/yyyy"
-                          pattern="\d{2}/\d{2}/\d{4}"
-                        />
-                      ) : (
-                        user.joinDate || (user.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN') : 'N/A')
-                      )}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      {isEditing ? (
-                        <div className="flex items-center space-x-3">
-                          <button onClick={saveEditUser} className="text-primary-600 hover:text-primary-700 text-sm font-semibold">
-                            Lưu
-                          </button>
-                          <button onClick={cancelEditUser} className="text-gray-500 hover:text-gray-700 text-sm font-semibold">
-                            Hủy
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center space-x-3">
-                          <button onClick={() => startEditUser(user)} className="text-primary-600 hover:text-primary-700 text-sm font-semibold">
-                            Sửa
-                          </button>
-                          <button onClick={() => handleDeleteUser(user.id)} className="text-red-600 hover:text-red-700 text-sm font-semibold">
-                            Xóa
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4 text-sm text-gray-600">
-          <p>
-            {usersLoading ? (
-              'Đang tải...'
-            ) : (
-              `Hiển thị ${usersPagination.totalResults === 0 ? 0 : (usersPagination.page - 1) * usersPagination.limit + 1}-${Math.min(usersPagination.page * usersPagination.limit, usersPagination.totalResults)} trong tổng ${usersPagination.totalResults} tài khoản`
-            )}
-          </p>
-          <div className="flex items-center space-x-2 mt-3 sm:mt-0">
-            <button
-              disabled={usersPagination.page === 1 || usersLoading}
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-              className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-semibold disabled:opacity-40"
-            >
-              Trước
-            </button>
-            <div className="flex items-center space-x-1">
-              {Array.from({ length: usersPagination.totalPages }, (_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setCurrentPage(idx + 1)}
-                  disabled={usersLoading}
-                  className={`w-8 h-8 rounded-lg text-sm font-semibold ${
-                    usersPagination.page === idx + 1 ? 'bg-primary-500 text-white' : 'border border-gray-200 text-gray-600 hover:border-primary-200'
-                  } disabled:opacity-40`}
-                >
-                  {idx + 1}
-                </button>
-              ))}
-            </div>
-            <button
-              disabled={usersPagination.page === usersPagination.totalPages || usersLoading}
-              onClick={() => setCurrentPage((prev) => Math.min(usersPagination.totalPages, prev + 1))}
-              className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-semibold disabled:opacity-40"
-            >
-              Sau
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Reset Password Modal */}
-      {showResetPasswordModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Reset mật khẩu</h3>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Mật khẩu mới
-              </label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Nhập mật khẩu mới"
-                className="w-full bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400 px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                autoFocus
-              />
-            </div>
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => {
-                  setShowResetPasswordModal(false)
-                  setResetPasswordUserId(null)
-                  setNewPassword('')
-                }}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-semibold"
-              >
-                Hủy
-              </button>
-              <button
-                onClick={confirmResetPassword}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
-              >
-                Lưu
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-        </>
-      )}
-    </div>
+      <UserManagementSection
+        stats={{
+          total: stats.total,
+          students: totalStudents,
+          tutors: totalTutors,
+          lessonsToday: lessonsToday,
+        }}
+        statsLoading={statsLoading}
+        users={paginatedUsers}
+        usersLoading={usersLoading}
+        searchTerm={searchTerm}
+        onSearchChange={(value) => {
+          setSearchTerm(value)
+          setCurrentPage(1)
+        }}
+        roleFilter={roleFilter}
+        onRoleFilterChange={handleFilterChange}
+        sortField={sortField}
+        onSortFieldChange={setSortField}
+        sortOrder={sortOrder}
+        onSortOrderChange={setSortOrder}
+        pagination={usersPagination}
+        onPageChange={setCurrentPage}
+        onRefresh={refreshUsersList}
+      />
     )
   }
 
@@ -3993,7 +3205,7 @@ useEffect(() => {
       sidebar={
         <AdminSidebar 
           activeSection={activeSection} 
-          onSectionChange={setActiveSection}
+          onSectionChange={handleSectionChange}
           isMobileMenuOpen={isMobileMenuOpen}
           onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
         />

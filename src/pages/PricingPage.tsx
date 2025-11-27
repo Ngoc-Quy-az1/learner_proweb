@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Phone, X } from 'lucide-react'
-import PricingCards from '../components/PricingCards'
-import ContactModal from '../components/ContactModal'
+import { PricingCards } from '../components/home'
+import { ContactModal } from '../components/common'
 
 export default function PricingPage() {
   const navigate = useNavigate()

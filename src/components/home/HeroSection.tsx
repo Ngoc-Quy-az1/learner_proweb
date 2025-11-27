@@ -47,14 +47,9 @@ export default function HeroSection({ onGetStarted }: HeroSectionProps) {
           {/* LEFT CONTENT */}
           <div className="text-white space-y-3 lg:space-y-4 xl:space-y-5 flex-shrink-0 w-full lg:max-w-[540px]">
             {/* Trusted Badge */}
-            <p className="text-yellow-400 font-extrabold text-sm sm:text-base md:text-lg lg:text-xl tracking-wide" style={{ fontFamily: "'Comic Sans MS', cursive" }}>
-              Được tin tưởng bởi hơn 9000+ phụ huynh
-            </p>
-
             {/* Main Title */}
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-4xl xl:text-5xl 2xl:text-6xl font-extrabold leading-tight text-white" style={{ fontFamily: "'Montserrat', 'Poppins', sans-serif", fontWeight: 1000 }}>
-              Tương Lai Tự Tin <span className="whitespace-nowrap">Hơn</span><br />
-              Cho Con Bạn.
+Đồng Hành Học Tập Cùng Các Bạn Nhỏ
             </h1>
 
             {/* Description */}

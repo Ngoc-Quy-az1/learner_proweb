@@ -65,10 +65,10 @@ export default function ContactModal({ isOpen, onClose }: ContactModalProps) {
                 Sô điện thoại liên hệ
               </p>
               <a 
-                href="tel:0901234567" 
+                href="tel:0815 836 636" 
                 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 hover:text-blue-600 transition-colors break-all"
               >
-                0901 234 567
+                0815 836 636
               </a>
             </div>
           </div>
@@ -111,10 +111,10 @@ export default function ContactModal({ isOpen, onClose }: ContactModalProps) {
                 Gửi email
               </p>
               <a 
-                href="mailto:contact@skillar.edu.vn" 
+                href="mailto:skillartutor@gmail.com" 
                 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900 hover:text-blue-600 transition-colors break-all"
               >
-                contact@skillar.edu.vn
+                skillartutor@gmail.com
               </a>
             </div>
           </div>

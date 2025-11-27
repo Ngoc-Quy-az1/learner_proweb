@@ -13,9 +13,6 @@ export default function TutoringSection({ onGetTutor }: TutoringSectionProps) {
           <div className="space-y-4 sm:space-y-6 lg:space-y-8">
             {/* Small Yellow Text */}
             <div>
-              <span className="text-yellow-500 font-semibold text-xs sm:text-sm uppercase tracking-wide" style={{ fontFamily: "'Comic Sans MS', cursive" }}>
-                Đối tác đồng hành cùng phụ huynh
-              </span>
             </div>
             
             {/* Main Title */}

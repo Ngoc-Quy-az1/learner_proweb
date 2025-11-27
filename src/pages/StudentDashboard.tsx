@@ -1,49 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
-import Layout from '../components/Layout'
-import Sidebar from '../components/Sidebar'
-import { ScheduleItem } from '../components/ScheduleWidget'
-import MonthlyCalendar from '../components/MonthlyCalendar'
-import { ChecklistItem } from '../components/ChecklistTable'
-import { TaskItem } from '../components/TaskTable'
-import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, Upload, FileText, AlertTriangle, Star, Eye, Download, Search, Filter, ExternalLink } from 'lucide-react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { Layout } from '../components/common'
+import { Sidebar, ScheduleItem, MonthlyCalendar, ChecklistItem, TaskItem } from '../components/dashboard'
+import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, FileText, AlertTriangle, Star, Eye, Download, Search, Filter, ExternalLink } from 'lucide-react'
 import { format, isToday } from 'date-fns'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { apiCall, API_BASE_URL } from '../config/api'
+import { apiCall } from '../config/api'
 import { useAuth } from '../contexts/AuthContext'
-import { getCookie } from '../utils/cookies'
-
-// Giả định kiểu dữ liệu cho ChecklistDetailItem nếu chưa có trong file gốc
-interface ChecklistDetailItem {
-  id: string
-  lesson: string
-  estimatedTime: number
-  actualTime: number
-  result: 'completed' | 'not_accurate' | 'not_completed'
-  qualityNote: string
-  solutionType: 'text' | 'file' | 'image'
-  solutionText?: string
-  solutionFileName?: string
-  solutionPreview?: string
-  uploadedFileName?: string
-  assignmentFileName?: string
-}
-
-// Interface cho chi tiết bài tập về nhà
-interface HomeworkDetailItem {
-  id: string
-  task: string
-  estimatedTime: number // phút
-  actualTime?: number // phút
-  difficulty: 'easy' | 'medium' | 'hard' | 'advanced'
-  result: 'completed' | 'not_completed'
-  comment?: string
-  solutionType?: 'text' | 'file' | 'image'
-  solutionText?: string
-  solutionFileName?: string
-  solutionPreview?: string
-  uploadedFileName?: string
-  assignmentFileName?: string
-}
+import { ChecklistDetailTable, HomeworkDetailTable, MaterialUploadSection, HomeSection, ScheduleSection, type ChecklistDetailItem, type HomeworkDetailItem } from '../components/student'
 
 interface ScheduleApiItem {
   id: string
@@ -58,6 +22,13 @@ interface ScheduleApiItem {
   reportURL?: string
   createdAt?: string
   updatedAt?: string
+  supplementaryMaterials?: Array<{
+    name?: string
+    documentURL?: string
+    url?: string
+    description?: string
+    requirement?: string
+  }>
 }
 
 interface SchedulePaginatedResponse {
@@ -107,7 +78,7 @@ interface AssignmentApiItem {
   subject?: string
   status?: AssignmentStatus
   tasks?: AssignmentTaskApiItem[]
-  scheduleId?: string
+  scheduleId?: string | { _id?: string }
   supplementaryMaterials?: SupplementaryMaterialApiItem[]
   createdAt?: string
   updatedAt?: string
@@ -158,14 +129,6 @@ type HomeworkTaskItem = TaskItem & { sessionDate?: Date; sessionTime?: string; s
 
 type ChecklistWithDate = ChecklistItem & { date: Date }
 
-type ScheduleMaterialItem = {
-  id: string
-  name: string
-  url: string
-  uploadedAt?: string
-  description?: string
-}
-
 const SUBJECT_LABELS: Record<string, string> = {
   math: 'Toán',
   physics: 'Lý',
@@ -203,14 +166,27 @@ const mapAssignmentStatusToChecklist = (
   return 'done'
 }
 
+const getAssignmentScheduleId = (assignment: AssignmentApiItem): string | undefined => {
+  if (typeof assignment.scheduleId === 'string') return assignment.scheduleId
+  if (assignment.scheduleId && typeof assignment.scheduleId === 'object') return assignment.scheduleId._id
+  return undefined
+}
+
 const mapAssignmentsToChecklistItems = (
-  assignments: AssignmentApiItem[]
+  assignments: AssignmentApiItem[],
+  scheduleInfoById?: Record<string, { date?: Date; subject?: string }>
 ): ChecklistWithDate[] => {
   const items: ChecklistWithDate[] = []
 
   assignments.forEach((assignment) => {
-    const subject = getSubjectLabel(assignment.subject)
-    const date = ensureValidDate(assignment.updatedAt || assignment.createdAt)
+    const scheduleId = getAssignmentScheduleId(assignment)
+    const scheduleInfo = scheduleId ? scheduleInfoById?.[scheduleId] : undefined
+    const subjectFromSchedule = scheduleInfo?.subject
+    const subject =
+      getSubjectLabel(assignment.subject) ||
+      (subjectFromSchedule ? subjectFromSchedule : '')
+    const scheduleDate = scheduleInfo?.date
+    const date = scheduleDate ? new Date(scheduleDate) : ensureValidDate(assignment.updatedAt || assignment.createdAt)
 
     if (assignment.tasks && assignment.tasks.length > 0) {
       assignment.tasks.forEach((task, index) => {
@@ -255,62 +231,6 @@ const mapHomeworkStatusToResult = (status?: HomeworkTaskStatus): HomeworkDetailI
   return 'not_completed'
 }
 
-const uploadSupplementaryFiles = async (files: File[]): Promise<{ name: string; url: string }[]> => {
-  if (files.length === 0) return []
-
-  const formData = new FormData()
-  files.forEach((file) => {
-    formData.append('files', file)
-  })
-
-  const accessToken = getCookie('accessToken')
-
-  const response = await fetch(`${API_BASE_URL}/files/upload-multiple`, {
-    method: 'POST',
-    headers: {
-      ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
-    },
-    body: formData,
-  })
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}))
-    throw new Error(errorData.message || 'Không thể tải file. Vui lòng thử lại.')
-  }
-
-  const data = await response.json()
-
-  const normalizeFiles = (items: Array<{ name?: string; url?: string }> = []) =>
-    items
-      .map((item, index) => ({
-        name: item.name || files[index]?.name || `Tài liệu ${index + 1}`,
-        url: item.url || '',
-      }))
-      .filter((item) => item.url)
-
-  if (Array.isArray(data.files)) {
-    const normalized = normalizeFiles(data.files)
-    if (normalized.length > 0) return normalized
-  }
-
-  if (Array.isArray(data.file)) {
-    const normalized = normalizeFiles(data.file)
-    if (normalized.length > 0) return normalized
-  }
-
-  if (Array.isArray(data.urls)) {
-    const normalized = normalizeFiles(data.urls.map((url: string) => ({ url })))
-    if (normalized.length > 0) return normalized
-  }
-
-  const singleUrl = data.url || data.file?.url
-  if (singleUrl) {
-    return [{ name: files[0].name, url: singleUrl }]
-  }
-
-  throw new Error('Không nhận được link file từ máy chủ.')
-}
-
 const getFileNameFromUrl = (url?: string) => {
   if (!url) return undefined
   try {
@@ -353,6 +273,7 @@ const mapScheduleFromApi = (schedule: ScheduleApiItem): ScheduleItem => {
   }
 }
 
+// Config cho export report (vẫn cần dùng trong các hàm export)
 const checklistResultConfig: Record<
   ChecklistDetailItem['result'],
   { label: string; className: string }
@@ -360,14 +281,6 @@ const checklistResultConfig: Record<
   completed: { label: 'Hoàn thành', className: 'bg-green-100 text-green-800' },
   not_accurate: { label: 'Chưa chính xác', className: 'bg-yellow-100 text-yellow-800' },
   not_completed: { label: 'Chưa xong', className: 'bg-red-100 text-red-800' },
-}
-
-const homeworkResultConfig: Record<
-  HomeworkDetailItem['result'],
-  { label: string; className: string }
-> = {
-  completed: { label: 'Hoàn thành', className: 'bg-green-100 text-green-800' },
-  not_completed: { label: 'Chưa hoàn thành', className: 'bg-red-100 text-red-800' },
 }
 
 interface DailyReport {
@@ -386,302 +299,37 @@ interface DailyReport {
   }[]
 }
 
-// Giả định component ChecklistDetailTable nếu chưa có trong file gốc
-// Để code chạy, cần có component này hoặc thay thế bằng JSX đơn giản
-const ChecklistDetailTable = ({
-  items,
-  onUpload,
-  onUploadSolution,
-}: {
-  items: ChecklistDetailItem[]
-  onUpload: (id: string, file: File) => void
-  onUploadSolution: (id: string, file: File) => void
-}) => {
-  const [uploadedFiles, setUploadedFiles] = useState<Record<string, string>>({})
-  const [solutionUploads, setSolutionUploads] = useState<Record<string, string>>({})
-
-  const handleFileChange = (id: string, file?: File) => {
-    if (!file) return
-    setUploadedFiles(prev => ({ ...prev, [id]: file.name }))
-    onUpload(id, file)
-  }
-
-  const handleSolutionChange = (id: string, file?: File) => {
-    if (!file) return
-    setSolutionUploads(prev => ({ ...prev, [id]: file.name }))
-    onUploadSolution(id, file)
-  }
-
-  const renderResultBadge = (result: ChecklistDetailItem['result']) => {
-    const config = checklistResultConfig[result]
-    return (
-      <span className={`px-2 py-0.5 inline-flex text-xs font-semibold rounded-full ${config.className}`}>
-        {config.label}
-      </span>
-    )
-  }
-
-  return (
-    <div className="overflow-x-auto -mx-4 sm:mx-0">
-      {items.length === 0 ? (
-        <p className="text-sm text-gray-500 italic">Không có chi tiết bài tập được đánh giá.</p>
-      ) : (
-        <div className="inline-block min-w-full align-middle">
-          <table className="min-w-full divide-y divide-gray-200 text-xs sm:text-sm">
-            <thead className="bg-blue-50">
-              <tr className="text-xs uppercase tracking-wider text-gray-500">
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Bài tập</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Thời gian ước lượng</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">File bài tập</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Thời gian thực tế</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Upload bài làm</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Lời giải</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Kết quả</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Nhận xét</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {items.map(item => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-2 sm:px-3 py-2 font-semibold text-gray-900 min-w-[120px]">{item.lesson}</td>
-                  <td className="px-2 sm:px-3 py-2 text-gray-600 whitespace-nowrap">{item.estimatedTime} phút</td>
-                  <td className="px-2 sm:px-3 py-2 min-w-[140px]">
-                    {item.assignmentFileName ? (
-                      <div className="flex items-center gap-1 sm:gap-2 text-blue-600">
-                        <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                        <span className="text-xs font-semibold truncate max-w-[100px] sm:max-w-[120px]">{item.assignmentFileName}</span>
-                        <Download className="w-3 h-3 cursor-pointer hover:text-blue-700 flex-shrink-0" />
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-400">—</span>
-                    )}
-                  </td>
-                  <td className="px-2 sm:px-3 py-2 text-gray-900 font-medium whitespace-nowrap">{item.actualTime} phút</td>
-                  <td className="px-2 sm:px-3 py-2 min-w-[140px]">
-                    {item.uploadedFileName ? (
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2">
-                        <div className="flex items-center gap-1 sm:gap-2 text-green-600">
-                          <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                          <span className="text-xs font-semibold truncate max-w-[100px] sm:max-w-[120px]">{item.uploadedFileName}</span>
-                          <Download className="w-3 h-3 cursor-pointer hover:text-green-700 flex-shrink-0" />
-                        </div>
-                        <label className="inline-flex items-center gap-1 text-primary-600 cursor-pointer hover:text-primary-700 text-xs font-semibold">
-                          <input
-                            type="file"
-                            className="hidden"
-                            onChange={(e) => handleFileChange(item.id, e.target.files?.[0])}
-                            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                          />
-                          <Upload className="w-3 h-3 flex-shrink-0" />
-                          <span className="whitespace-nowrap">Cập nhật</span>
-                        </label>
-                      </div>
-                    ) : (
-                      <label className="inline-flex items-center gap-1 sm:gap-2 text-primary-600 cursor-pointer hover:text-primary-700 text-xs font-semibold">
-                        <input
-                          type="file"
-                          className="hidden"
-                          onChange={(e) => handleFileChange(item.id, e.target.files?.[0])}
-                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        />
-                        <Upload className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                        <span className="truncate max-w-[100px] sm:max-w-none">{uploadedFiles[item.id] || 'Tải bài làm'}</span>
-                      </label>
-                    )}
-                  </td>
-                  <td className="px-2 sm:px-3 py-2 text-gray-600 space-y-1 sm:space-y-2 min-w-[150px]">
-                    {item.solutionText && (
-                      <p className="text-xs sm:text-sm text-gray-700 leading-snug">{item.solutionText}</p>
-                    )}
-                    {item.solutionFileName && (
-                      <div className="text-xs font-semibold text-gray-700 flex items-center gap-1 sm:gap-2">
-                        <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                        <span className="truncate max-w-[120px] sm:max-w-none">{item.solutionFileName}</span>
-                      </div>
-                    )}
-                    {item.solutionType === 'image' && item.solutionPreview && (
-                      <img
-                        src={item.solutionPreview}
-                        alt="Solution preview"
-                        className="w-20 h-12 sm:w-24 sm:h-16 object-cover rounded-lg border"
-                      />
-                    )}
-                    <label className="inline-flex items-center gap-1 sm:gap-2 text-primary-600 cursor-pointer hover:text-primary-700 text-xs font-semibold">
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        onChange={(e) => handleSolutionChange(item.id, e.target.files?.[0])}
-                      />
-                      <Upload className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                      <span className="whitespace-nowrap">{solutionUploads[item.id] || item.solutionFileName ? 'Cập nhật lời giải' : 'Thêm lời giải'}</span>
-                    </label>
-                  </td>
-                  <td className="px-2 sm:px-3 py-2 whitespace-nowrap">{renderResultBadge(item.result)}</td>
-                  <td className="px-2 sm:px-3 py-2 text-gray-500 min-w-[100px]">{item.qualityNote}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Component cho chi tiết bài tập về nhà
-const HomeworkDetailTable = ({
-  items,
-  onUpload,
-}: {
-  items: HomeworkDetailItem[]
-  onUpload: (id: string, file: File) => void
-}) => {
-  const [uploadedFiles, setUploadedFiles] = useState<Record<string, string>>({})
-
-  const handleFileChange = (id: string, file?: File) => {
-    if (!file) return
-    setUploadedFiles(prev => ({ ...prev, [id]: file.name }))
-    onUpload(id, file)
-  }
-
-  const getDifficultyDisplay = (difficulty: HomeworkDetailItem['difficulty']) => {
-    switch (difficulty) {
-      case 'easy':
-        return { text: 'Dễ', bgColor: 'bg-green-100', textColor: 'text-green-700' }
-      case 'medium':
-        return { text: 'Trung bình', bgColor: 'bg-yellow-100', textColor: 'text-yellow-700' }
-      case 'hard':
-        return { text: 'Khó', bgColor: 'bg-orange-100', textColor: 'text-orange-700' }
-      default:
-        return { text: 'Khá', bgColor: 'bg-blue-100', textColor: 'text-blue-700' }
-    }
-  }
-
-  const renderResultBadge = (result: HomeworkDetailItem['result']) => {
-    const config = homeworkResultConfig[result]
-    return (
-      <span className={`px-2 py-0.5 inline-flex text-xs font-semibold rounded-full ${config.className}`}>
-        {config.label}
-      </span>
-    )
-  }
-
-  return (
-    <div className="overflow-x-auto -mx-4 sm:mx-0">
-      {items.length === 0 ? (
-        <p className="text-sm text-gray-500 italic">Không có chi tiết bài tập.</p>
-      ) : (
-        <div className="inline-block min-w-full align-middle">
-          <table className="min-w-full divide-y divide-gray-200 text-xs sm:text-sm">
-            <thead className="bg-blue-50">
-              <tr className="text-xs uppercase tracking-wider text-gray-500">
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Bài tập</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Thời gian ước lượng</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">File bài tập</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Thời gian thực tế</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Upload nộp bài</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Lời giải</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Mức độ</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Kết quả</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Nhận xét</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {items.map(item => {
-                const difficultyDisplay = getDifficultyDisplay(item.difficulty)
-                return (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-2 sm:px-3 py-2 font-semibold text-gray-900 min-w-[120px]">{item.task}</td>
-                    <td className="px-2 sm:px-3 py-2 text-gray-600 whitespace-nowrap">{item.estimatedTime} phút</td>
-                    <td className="px-2 sm:px-3 py-2 min-w-[140px]">
-                      {item.assignmentFileName ? (
-                        <div className="flex items-center gap-1 sm:gap-2 text-blue-600">
-                          <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                          <span className="text-xs font-semibold truncate max-w-[100px] sm:max-w-[120px]">{item.assignmentFileName}</span>
-                          <Download className="w-3 h-3 cursor-pointer hover:text-blue-700 flex-shrink-0" />
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-2 sm:px-3 py-2 text-gray-900 font-medium whitespace-nowrap">
-                      {item.actualTime ? `${item.actualTime} phút` : '—'}
-                    </td>
-                    <td className="px-2 sm:px-3 py-2 min-w-[140px]">
-                      {item.uploadedFileName ? (
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2">
-                          <div className="flex items-center gap-1 sm:gap-2 text-green-600">
-                            <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                            <span className="text-xs font-semibold truncate max-w-[100px] sm:max-w-[120px]">{item.uploadedFileName}</span>
-                            <Download className="w-3 h-3 cursor-pointer hover:text-green-700 flex-shrink-0" />
-                          </div>
-                          <label className="inline-flex items-center gap-1 text-primary-600 cursor-pointer hover:text-primary-700 text-xs font-semibold">
-                            <input
-                              type="file"
-                              className="hidden"
-                              onChange={(e) => handleFileChange(item.id, e.target.files?.[0])}
-                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                            />
-                            <Upload className="w-3 h-3 flex-shrink-0" />
-                            <span className="whitespace-nowrap">Cập nhật</span>
-                          </label>
-                        </div>
-                      ) : (
-                        <label className="inline-flex items-center gap-1 sm:gap-2 text-primary-600 cursor-pointer hover:text-primary-700 text-xs font-semibold">
-                          <input
-                            type="file"
-                            className="hidden"
-                            onChange={(e) => handleFileChange(item.id, e.target.files?.[0])}
-                            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                          />
-                          <Upload className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                          <span className="truncate max-w-[100px] sm:max-w-none">{uploadedFiles[item.id] || 'Tải bài làm'}</span>
-                        </label>
-                      )}
-                    </td>
-                    <td className="px-2 sm:px-3 py-2 text-gray-600 space-y-1 sm:space-y-2 min-w-[150px]">
-                      {item.solutionText && (
-                        <p className="text-xs sm:text-sm text-gray-700 leading-snug">{item.solutionText}</p>
-                      )}
-                      {item.solutionFileName && (
-                        <div className="text-xs font-semibold text-gray-700 flex items-center gap-1 sm:gap-2">
-                          <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                          <span className="truncate max-w-[120px] sm:max-w-none">{item.solutionFileName}</span>
-                        </div>
-                      )}
-                      {item.solutionType === 'image' && item.solutionPreview && (
-                        <img
-                          src={item.solutionPreview}
-                          alt="Solution preview"
-                          className="w-20 h-12 sm:w-24 sm:h-16 object-cover rounded-lg border"
-                        />
-                      )}
-                      {!item.solutionText && !item.solutionFileName && (
-                        <span className="text-xs text-gray-400">Chưa có lời giải</span>
-                      )}
-                    </td>
-                    <td className="px-2 sm:px-3 py-2 whitespace-nowrap">
-                      <span className={`${difficultyDisplay.bgColor} ${difficultyDisplay.textColor} px-2 py-0.5 rounded text-xs font-semibold`}>
-                        {difficultyDisplay.text}
-                      </span>
-                    </td>
-                    <td className="px-2 sm:px-3 py-2 whitespace-nowrap">{renderResultBadge(item.result)}</td>
-                    <td className="px-2 sm:px-3 py-2 text-gray-500 min-w-[100px]">{item.comment || '—'}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  )
-}
+// ChecklistDetailTable và HomeworkDetailTable đã được chuyển vào components/student
 
 export default function StudentDashboard() {
   const { user } = useAuth()
-  const [activeSection, setActiveSection] = useState('home')
+  const [searchParams, setSearchParams] = useSearchParams()
+  
+  // Get section from URL or default to 'home'
+  const sectionFromUrl = searchParams.get('section')
+  const validSections = ['home', 'schedule', 'checklist', 'homework', 'analytics']
+  const defaultSection = 'home'
+  const initialSection = sectionFromUrl && validSections.includes(sectionFromUrl) ? sectionFromUrl : defaultSection
+  
+  const [activeSection, setActiveSection] = useState(initialSection)
+  
+  // Sync URL when section changes
+  const handleSectionChange = useCallback((section: string) => {
+    setActiveSection(section)
+    setSearchParams({ section }, { replace: false })
+  }, [setSearchParams])
+  
+  // Sync section when URL changes (e.g., back button)
+  useEffect(() => {
+    const section = searchParams.get('section')
+    if (section && validSections.includes(section)) {
+      setActiveSection(section)
+    } else if (!section) {
+      // If no section in URL, set default and update URL
+      setActiveSection(defaultSection)
+      setSearchParams({ section: defaultSection }, { replace: true })
+    }
+  }, [searchParams, validSections, defaultSection, setSearchParams])
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null)
   const [expandedHomeworkSession, setExpandedHomeworkSession] = useState<string | null>(null)
   const [expandedChecklistDate, setExpandedChecklistDate] = useState<string | null>(null)
@@ -714,12 +362,7 @@ export default function StudentDashboard() {
   const [isSchedulesLoading, setIsSchedulesLoading] = useState<boolean>(false)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [scheduleFetchTrigger, setScheduleFetchTrigger] = useState(0)
-  const [assignmentMaterials, setAssignmentMaterials] = useState<AssignmentApiItem[]>([])
   const [selectedUploadScheduleId, setSelectedUploadScheduleId] = useState<string | null>(null)
-  const [filesToUpload, setFilesToUpload] = useState<File[]>([])
-  const [uploadingMaterials, setUploadingMaterials] = useState(false)
-  const [uploadError, setUploadError] = useState<string | null>(null)
-  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     let isActive = true
@@ -800,6 +443,14 @@ export default function StudentDashboard() {
     }
   }, [user, scheduleFetchTrigger])
 
+  const scheduleInfoById = useMemo(() => {
+    const map: Record<string, { date?: Date; subject?: string }> = {}
+    schedules.forEach((schedule) => {
+      map[schedule.id] = { date: schedule.date, subject: schedule.subject }
+    })
+    return map
+  }, [schedules])
+
   useEffect(() => {
     let isActive = true
 
@@ -808,7 +459,6 @@ export default function StudentDashboard() {
         if (isActive) {
           setChecklistItems([])
           setChecklistError(null)
-          setAssignmentMaterials([])
         }
         return
       }
@@ -826,14 +476,12 @@ export default function StudentDashboard() {
         const response = await apiCall<AssignmentPaginatedResponse>(`/assignments?${query}`)
         if (!isActive) return
         const assignments = response.results || []
-        setChecklistItems(mapAssignmentsToChecklistItems(assignments))
-        setAssignmentMaterials(assignments)
+        setChecklistItems(mapAssignmentsToChecklistItems(assignments, scheduleInfoById))
       } catch (error) {
         if (!isActive) return
         const message = error instanceof Error ? error.message : 'Không thể tải checklist'
         setChecklistError(message)
         setChecklistItems([])
-        setAssignmentMaterials([])
       } finally {
         if (isActive) {
           setIsChecklistLoading(false)
@@ -846,7 +494,7 @@ export default function StudentDashboard() {
     return () => {
       isActive = false
     }
-  }, [user])
+  }, [user, scheduleInfoById])
 
   useEffect(() => {
     let isActive = true
@@ -972,59 +620,6 @@ export default function StudentDashboard() {
     )
   }
 
-  const handleMaterialFilesSelected = (fileList: FileList | null) => {
-    if (!fileList) return
-    const selectedFiles = Array.from(fileList)
-    setFilesToUpload((prev) => [...prev, ...selectedFiles])
-  }
-
-  const handleRemovePendingFile = (index: number) => {
-    setFilesToUpload((prev) => prev.filter((_, idx) => idx !== index))
-  }
-
-  const handleUploadMaterials = async () => {
-    if (!user?.id) {
-      setUploadError('Vui lòng đăng nhập để gửi tài liệu.')
-      return
-    }
-    if (!selectedUploadScheduleId) {
-      setUploadError('Vui lòng chọn buổi học muốn gửi tài liệu.')
-      return
-    }
-    if (filesToUpload.length === 0) {
-      setUploadError('Vui lòng chọn ít nhất một tài liệu trước khi gửi.')
-      return
-    }
-
-    setUploadingMaterials(true)
-    setUploadError(null)
-    setUploadSuccess(null)
-
-    try {
-      const uploadedMaterials = await uploadSupplementaryFiles(filesToUpload)
-
-    await apiCall(`/schedules/${selectedUploadScheduleId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        supplementaryMaterials: uploadedMaterials.map((file, index) => ({
-          name: file.name || `Tài liệu ${index + 1}`,
-          documentURL: file.url,
-          description: parentNote || undefined,
-        })),
-      }),
-    })
-
-      setUploadSuccess('Đã gửi tài liệu cho Tutor thành công!')
-      setFilesToUpload([])
-      setParentNote('')
-    setScheduleFetchTrigger((prev) => prev + 1)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể gửi tài liệu cho Tutor'
-      setUploadError(message)
-    } finally {
-      setUploadingMaterials(false)
-    }
-  }
 
   const [detailItemsBySubject, setDetailItemsBySubject] = useState<Record<string, ChecklistDetailItem[]>>({
     Toán: [
@@ -1106,7 +701,6 @@ export default function StudentDashboard() {
       },
     ],
   })
-  const [parentNote, setParentNote] = useState('')
 
   const getSubjectDetailItems = (subject: string) => detailItemsBySubject[subject] || []
   const updateSubjectDetailItems = (
@@ -1527,39 +1121,6 @@ useEffect(() => {
     }
   }, [uploadScheduleOptions, selectedUploadScheduleId])
 
-  const materialsBySchedule = useMemo<Record<string, ScheduleMaterialItem[]>>(() => {
-    const grouped: Record<string, ScheduleMaterialItem[]> = {}
-
-    assignmentMaterials.forEach((assignment) => {
-      const scheduleId = assignment.scheduleId
-      if (!scheduleId || !assignment.supplementaryMaterials?.length) return
-
-      assignment.supplementaryMaterials.forEach((material, index) => {
-        if (!material.url) return
-        if (!grouped[scheduleId]) {
-          grouped[scheduleId] = []
-        }
-
-        grouped[scheduleId].push({
-          id: `${assignment.id}-${index}`,
-          name: material.name || `Tài liệu ${index + 1}`,
-          url: material.url,
-          uploadedAt: assignment.updatedAt || assignment.createdAt,
-          description: assignment.description,
-        })
-      })
-    })
-
-    return grouped
-  }, [assignmentMaterials])
-
-  const selectedUploadSchedule = selectedUploadScheduleId
-    ? schedules.find((schedule) => schedule.id === selectedUploadScheduleId) || null
-    : null
-  const materialsForSelectedSchedule = selectedUploadScheduleId
-    ? materialsBySchedule[selectedUploadScheduleId] || []
-    : []
-
   const getSubjectChecklistStats = (subject: string) => {
     const items = todayChecklist.filter((item) => item.subject === subject)
     const detailItems = getSubjectDetailItems(subject)
@@ -1722,9 +1283,44 @@ useEffect(() => {
     const content = (() => {
       switch (activeSection) {
         case 'home':
-          return renderHomeSection()
+          return (
+            <HomeSection
+              schedules={schedules}
+              todaySchedules={todaySchedules}
+              checklistItems={checklistItems}
+              todayChecklist={todayChecklist}
+              todayReports={todayReports}
+              tutorInfoMap={tutorInfoMap}
+              progressPercentage={progressPercentage}
+              completedCount={completedCount}
+              totalCount={totalCount}
+              studentHighlightCards={studentHighlightCards}
+              uploadScheduleOptions={uploadScheduleOptions}
+              selectedUploadScheduleId={selectedUploadScheduleId}
+              onScheduleChange={handleSectionChange}
+              onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
+              onUploadSuccess={() => setScheduleFetchTrigger((prev) => prev + 1)}
+              onJoinClass={handleJoinClass}
+              onChecklistClick={() => setShowChecklistOverlay(true)}
+              onSubjectSelect={setSelectedSubject}
+              getScheduleStatus={getScheduleStatus}
+              getSubjectColor={getSubjectColor}
+              onExportCombinedReport={handleExportCombinedReport}
+              onOpenReportPreview={handleOpenReportPreview}
+              scheduleFetchTrigger={scheduleFetchTrigger}
+            />
+          )
         case 'schedule':
-          return renderScheduleSection()
+          return (
+            <ScheduleSection
+              schedules={schedules}
+              isLoading={isSchedulesLoading}
+              error={scheduleError}
+              onReload={handleReloadSchedules}
+              onJoinClass={handleJoinClass}
+              onViewChecklist={handleViewChecklist}
+            />
+          )
         case 'checklist':
           return renderChecklistSection()
         case 'homework':
@@ -1732,7 +1328,33 @@ useEffect(() => {
         case 'analytics':
           return renderAnalyticsSection()
         default:
-          return renderHomeSection()
+          return (
+            <HomeSection
+              schedules={schedules}
+              todaySchedules={todaySchedules}
+              checklistItems={checklistItems}
+              todayChecklist={todayChecklist}
+              todayReports={todayReports}
+              tutorInfoMap={tutorInfoMap}
+              progressPercentage={progressPercentage}
+              completedCount={completedCount}
+              totalCount={totalCount}
+              studentHighlightCards={studentHighlightCards}
+              uploadScheduleOptions={uploadScheduleOptions}
+              selectedUploadScheduleId={selectedUploadScheduleId}
+              onScheduleChange={handleSectionChange}
+              onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
+              onUploadSuccess={() => setScheduleFetchTrigger((prev) => prev + 1)}
+              onJoinClass={handleJoinClass}
+              onChecklistClick={() => setShowChecklistOverlay(true)}
+              onSubjectSelect={setSelectedSubject}
+              getScheduleStatus={getScheduleStatus}
+              getSubjectColor={getSubjectColor}
+              onExportCombinedReport={handleExportCombinedReport}
+              onOpenReportPreview={handleOpenReportPreview}
+              scheduleFetchTrigger={scheduleFetchTrigger}
+            />
+          )
       }
     })()
     
@@ -1847,7 +1469,8 @@ useEffect(() => {
     )
   }
 
-  const renderHomeSection = () => (
+  // Old renderHomeSection removed - now using HomeSection component
+  const _renderHomeSection_OLD = () => (
     <div className="h-full flex flex-col lg:flex-row gap-3 lg:gap-4 overflow-hidden">
       {/* Main Layout - 2 Columns */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-4 min-w-0">
@@ -1938,149 +1561,16 @@ useEffect(() => {
         <div className="lg:col-span-2 h-full overflow-y-auto space-y-3 sm:space-y-4">
           
           {/* 🚀 UPLOAD DOCUMENTS (ĐÃ CHUYỂN LÊN ĐẦU) 🚀 */}
-          <div className="card hover:shadow-xl transition-shadow duration-300">
-            <div className="flex items-center space-x-2 mb-4 sm:mb-6">
-              <Upload className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600" />
-              <h2 className="text-lg sm:text-xl font-bold text-gray-900">Tải tài liệu cho Tutor</h2>
-            </div>
-            {uploadScheduleOptions.length === 0 ? (
-              <p className="text-sm text-gray-500">Hiện chưa có buổi học nào để gửi tài liệu thêm cho Tutor.</p>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-semibold text-gray-700 mb-2 block">Chọn buổi học</label>
-                  <select
-                    value={selectedUploadScheduleId ?? ''}
-                    onChange={(e) => setSelectedUploadScheduleId(e.target.value)}
-                    className="w-full border-2 border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all bg-white"
-                  >
-                    {uploadScheduleOptions.map((schedule) => (
-                      <option key={schedule.id} value={schedule.id}>
-                        {(schedule.subject && schedule.subject.length > 0 ? schedule.subject : 'Chung')}{' '}
-                        · {format(schedule.date, 'dd/MM/yyyy HH:mm')}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedUploadSchedule && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Buổi học: {selectedUploadSchedule.subject || 'Chung'} · {format(selectedUploadSchedule.date, 'EEEE, dd/MM/yyyy')}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="text-sm font-semibold text-gray-700 mb-2 block">Ghi chú cho Tutor</label>
-                  <textarea
-                    value={parentNote}
-                    onChange={(e) => setParentNote(e.target.value)}
-                    placeholder="Nhập ghi chú chi tiết (ví dụ: phần con cần ôn lại, vấn đề trong buổi trước...)"
-                    rows={3}
-                    className="w-full border-2 border-gray-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all bg-white"
-                  />
-                </div>
-
-                {/* Upload Area */}
-                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-primary-400 transition-colors cursor-pointer bg-gray-50 hover:bg-gray-100">
-                  <input
-                    type="file"
-                    id="document-upload"
-                    className="hidden"
-                    multiple
-                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                    onChange={(e) => handleMaterialFilesSelected(e.target.files)}
-                  />
-                  <label htmlFor="document-upload" className="cursor-pointer flex flex-col items-center">
-                    <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                    <p className="text-sm font-medium text-gray-700 mb-1">
-                      Click để chọn tài liệu
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      PDF, DOC, DOCX, JPG, PNG (tối đa 10MB/tệp)
-                    </p>
-                  </label>
-                </div>
-
-                {filesToUpload.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-gray-700">Tài liệu sẽ gửi ({filesToUpload.length})</p>
-                    {filesToUpload.map((file, index) => (
-                      <div key={`${file.name}-${index}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                        <div className="flex items-center space-x-3">
-                          <FileText className="w-5 h-5 text-primary-600" />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900 truncate max-w-[200px]">{file.name}</p>
-                            <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleRemovePendingFile(index)}
-                          className="text-xs font-semibold text-red-500 hover:text-red-700"
-                        >
-                          Xóa
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {uploadError && (
-                  <p className="text-sm text-red-500">{uploadError}</p>
-                )}
-                {uploadSuccess && (
-                  <p className="text-sm text-green-600">{uploadSuccess}</p>
-                )}
-
-                <button
-                  onClick={handleUploadMaterials}
-                  disabled={uploadingMaterials || !selectedUploadSchedule || filesToUpload.length === 0}
-                  className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold transition-colors ${
-                    uploadingMaterials || !selectedUploadSchedule || filesToUpload.length === 0
-                      ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                      : 'bg-primary-500 text-white hover:bg-primary-600'
-                  }`}
-                >
-                  {uploadingMaterials ? 'Đang gửi tài liệu...' : 'Gửi tài liệu cho Tutor'}
-                </button>
-
-                {/* Uploaded Files List */}
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-gray-700">Tài liệu đã gửi</p>
-                  {materialsForSelectedSchedule.length === 0 ? (
-                    <p className="text-sm text-gray-500">Chưa có tài liệu nào được gửi cho buổi học này.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {materialsForSelectedSchedule.map((material) => (
-                        <div key={material.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                          <div className="flex items-start space-x-3">
-                            <FileText className="w-5 h-5 text-primary-600 mt-1" />
-                            <div>
-                              <p className="text-sm font-medium text-gray-900 break-all">{material.name}</p>
-                              {material.description && (
-                                <p className="text-xs text-gray-500">{material.description}</p>
-                              )}
-                              {material.uploadedAt && (
-                                <p className="text-xs text-gray-400">
-                                  Tải lên: {format(new Date(material.uploadedAt), 'dd/MM/yyyy HH:mm')}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <a
-                            href={material.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary-600 hover:text-primary-700 text-sm font-semibold"
-                          >
-                            Xem
-                          </a>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          <MaterialUploadSection
+            scheduleOptions={uploadScheduleOptions.map(s => ({
+              id: s.id,
+              subject: s.subject || 'Chung',
+              date: s.date,
+            }))}
+            selectedScheduleId={selectedUploadScheduleId}
+            onScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
+            onUploadSuccess={() => setScheduleFetchTrigger((prev) => prev + 1)}
+          />
 
           {/* Today's Schedule (Vị trí mới: thứ hai) */}
           <div className="card hover:shadow-xl transition-shadow duration-300">
@@ -2090,7 +1580,7 @@ useEffect(() => {
                 <p className="text-sm text-gray-600">{todaySchedules.length} buổi học</p>
               </div>
               <button
-                onClick={() => setActiveSection('schedule')}
+                onClick={() => handleSectionChange('schedule')}
                 className="flex items-center space-x-2 text-primary-600 hover:text-primary-700 text-sm font-medium"
               >
                 <span>Xem tất cả</span>
@@ -2322,7 +1812,7 @@ useEffect(() => {
                 <p className="text-sm text-gray-600">{completedCount}/{totalCount} hoàn thành</p>
               </div>
               <button
-                onClick={() => setActiveSection('checklist')}
+                onClick={() => handleSectionChange('checklist')}
                 className="flex items-center space-x-2 text-primary-600 hover:text-primary-700 text-sm font-medium"
               >
                 <span>Xem tất cả</span>
@@ -2681,12 +2171,13 @@ useEffect(() => {
   const handleViewChecklist = (scheduleId: string) => {
     const schedule = schedules.find(s => s.id === scheduleId)
     if (schedule) {
-      setActiveSection('checklist')
+      handleSectionChange('checklist')
       setSelectedSubject(schedule.subject || null)
     }
   }
 
-  const renderScheduleSection = () => (
+  // Old renderScheduleSection removed - now using ScheduleSection component
+  const _renderScheduleSection_OLD = () => (
     <div className="h-full overflow-hidden">
       <div className="h-full flex flex-col bg-white rounded-2xl shadow-lg overflow-hidden">
         {isSchedulesLoading ? (
@@ -2954,6 +2445,10 @@ useEffect(() => {
     )
   }
 
+  // Keep legacy renderers referenced for future reuse without triggering unused variable errors
+  void _renderHomeSection_OLD
+  void _renderScheduleSection_OLD
+
   const renderHomeworkSection = () => {
     // Group homework by date
     const groupHomeworkByDate = () => {
@@ -3110,7 +2605,7 @@ useEffect(() => {
 
   return (
     <Layout 
-      sidebar={<Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />}
+      sidebar={<Sidebar activeSection={activeSection} onSectionChange={handleSectionChange} />}
     >
       {renderContent()}
       {showChecklistOverlay && (

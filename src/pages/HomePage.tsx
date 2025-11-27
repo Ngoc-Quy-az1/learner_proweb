@@ -1,12 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Phone, X } from 'lucide-react'
-import HeroSection from '../components/HeroSection'
-import PerformanceSection from '../components/PerformanceSection'
-import TutoringSection from '../components/TutoringSection'
-import TestimonialsSection from '../components/TestimonialsSection'
-import FooterSection from '../components/FooterSection'
-import ContactModal from '../components/ContactModal'
+import { HeroSection, PerformanceSection, TutoringSection, TestimonialsSection, FooterSection } from '../components/home'
+import { ContactModal } from '../components/common'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -15,9 +11,19 @@ export default function HomePage() {
 
   const testimonials = [
     {
-      text: "My daughter scored among the highest in her common entrance exam into a top school and got admitted the same day! It's been very gratifying to see her improve under her tutor, to the point where she now contends with the top students in class.",
-      author: "Mrs. Soetan",
-      location: "Lekki, Lagos"
+      text: "Trước đây con trai mình rất hay mất tập trung, làm bài lúc nhớ lúc quên. Từ khi có tutor của Skillar kèm, con biết lập checklist, tự giác ngồi vào bàn học đúng giờ và chủ động hỏi lại khi chưa hiểu bài. Mình không cần nhắc nữa, điểm môn Toán và Tiếng Anh đều tăng rõ rệt. Cảm ơn Skillar rất nhiều!t where she now contends with the top students in class.",
+      author: "Chị Lan Anh, Phụ huynh bé Khang, Lớp 5",
+      location: ""
+    },
+    {
+      "text": "Mình thích nhất là các thầy cô Skillar không chỉ dạy kiến thức, mà còn hướng dẫn con cách học và cách ôn bài. Bé nhà mình trước ỳ lại, giờ biết tự sắp xếp bài tập, làm từng mục theo checklist. Kết quả kiểm tra cuối kỳ tăng từ 6.5 lên 8.4, quan trọng nhất là con tự tin hơn hẳn.",
+      "author": "Anh Hoàng Nam, Phụ huynh bé Anh Thư, Lớp 7",
+      "location": ""
+    },
+    {
+      "text": "Con gái mình học trường quốc tế, trước đây khá lúng túng với các môn học bằng tiếng Anh. Sau 2 tháng học tại Skillar, con nắm bài nhanh hơn, biết ghi chú, biết chuẩn bị bài trước khi đến lớp. Giáo viên chủ nhiệm còn khen con tiến bộ rõ rệt và chủ động hơn trong giờ học.",
+      "author": "Chị Minh Hương, Phụ huynh bé Gia Linh, Lớp 6",
+      "location": ""
     }
   ]
 

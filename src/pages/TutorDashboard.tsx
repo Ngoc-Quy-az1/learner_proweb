@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Layout } from '../components/common'
 import { TutorSidebar, ChecklistItem, MonthlyCalendar, ScheduleItem } from '../components/dashboard'
-import { Users, Calendar, Plus, Clock, TrendingUp, UserCircle, Copy, ChevronRight, Upload, BookOpen, Search, Filter } from 'lucide-react'
+import { Users, Calendar, Plus, Clock, UserCircle, Copy, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Upload, BookOpen, Search, Filter } from 'lucide-react'
 import { format, isToday, differenceInYears } from 'date-fns'
 import { useAuth } from '../contexts/AuthContext'
-import { apiCall } from '../config/api'
+import { apiCall, API_BASE_URL } from '../config/api'
 import { ChecklistForm, HomeworkTable, DetailTable, SubjectEvaluation, StudentInfoDetails, type ChecklistFormData, type TutorChecklistDetail } from '../components/tutor'
+import StarRating from '../components/tutor/StarRating'
 import { TutorDashboardContext } from '../contexts/TutorDashboardContext'
 import type { TutorInfo } from '../components/student/types'
+import { getCookie } from '../utils/cookies'
 interface TutorSchedule {
   id: string
   studentId: string
@@ -42,10 +44,12 @@ interface AssignmentTaskApiItem {
   estimatedTime?: number
   actualTime?: number
    answerURL?: string
+  note?: string
 }
 
 interface AssignmentApiItem {
-  id: string
+  id?: string
+  _id?: string
   scheduleId?:
     | string
     | {
@@ -148,6 +152,24 @@ const resolveUserId = (value: unknown, fallback?: string): string | undefined =>
     if (candidate._id && typeof candidate._id === 'string') return candidate._id
   }
   return fallback
+}
+
+const resolveAssignmentScheduleId = (scheduleRef: AssignmentApiItem['scheduleId']): string | undefined => {
+  if (!scheduleRef) return undefined
+  if (typeof scheduleRef === 'string') return scheduleRef
+  if (typeof scheduleRef === 'object') {
+    return scheduleRef._id || (scheduleRef as { id?: string }).id
+  }
+  return undefined
+}
+
+const resolveAssignmentStudentId = (studentRef: AssignmentApiItem['studentId']): string | undefined => {
+  if (!studentRef) return undefined
+  if (typeof studentRef === 'string') return studentRef
+  if (typeof studentRef === 'object') {
+    return studentRef._id || (studentRef as { id?: string }).id
+  }
+  return undefined
 }
 
 const SUBJECT_LABELS: Record<string, string> = {
@@ -350,9 +372,29 @@ export default function TutorDashboard() {
   const [copiedScheduleLink, setCopiedScheduleLink] = useState<string | null>(null)
   const [selectedScheduleSlotId, setSelectedScheduleSlotId] = useState<string | null>(null)
   const [quickViewStudentId, setQuickViewStudentId] = useState<string | null>(null)
+  const [expandedQuickViewAssignmentId, setExpandedQuickViewAssignmentId] = useState<string | null>(null)
+  const [editingQuickViewAssignmentId, setEditingQuickViewAssignmentId] = useState<string | null>(null)
+  const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, AssignmentTaskApiItem[]>>({})
+  const [savingAssignmentId, setSavingAssignmentId] = useState<string | null>(null)
+  const [deletingAssignmentId, setDeletingAssignmentId] = useState<string | null>(null)
+  const [taskFileUploadingKey, setTaskFileUploadingKey] = useState<string | null>(null)
   const [editingField, setEditingField] = useState<{ type: 'lesson' | 'task' | 'note'; itemId: string } | null>(null)
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({})
   const [selectedSubjectStudents, setSelectedSubjectStudents] = useState<Record<string, string[]>>({}) // subject -> studentIds
+  
+  // State cho đánh giá
+  interface ScheduleReview {
+    name: string
+    rating: number
+    comment: string
+  }
+  const [scheduleReviews, setScheduleReviews] = useState<Record<string, ScheduleReview[]>>({}) // scheduleId -> reviews
+  const [savingReviews, setSavingReviews] = useState<string | null>(null) // scheduleId đang lưu
+  
+  // Refs và state cho scroll khung giờ
+  const scheduleSlotsScrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -384,9 +426,11 @@ export default function TutorDashboard() {
     const map: Record<string, Array<{ id: string; label: string }>> = {}
     tutorSchedules.forEach((schedule) => {
       if (!map[schedule.studentId]) map[schedule.studentId] = []
+      // Loại bỏ "Chung" khỏi label
+      const subjectPart = schedule.subject === 'Chung' ? '' : ` · ${schedule.subject}`
       map[schedule.studentId].push({
         id: schedule.id,
-        label: `${format(schedule.date, 'dd/MM')} · ${schedule.time} · ${schedule.subject}`,
+        label: `${format(schedule.date, 'dd/MM')} · ${schedule.time}${subjectPart}`,
       })
     })
     return map
@@ -656,9 +700,10 @@ export default function TutorDashboard() {
         nextByStudent[studentId] = []
       }
 
+      const assignmentId = assignment._id || assignment.id || `assignment-${Date.now()}-${Math.random()}`
       if (assignment.tasks && assignment.tasks.length > 0) {
         assignment.tasks.forEach((task, index) => {
-          const itemId = task.id || `${assignment.id}-task-${index}`
+          const itemId = task.id || `${assignmentId}-task-${index}`
           nextByStudent[studentId].push({
             id: itemId,
             subject,
@@ -668,10 +713,10 @@ export default function TutorDashboard() {
             note: task.description || assignment.description,
             attachment: task.assignmentUrl || task.solutionUrl,
           })
-          nextMeta[itemId] = { assignmentId: assignment.id, taskId: task.id }
+          nextMeta[itemId] = { assignmentId, taskId: task.id || undefined }
         })
       } else {
-        const itemId = assignment.id
+        const itemId = assignmentId
         nextByStudent[studentId].push({
           id: itemId,
           subject,
@@ -680,7 +725,7 @@ export default function TutorDashboard() {
           status: mapAssignmentStatusToChecklist(assignment.status),
           note: assignment.description,
         })
-        nextMeta[itemId] = { assignmentId: assignment.id }
+        nextMeta[itemId] = { assignmentId }
       }
     })
 
@@ -764,7 +809,7 @@ export default function TutorDashboard() {
             }))
             .filter((item) => item.url)
           
-          const subject = getSubjectDisplayName(schedule.subjectCode, schedule.subjectCode)
+        const subject = getSubjectDisplayName(schedule.subjectCode, schedule.subjectCode)
           
           return {
             id: schedule.id,
@@ -1347,6 +1392,7 @@ export default function TutorDashboard() {
   useEffect(() => {
     if (!selectedScheduleSlot) {
       setQuickViewStudentId(null)
+      setExpandedQuickViewAssignmentId(null)
       return
     }
     setQuickViewStudentId((prev) => {
@@ -1355,7 +1401,21 @@ export default function TutorDashboard() {
       }
       return selectedScheduleSlot.schedules[0]?.studentId || null
     })
+    setExpandedQuickViewAssignmentId(null)
   }, [selectedScheduleSlot])
+
+  useEffect(() => {
+    setExpandedQuickViewAssignmentId(null)
+  }, [quickViewStudentId])
+
+  // Fetch schedule details khi selectedScheduleSlot hoặc quickViewStudentId thay đổi
+  useEffect(() => {
+    if (!selectedScheduleSlot || !quickViewStudentId) return
+    const activeSchedule = selectedScheduleSlot.schedules.find((schedule) => schedule.studentId === quickViewStudentId) || selectedScheduleSlot.schedules[0]
+    if (activeSchedule && !scheduleReviews[activeSchedule.id]) {
+      fetchScheduleDetails(activeSchedule.id)
+    }
+  }, [selectedScheduleSlot, quickViewStudentId])
 
   // Detail items theo studentId và subject - map từ /assignments
   const [tutorDetailItemsByStudentAndSubject, setTutorDetailItemsByStudentAndSubject] =
@@ -1587,7 +1647,7 @@ export default function TutorDashboard() {
       note: '',
       dueDate: resolvedDueDate,
       exercises: [
-        { id: `exercise-${Date.now()}`, title: '', requirement: '', estimatedTime: '', note: '' },
+        { id: `exercise-${Date.now()}`, title: '', requirement: '', estimatedTime: '', note: '', assignmentUrl: '' },
       ],
     })
     setShowChecklistForm(true)
@@ -1628,6 +1688,7 @@ export default function TutorDashboard() {
         description: exercise.requirement || undefined,
         note: exercise.note || undefined,
         estimatedTime: exercise.estimatedTime ? Number(exercise.estimatedTime) : undefined,
+        assignmentUrl: exercise.assignmentUrl || undefined,
         status: 'pending' as AssignmentTaskStatus,
       }))
 
@@ -1665,6 +1726,420 @@ export default function TutorDashboard() {
     }
   }
 
+  const clearAssignmentDraft = (assignmentKey: string) => {
+    setAssignmentDrafts((prev) => {
+      if (!prev[assignmentKey]) return prev
+      const next = { ...prev }
+      delete next[assignmentKey]
+      return next
+    })
+  }
+
+  const handleCollapseQuickViewAssignment = (assignmentKey: string) => {
+    setExpandedQuickViewAssignmentId((prev) => (prev === assignmentKey ? null : prev))
+    if (editingQuickViewAssignmentId === assignmentKey) {
+      setEditingQuickViewAssignmentId(null)
+    }
+    clearAssignmentDraft(assignmentKey)
+  }
+
+  const handleAssignmentTaskFieldChange = (
+    assignmentKey: string,
+    taskIndex: number,
+    field: keyof AssignmentTaskApiItem,
+    value: string | number | null
+  ) => {
+    setAssignmentDrafts((prev) => {
+      const draftList = prev[assignmentKey] ? [...prev[assignmentKey]] : []
+      const currentTask = draftList[taskIndex] ? { ...draftList[taskIndex] } : { id: `task-${taskIndex}` }
+      const numericFields: Array<keyof AssignmentTaskApiItem> = ['estimatedTime', 'actualTime']
+      const normalizedValue =
+        value === '' || value === null
+          ? undefined
+          : numericFields.includes(field)
+            ? Number(value)
+            : value
+      draftList[taskIndex] = {
+        ...currentTask,
+        [field]: normalizedValue,
+      }
+      return {
+        ...prev,
+        [assignmentKey]: draftList,
+      }
+    })
+  }
+
+  const saveAssignmentEdits = async (assignmentKey: string, assignment: AssignmentApiItem) => {
+    const draftTasks =
+      assignmentDrafts[assignmentKey] && assignmentDrafts[assignmentKey].length > 0
+        ? assignmentDrafts[assignmentKey]
+        : assignment.tasks || []
+    const assignmentId = assignment._id || assignment.id
+    if (!assignmentId) {
+      setAssignmentsError('Không tìm thấy ID của checklist.')
+      return
+    }
+    setSavingAssignmentId(assignmentKey)
+    try {
+      await apiCall(`/assignments/${assignmentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: assignment.name,
+          description: assignment.description,
+          subject: assignment.subject,
+          status: assignment.status,
+          tasks: draftTasks.map((task) => ({
+            id: task.id,
+            name: task.name,
+            description: task.description,
+            status: task.status,
+            note: task.note,
+            estimatedTime: task.estimatedTime,
+            actualTime: task.actualTime,
+            assignmentUrl: task.assignmentUrl,
+            answerURL: task.answerURL,
+            solutionUrl: task.solutionUrl,
+          })),
+        }),
+      })
+
+      setAssignments((prev) =>
+        prev.map((item) => {
+          const itemId = item._id || item.id
+          return itemId === assignmentId ? { ...item, tasks: draftTasks } : item
+        })
+      )
+      setEditingQuickViewAssignmentId(null)
+      clearAssignmentDraft(assignmentKey)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Không thể cập nhật checklist. Vui lòng thử lại.'
+      setAssignmentsError(message)
+    } finally {
+      setSavingAssignmentId(null)
+    }
+  }
+
+  const handleToggleEditAssignment = (assignmentKey: string, assignment: AssignmentApiItem) => {
+    const isEditing = editingQuickViewAssignmentId === assignmentKey
+    if (isEditing) {
+      saveAssignmentEdits(assignmentKey, assignment)
+      return
+    }
+
+    setAssignmentDrafts((prev) => ({
+      ...prev,
+      [assignmentKey]: (assignment.tasks || []).map((task) => ({ ...task })),
+    }))
+    setEditingQuickViewAssignmentId(assignmentKey)
+  }
+
+  const handleAddAssignmentTask = (assignmentKey: string, assignment: AssignmentApiItem) => {
+    setAssignmentDrafts((prev) => {
+      const baseDraft = prev[assignmentKey]
+        ? [...prev[assignmentKey]]
+        : (assignment.tasks || []).map((task) => ({ ...task }))
+      baseDraft.push({
+        id: `temp-${Date.now()}`,
+        name: '',
+        description: '',
+        status: 'pending',
+        note: '',
+      })
+      return {
+        ...prev,
+        [assignmentKey]: baseDraft,
+      }
+    })
+    setExpandedQuickViewAssignmentId(assignmentKey)
+    setEditingQuickViewAssignmentId(assignmentKey)
+  }
+
+  const handleRemoveAssignmentTask = (
+    assignmentKey: string,
+    assignment: AssignmentApiItem,
+    taskIndex: number
+  ) => {
+    setAssignmentDrafts((prev) => {
+      const baseDraft = prev[assignmentKey]
+        ? [...prev[assignmentKey]]
+        : (assignment.tasks || []).map((task) => ({ ...task }))
+      const nextDraft = baseDraft.filter((_, idx) => idx !== taskIndex)
+      return {
+        ...prev,
+        [assignmentKey]: nextDraft,
+      }
+    })
+  }
+
+  const renderTimeInput = (
+    value: number | undefined,
+    placeholder: string,
+    onChange: (nextValue: string) => void,
+    onAdjust: (delta: number) => void
+  ) => (
+    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+      <input
+        type="number"
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-20 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+        placeholder={placeholder}
+      />
+      <div className="flex flex-col border-l border-gray-200">
+        <button
+          type="button"
+          onClick={() => onAdjust(1)}
+          className="px-1 py-0.5 hover:bg-gray-100"
+        >
+          <ChevronUp className="w-3.5 h-3.5 text-gray-600" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onAdjust(-1)}
+          className="px-1 py-0.5 hover:bg-gray-100"
+        >
+          <ChevronDown className="w-3.5 h-3.5 text-gray-600" />
+        </button>
+      </div>
+    </div>
+  )
+
+  const adjustAssignmentTaskTime = (
+    assignmentKey: string,
+    taskIndex: number,
+    field: 'estimatedTime' | 'actualTime',
+    delta: number
+  ) => {
+    setAssignmentDrafts((prev) => {
+      const draftList = prev[assignmentKey] ? [...prev[assignmentKey]] : []
+      const currentTask = draftList[taskIndex] ? { ...draftList[taskIndex] } : { id: `task-${taskIndex}` }
+      const currentValue = Number(currentTask[field] || 0)
+      const nextValue = Math.max(0, currentValue + delta)
+      currentTask[field] = nextValue
+      draftList[taskIndex] = currentTask
+      return {
+        ...prev,
+        [assignmentKey]: draftList,
+      }
+    })
+  }
+
+  const handleAssignmentTaskFileUpload = async (
+    assignmentKey: string,
+    taskIndex: number,
+    field: 'assignmentUrl' | 'answerURL' | 'solutionUrl',
+    files: FileList | null
+  ) => {
+    if (!files || files.length === 0) return
+    const file = files[0]
+    const uploadKey = `${assignmentKey}-${taskIndex}-${field}`
+    setTaskFileUploadingKey(uploadKey)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const accessToken = getCookie('accessToken')
+      const response = await fetch(`${API_BASE_URL}/files/upload`, {
+        method: 'POST',
+        headers: {
+          ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+        },
+        body: formData,
+      })
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || 'Không thể tải file. Vui lòng thử lại.')
+      }
+      const data = await response.json()
+      const fileUrl =
+        data?.url ||
+        data?.file?.url ||
+        (Array.isArray(data?.files) ? data.files[0]?.url : null)
+      if (!fileUrl) {
+        throw new Error('Không nhận được link file sau khi tải lên.')
+      }
+      handleAssignmentTaskFieldChange(assignmentKey, taskIndex, field, fileUrl)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Không thể tải file. Vui lòng thử lại.'
+      setAssignmentsError(message)
+    } finally {
+      setTaskFileUploadingKey(null)
+    }
+  }
+
+  const handleDeleteAssignment = async (assignment: AssignmentApiItem) => {
+    const assignmentId = assignment._id || assignment.id
+    if (!assignmentId) {
+      setAssignmentsError('Không tìm thấy ID của checklist.')
+      return
+    }
+    setDeletingAssignmentId(assignmentId)
+    try {
+      await apiCall(`/assignments/${assignmentId}`, {
+        method: 'DELETE',
+      })
+      setAssignments((prev) => prev.filter((item) => {
+        const itemId = item._id || item.id
+        return itemId !== assignmentId
+      }))
+      const assignmentKey = assignment.id || assignment._id || `${assignment.subject || 'subject'}-${resolveAssignmentStudentId(assignment.studentId) || ''}`
+      if (expandedQuickViewAssignmentId === assignmentKey) {
+        setExpandedQuickViewAssignmentId(null)
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Không thể xoá checklist. Vui lòng thử lại.'
+      setAssignmentsError(message)
+    } finally {
+      setDeletingAssignmentId(null)
+    }
+  }
+
+  // Hàm để fetch schedule details và lấy reviews
+  const fetchScheduleDetails = async (scheduleId: string) => {
+    try {
+      const schedule = await apiCall<{ id: string; reviews?: ScheduleReview[] }>(`/schedules/${scheduleId}`)
+      if (schedule.reviews && Array.isArray(schedule.reviews)) {
+        const defaultReviews = getDefaultReviews()
+        // Đảm bảo reviews có đủ 5 mục và name đúng
+        const normalizedReviews = defaultReviews.map((defaultReview, index) => {
+          const savedReview = schedule.reviews?.[index]
+          return savedReview
+            ? {
+                ...savedReview,
+                name: defaultReview.name, // Đảm bảo name luôn đúng từ default
+              }
+            : defaultReview
+        })
+        setScheduleReviews((prev) => ({
+          ...prev,
+          [scheduleId]: normalizedReviews,
+        }))
+      }
+    } catch (error) {
+      console.error('Failed to fetch schedule details:', error)
+    }
+  }
+
+  // Hàm để lưu đánh giá
+  const handleSaveReviews = async (scheduleId: string, reviews: ScheduleReview[]) => {
+    setSavingReviews(scheduleId)
+    try {
+      const defaultReviews = getDefaultReviews()
+      // Đảm bảo reviews có đủ 5 mục và name đúng trước khi lưu
+      const normalizedReviews = defaultReviews.map((defaultReview, index) => {
+        const review = reviews[index]
+        return review
+          ? {
+              ...review,
+              name: defaultReview.name, // Đảm bảo name luôn đúng từ default
+            }
+          : defaultReview
+      })
+      
+      await apiCall(`/schedules/${scheduleId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          reviews: normalizedReviews,
+        }),
+      })
+      setScheduleReviews((prev) => ({
+        ...prev,
+        [scheduleId]: normalizedReviews,
+      }))
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Không thể lưu đánh giá. Vui lòng thử lại.'
+      setAssignmentsError(message)
+    } finally {
+      setSavingReviews(null)
+    }
+  }
+
+  // Hàm helper để tạo reviews mặc định
+  const getDefaultReviews = (): ScheduleReview[] => [
+    { name: 'Mức độ tập trung', rating: 0, comment: '' },
+    { name: 'Hiểu nội dung bài học', rating: 0, comment: '' },
+    { name: 'Hoàn thành nhiệm vụ', rating: 0, comment: '' },
+    { name: 'Thái độ & tinh thần học', rating: 0, comment: '' },
+    { name: 'Kỹ năng trình bày & tư duy', rating: 0, comment: '' },
+  ]
+
+  // Hàm kiểm tra và cập nhật trạng thái scroll
+  const checkScrollButtons = useCallback(() => {
+    const container = scheduleSlotsScrollRef.current
+    if (!container) {
+      setCanScrollLeft(false)
+      setCanScrollRight(false)
+      return
+    }
+    setCanScrollLeft(container.scrollLeft > 0)
+    setCanScrollRight(container.scrollLeft < container.scrollWidth - container.clientWidth - 1)
+  }, [])
+
+  // Hàm scroll trái
+  const scrollLeft = useCallback(() => {
+    const container = scheduleSlotsScrollRef.current
+    if (container) {
+      container.scrollBy({ left: -300, behavior: 'smooth' })
+    }
+  }, [])
+
+  // Hàm scroll phải
+  const scrollRight = useCallback(() => {
+    const container = scheduleSlotsScrollRef.current
+    if (container) {
+      container.scrollBy({ left: 300, behavior: 'smooth' })
+    }
+  }, [])
+
+  // Effect để check scroll khi scheduleSlots thay đổi hoặc sau khi render
+  useEffect(() => {
+    // Delay một chút để đảm bảo DOM đã render xong
+    const timer = setTimeout(() => {
+      checkScrollButtons()
+    }, 100)
+    
+    const container = scheduleSlotsScrollRef.current
+    if (container) {
+      container.addEventListener('scroll', checkScrollButtons)
+      window.addEventListener('resize', checkScrollButtons)
+      return () => {
+        clearTimeout(timer)
+        container.removeEventListener('scroll', checkScrollButtons)
+        window.removeEventListener('resize', checkScrollButtons)
+      }
+    }
+    return () => clearTimeout(timer)
+  }, [todayTutorSchedules.length, checkScrollButtons])
+
+  // Hàm để cập nhật review
+  const handleReviewChange = (scheduleId: string, index: number, field: 'rating' | 'comment', value: number | string) => {
+    const defaultReviews = getDefaultReviews()
+    const currentReviews = scheduleReviews[scheduleId] || defaultReviews
+    
+    // Đảm bảo reviews có đủ 5 mục và name đúng
+    const reviews = currentReviews.length === 5 
+      ? currentReviews.map((review, idx) => ({
+          ...review,
+          name: defaultReviews[idx].name, // Đảm bảo name luôn đúng
+        }))
+      : defaultReviews
+    
+    const updatedReviews = [...reviews]
+    updatedReviews[index] = {
+      ...updatedReviews[index],
+      name: defaultReviews[index].name, // Đảm bảo name luôn đúng
+      [field]: value,
+    }
+    setScheduleReviews((prev) => ({
+      ...prev,
+      [scheduleId]: updatedReviews,
+    }))
+  }
+
   // Render content based on active section
   const renderContent = () => {
     switch (activeSection) {
@@ -1683,20 +2158,20 @@ export default function TutorDashboard() {
 
   const renderHomeSection = () => {
     return (
-      <div className="h-full overflow-y-auto space-y-4">
+      <div className="h-full space-y-4">
         {assignmentsError && (
           <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700">
             {assignmentsError}
           </div>
         )}
         {/* Main Layout - 2 Columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:items-start min-h-[480px]">
+        <div className="grid grid-cols-1 lg:grid-cols-[420px_minmax(0,1fr)] gap-5 lg:items-start">
           {/* Left Column - Profile & Resources */}
-          <div className="lg:col-span-1 h-full">
+          <div className="lg:col-auto lg:sticky lg:top-4 self-start">
             {/* Profile Card */}
-            <div className="card-no-transition h-full flex flex-col">
+            <div className="card-no-transition h-full flex flex-col px-2 lg:px-4">
               <div className="flex flex-col items-center text-center pb-6 border-b border-gray-100">
-                <div className="w-28 h-28 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center mb-4 shadow-lg overflow-hidden">
+                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center mb-4 shadow-xl overflow-hidden">
                   {tutorAvatar ? (
                     <img
                       src={tutorAvatar}
@@ -1708,75 +2183,43 @@ export default function TutorDashboard() {
                   <UserCircle className="w-16 h-16 text-white" />
                   )}
                 </div>
-                <h3 className="text-2xl font-extrabold text-gray-900 mb-1">{tutorName}</h3>
-                <p className="text-sm text-gray-600">{tutorEmail}</p>
+                <h3 className="text-3xl font-extrabold text-gray-900 mb-1">{tutorName}</h3>
+                <p className="text-base text-gray-600">{tutorEmail}</p>
               </div>
 
               {/* Quick Stats */}
               <div className="flex-1 flex flex-col gap-4 py-6">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-4 text-center border border-blue-200 shadow-sm min-h-[120px] flex flex-col justify-center">
-                    <Users className="w-7 h-7 text-blue-600 mx-auto mb-1.5" />
-                    <p className="text-sm text-gray-600 mb-1">Học sinh</p>
-                    <p className="text-3xl font-black text-gray-900">{students.length}</p>
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-3xl p-6 text-center border border-blue-200 shadow-md min-h-[160px] flex flex-col justify-center">
+                    <Users className="w-10 h-10 text-blue-600 mx-auto mb-3" />
+                    <p className="text-sm text-gray-600 mb-3 uppercase tracking-[0.3em] font-semibold">Học sinh</p>
+                    <p className="text-5xl font-black text-gray-900">{students.length}</p>
                 </div>
-                {(() => {
-                  const homeChecklistItems = checklistItemsByStudent[selectedStudent] || []
-                  const homeCompleted = homeChecklistItems.filter(item => item.status === 'done').length
-                  const homeTotal = homeChecklistItems.length
-                  const homeProgress = homeTotal > 0 ? Math.round((homeCompleted / homeTotal) * 100) : 0
-                  
-                  return (
-                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-4 text-center border border-blue-200 shadow-sm min-h-[120px] flex flex-col justify-center">
-                        <TrendingUp className="w-7 h-7 text-primary-600 mx-auto mb-1.5" />
-                        <p className="text-sm text-gray-600 mb-1">Tiến độ</p>
-                        <p className="text-3xl font-black text-gray-900">{homeProgress}%</p>
+                  <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-md min-h-[160px] flex flex-col justify-center text-center">
+                    <p className="text-sm text-gray-500 uppercase tracking-[0.3em] mb-3 font-semibold">Buổi hôm nay</p>
+                    <p className="text-5xl font-black text-gray-900 mb-2">{todayTutorSchedules.length}</p>
+                    <p className="text-sm text-gray-500">Tổng {tutorSchedules.length} buổi được lên lịch</p>
                     </div>
-                  )
-                })()}
               </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm min-h-[120px] flex flex-col justify-center">
-                    <p className="text-xs text-gray-500 uppercase tracking-[0.3em] mb-2">Buổi hôm nay</p>
-                    <p className="text-3xl font-black text-gray-900">{todayTutorSchedules.length}</p>
-                    <p className="text-xs text-gray-500 mt-1">Tổng {tutorSchedules.length} buổi được lên lịch</p>
-                </div>
-                  <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm min-h-[120px] flex flex-col justify-center">
-                    <p className="text-xs text-gray-500 uppercase tracking-[0.3em] mb-2">Nhiệm vụ đang mở</p>
-                    <p className="text-3xl font-black text-gray-900">{pendingChecklistCount}</p>
-                    <p className="text-xs text-gray-500 mt-1">Checklist chưa hoàn thành</p>
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-md min-h-[160px] flex flex-col justify-center text-center">
+                    <p className="text-sm text-gray-500 uppercase tracking-[0.3em] mb-3 font-semibold">Môn đang dạy</p>
+                    <p className="text-5xl font-black text-gray-900 mb-2">{uniqueSubjectsCount}</p>
                 </div>
               </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-2xl border border-primary-100 bg-gradient-to-br from-white to-blue-50 p-4 min-h-[120px] flex flex-col justify-center">
-                    <p className="text-xs text-gray-500 uppercase tracking-[0.3em] mb-2">Tiến độ trung bình</p>
-                    <p className="text-3xl font-black text-primary-600">{averageStudentProgress}%</p>
-                    <p className="text-xs text-gray-500 mt-1">Trên toàn bộ học sinh</p>
-                </div>
-                  <div className="rounded-2xl border border-primary-100 bg-gradient-to-br from-white to-blue-50 p-4 min-h-[120px] flex flex-col justify-center">
-                    <p className="text-xs text-gray-500 uppercase tracking-[0.3em] mb-2">Môn đang dạy</p>
-                    <p className="text-3xl font-black text-primary-600">{uniqueSubjectsCount}</p>
-                    <p className="text-xs text-gray-500 mt-1">Theo lịch hiện tại</p>
-                </div>
-              </div>
-
-                <div className="border-2 border-dashed border-primary-200 rounded-2xl p-5 bg-gradient-to-br from-primary-50 to-blue-50 text-left shadow-sm">
-                  <p className="text-xs font-semibold text-primary-600 mb-2 uppercase tracking-[0.3em]">
+                <div className="border-2 border-dashed border-primary-200 rounded-2xl p-6 bg-gradient-to-br from-primary-50 to-blue-50 text-left shadow-sm">
+                  <p className="text-sm font-semibold text-primary-600 mb-3 uppercase tracking-[0.3em]">
                     Buổi dạy sắp tới
                   </p>
                 {upcomingSchedule ? (
-                  <>
-                      <p className="text-lg font-bold text-gray-900">{upcomingSchedule.student}</p>
-                      <p className="text-sm text-gray-600 mb-3">{upcomingSchedule.subject}</p>
-                      <div className="flex items-center justify-between text-sm text-gray-700 font-semibold">
+                  <div className="flex items-center justify-between text-lg text-gray-700 font-bold">
                       <span>{format(upcomingSchedule.date, 'dd/MM/yyyy')}</span>
-                        <span>{upcomingSchedule.time}</span>
+                    <span>{upcomingSchedule.time}</span>
                     </div>
-                  </>
                 ) : (
-                  <p className="text-sm text-gray-600">Không có buổi nào sắp tới</p>
+                  <p className="text-base text-gray-600">Không có buổi nào sắp tới</p>
                 )}
                 </div>
               </div>
@@ -1787,7 +2230,7 @@ export default function TutorDashboard() {
           </div>
 
         {/* Right Column - Main Actions */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-auto space-y-4 max-h-[calc(100vh-2rem)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-primary-300 scrollbar-track-gray-100">
           {/* Combined Schedule + Students + Documents Box */}
           <div className="card-no-transition">
             <div className="flex items-center justify-between mb-6 pb-4 border-b-2 border-gray-200">
@@ -1813,8 +2256,33 @@ export default function TutorDashboard() {
             ) : (
               <>
                 {/* Time slots */}
-                <div className="mb-6">
-                  <div className="flex items-stretch gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-primary-300 scrollbar-track-gray-100">
+                <div className="mb-6 relative">
+                  {canScrollLeft && (
+                    <button
+                      onClick={scrollLeft}
+                      className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white rounded-full p-2 shadow-lg border-2 border-primary-200 hover:bg-primary-50 transition-all"
+                      aria-label="Scroll left"
+                    >
+                      <ChevronLeft className="w-6 h-6 text-primary-600" />
+                    </button>
+                  )}
+                  {canScrollRight && (
+                    <button
+                      onClick={scrollRight}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white rounded-full p-2 shadow-lg border-2 border-primary-200 hover:bg-primary-50 transition-all"
+                      aria-label="Scroll right"
+                    >
+                      <ChevronRight className="w-6 h-6 text-primary-600" />
+                    </button>
+                  )}
+                  <div 
+                    ref={scheduleSlotsScrollRef}
+                    className="flex items-stretch gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-primary-300 scrollbar-track-gray-100"
+                    style={{
+                      paddingLeft: canScrollLeft ? '3rem' : '0',
+                      paddingRight: canScrollRight ? '3rem' : '0',
+                    }}
+                  >
                     {scheduleSlots.map((slot) => {
                       const isSelected = selectedScheduleSlotId === slot.id
                       return (
@@ -1863,22 +2331,25 @@ export default function TutorDashboard() {
                     slotSchedules[0]
                   if (!activeSchedule) return null
                   const activeStudentInfo = studentInfoMap[activeSchedule.studentId]
-                  const quickViewItems = (checklistItemsByStudent[activeSchedule.studentId] || []).filter(
-                    (item) => !activeSchedule.subject || item.subject === activeSchedule.subject
-                  )
                   const materials = activeSchedule.materials || []
-                  const statusLabel =
-                    {
-                      in_progress: 'Đang dạy',
-                      upcoming: 'Sắp dạy',
-                      completed: 'Đã xong',
-                    }[getScheduleStatus(activeSchedule)] || 'Sắp dạy'
-
-                  return (
+                  const quickViewAssignments = assignments
+                    .filter((assignment) => {
+                      const assignmentScheduleId = resolveAssignmentScheduleId(assignment.scheduleId)
+                      const assignmentStudentId = resolveAssignmentStudentId(assignment.studentId)
+                      if (assignmentScheduleId) {
+                        return assignmentScheduleId === activeSchedule.id
+                      }
+                      return assignmentStudentId === activeSchedule.studentId
+                    })
+                    .sort((a, b) => {
+                      const getTime = (value?: string) => (value ? new Date(value).getTime() : 0)
+                      return getTime(b.updatedAt || b.createdAt) - getTime(a.updatedAt || a.createdAt)
+                    })
+                      return (
                     <div className="mt-2 flex flex-col gap-4">
                       <div className="rounded-2xl border-2 border-primary-100 bg-white p-6 space-y-4 shadow-sm">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                          <div>
+                                  <div>
                             <p className="text-xs font-semibold text-primary-600 uppercase tracking-[0.3em]">
                               Thông tin nhanh
                             </p>
@@ -1889,14 +2360,14 @@ export default function TutorDashboard() {
                               {activeStudentInfo?.grade || activeStudentInfo?.currentLevel || 'Chưa rõ lớp'} ·{' '}
                               {activeStudentInfo?.address || 'Chưa có thông tin'}
                             </p>
-                          </div>
-                          <div className="flex flex-col sm:flex-row gap-3">
-                            <div className="flex flex-col">
+                                    </div>
+                          <div className="flex flex-col sm:flex-row sm:items-end gap-3 w-full sm:w-auto">
+                            <div className="flex flex-col flex-1">
                               <label className="text-xs font-semibold text-gray-600 mb-1">Chọn học sinh</label>
                               <select
                                 value={activeStudentId || ''}
                                 onChange={(e) => setQuickViewStudentId(e.target.value || null)}
-                                className="px-4 py-2 rounded-xl border-2 border-primary-200 bg-white text-sm font-semibold text-gray-800 focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all"
+                                className="px-5 py-3 rounded-2xl border-2 border-primary-200 bg-white text-base font-semibold text-gray-900 focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all shadow-sm"
                               >
                                 {slotSchedules.map((schedule) => (
                                   <option key={schedule.id} value={schedule.studentId}>
@@ -1904,60 +2375,61 @@ export default function TutorDashboard() {
                                   </option>
                                 ))}
                               </select>
-                            </div>
+                                  </div>
                             {activeSchedule.meetLink && (
-                              <button
-                                onClick={() => handleJoinSchedule(activeSchedule.id)}
-                                className="btn-primary px-6 py-2.5 text-sm font-bold shadow-lg hover:shadow-xl whitespace-nowrap"
-                              >
-                                Vào lớp
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4">
-                            <p className="text-xs text-gray-500 uppercase font-semibold">Khung giờ</p>
-                            <p className="text-lg font-bold text-gray-900">{activeSchedule.time}</p>
-                          </div>
-                          <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4">
-                            <p className="text-xs text-gray-500 uppercase font-semibold">Môn học</p>
-                            <p className="text-lg font-bold text-gray-900">{activeSchedule.subject || 'Chung'}</p>
-                          </div>
-                          <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4">
-                            <p className="text-xs text-gray-500 uppercase font-semibold">Trạng thái</p>
-                            <p className="text-lg font-bold text-gray-900">{statusLabel}</p>
-                          </div>
-                        </div>
-
-                        {activeSchedule.meetLink && (
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                            <div className="flex-1 flex items-center border-2 border-gray-200 rounded-xl px-5 py-3 bg-gray-50">
-                              <input
-                                type="text"
-                                value={activeSchedule.meetLink}
-                                readOnly
-                                className="flex-1 bg-transparent text-sm text-gray-700 outline-none font-semibold"
-                              />
-                              <button
-                                onClick={() => {
-                                  navigator.clipboard.writeText(activeSchedule.meetLink || '')
-                                  setCopiedScheduleLink(activeSchedule.id)
-                                  setTimeout(() => setCopiedScheduleLink(null), 2000)
-                                }}
-                                className="text-gray-500 hover:text-primary-600 transition-colors ml-3 p-1 rounded-lg hover:bg-white"
-                                title="Copy link"
-                              >
-                                {copiedScheduleLink === activeSchedule.id ? (
-                                  <Clock className="w-5 h-5 text-green-500" />
-                                ) : (
-                                  <Copy className="w-5 h-5" />
+                              <div className="flex flex-col sm:flex-row gap-3">
+                                      <button
+                                  onClick={() => openChecklistForm(activeSchedule.studentId, activeSchedule.id)}
+                                  className="btn-secondary px-5 py-2.5 text-sm font-bold border-2 border-primary-200 text-primary-600 bg-white hover:bg-primary-50 shadow-sm whitespace-nowrap"
+                                >
+                                  Tạo checklist
+                                      </button>
+                                    <button
+                                  onClick={() => handleJoinSchedule(activeSchedule.id)}
+                                  className="btn-primary px-8 py-3 text-base font-bold shadow-xl hover:shadow-2xl whitespace-nowrap"
+                                    >
+                                      Vào lớp
+                                    </button>
+                                  </div>
                                 )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4">
+                          <p className="text-xs text-gray-500 uppercase font-semibold mb-2">Khung giờ</p>
+                          <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <p className="text-4xl font-black text-primary-600 tracking-wide">
+                              {activeSchedule.time}
+                            </p>
+                            {activeSchedule.meetLink && (
+                              <div className="flex items-center gap-2 bg-white border border-primary-100 rounded-full px-4 py-2 ml-auto">
+                                <a
+                                  href={activeSchedule.meetLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm font-semibold text-primary-600 hover:underline whitespace-nowrap"
+                                >
+                                  Mở link lớp
+                                </a>
+                              <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(activeSchedule.meetLink || '')
+                                    setCopiedScheduleLink(activeSchedule.id)
+                                    setTimeout(() => setCopiedScheduleLink(null), 2000)
+                                  }}
+                                  className="text-primary-500 hover:text-primary-700 transition-colors"
+                                  title="Copy meet link"
+                                >
+                                  {copiedScheduleLink === activeSchedule.id ? (
+                                    <Clock className="w-4 h-4 text-green-500" />
+                                  ) : (
+                                    <Copy className="w-4 h-4" />
+                                  )}
                               </button>
+                              </div>
+                            )}
                             </div>
                           </div>
-                        )}
 
                         {materials.length > 0 && (
                           <div className="pt-4 border-t border-gray-100">
@@ -1971,11 +2443,11 @@ export default function TutorDashboard() {
                                   className="p-4 rounded-xl border border-gray-200 bg-gray-50 flex flex-col gap-1"
                                 >
                                   <p className="text-sm font-bold text-gray-900">{file.name}</p>
-                                  {file.note && (
+                                        {file.note && (
                                     <p className="text-xs text-gray-600">
-                                      <span className="font-semibold">Ghi chú:</span> {file.note}
-                                    </p>
-                                  )}
+                                            <span className="font-semibold">Ghi chú:</span> {file.note}
+                                          </p>
+                                        )}
                                   <a
                                     href={file.url}
                                     target="_blank"
@@ -1987,71 +2459,649 @@ export default function TutorDashboard() {
                                 </div>
                               ))}
                             </div>
-                          </div>
-                        )}
-                      </div>
+                            </div>
+                          )}
+                        </div>
 
                       <div className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm">
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="text-lg font-bold text-gray-900">Checklist gần nhất</h4>
-                          {quickViewItems.length > 3 && (
-                            <span className="text-xs text-gray-500">
-                              Hiển thị 3 nhiệm vụ mới nhất / {quickViewItems.length} tổng số
-                            </span>
-                          )}
+                          <span className="text-xs text-gray-500">
+                            {quickViewAssignments.length} checklist cho buổi {format(activeSchedule.date, 'dd/MM')}
+                          </span>
                         </div>
-                        {quickViewItems.length > 0 ? (
-                          <div className="overflow-x-auto">
-                            <table className="min-w-full text-sm">
-                              <thead className="bg-primary-50 text-primary-700">
-                                <tr>
-                                  <th className="text-left px-4 py-3 font-semibold">Bài học</th>
-                                  <th className="text-left px-4 py-3 font-semibold">Nhiệm vụ</th>
-                                  <th className="text-left px-4 py-3 font-semibold">Trạng thái</th>
-                                  <th className="text-left px-4 py-3 font-semibold">Ghi chú</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {quickViewItems.slice(0, 3).map((item) => (
-                                  <tr key={item.id} className="bg-white">
-                                    <td className="px-4 py-3 font-semibold text-gray-900">{item.lesson || '—'}</td>
-                                    <td className="px-4 py-3 text-gray-700">{item.task || '—'}</td>
-                                    <td className="px-4 py-3">
-                                      <span
-                                        className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                          item.status === 'done'
-                                            ? 'bg-green-100 text-green-700'
-                                            : item.status === 'in_progress'
-                                              ? 'bg-yellow-100 text-yellow-700'
-                                              : 'bg-gray-100 text-gray-600'
-                                        }`}
-                                      >
-                                        {item.status === 'done'
-                                          ? 'Đã xong'
-                                          : item.status === 'in_progress'
-                                            ? 'Đang làm'
-                                            : 'Chưa xong'}
-                                      </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-gray-600">{item.note || '—'}</td>
+                        {quickViewAssignments.length > 0 ? (
+                          <div className="space-y-4">
+                            {quickViewAssignments.map((assignment, index) => {
+                              const assignmentKey =
+                                assignment.id ||
+                                `${assignment.subject || 'subject'}-${resolveAssignmentStudentId(assignment.studentId) || index}`
+                              const isExpanded = expandedQuickViewAssignmentId === assignmentKey
+                              const isEditing = editingQuickViewAssignmentId === assignmentKey
+                              const assignmentTasks = assignment.tasks || []
+                              const displayTasks =
+                                isEditing && assignmentDrafts[assignmentKey]
+                                  ? assignmentDrafts[assignmentKey]
+                                  : assignmentTasks
+                              const summaryRows =
+                                displayTasks.length > 0
+                                  ? displayTasks
+                                  : [{ id: `${assignmentKey}-summary` } as AssignmentTaskApiItem]
+
+                              return (
+                                <div key={assignmentKey} className="border border-gray-200 rounded-2xl overflow-hidden bg-gray-50">
+                                  <div className="flex flex-col md:flex-row md:items-center md:justify-between px-5 py-4 gap-3">
+                                    <div className="flex-1">
+                                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-1">
+                                        {assignment.subject || 'Chung'}
+                                      </p>
+                                      <h5 className="text-lg font-bold text-gray-900">{assignment.name || 'Checklist'}</h5>
+                                      {assignment.description && (
+                                        <p className="text-sm text-gray-600 mt-1 line-clamp-2">{assignment.description}</p>
+                                      )}
+                                    </div>
+                                    <div className="mt-1 md:mt-0 flex items-center justify-end gap-2">
+                                      {isExpanded ? (
+                                        <>
+                              <button
+                                            type="button"
+                                            onClick={() => handleCollapseQuickViewAssignment(assignmentKey)}
+                                            className="px-4 py-1.5 rounded-full text-sm font-semibold text-primary-600 bg-white border border-primary-200 hover:bg-primary-50 transition"
+                                          >
+                                            Thu gọn
+                              </button>
+                              <button
+                                            type="button"
+                                            onClick={() => handleToggleEditAssignment(assignmentKey, assignment)}
+                                            disabled={savingAssignmentId === assignmentKey}
+                                            className="px-4 py-1.5 rounded-full text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                                          >
+                                            {isEditing
+                                              ? savingAssignmentId === assignmentKey
+                                                ? 'Đang lưu...'
+                                                : 'Lưu'
+                                              : 'Chỉnh sửa'}
+                              </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteAssignment(assignment)}
+                                            disabled={deletingAssignmentId === (assignment._id || assignment.id)}
+                                            className="px-4 py-1.5 rounded-full text-sm font-semibold text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                                          >
+                                            {deletingAssignmentId === (assignment._id || assignment.id) ? 'Đang xoá...' : 'Xoá'}
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setExpandedQuickViewAssignmentId(assignmentKey)
+                                            setEditingQuickViewAssignmentId(null)
+                                            clearAssignmentDraft(assignmentKey)
+                                          }}
+                                          className="px-4 py-1.5 rounded-full text-sm font-semibold text-primary-600 bg-primary-50 hover:bg-primary-100 transition"
+                                        >
+                                          Chi tiết
+                                        </button>
+                                      )}
+                </div>
+              </div>
+                                  {isExpanded && (
+                                    <div className="p-5 space-y-4 bg-white">
+                                      <div className="flex items-center justify-between">
+                                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">
+                                          Bảng tóm tắt
+                                        </p>
+                                        {isEditing && (
+            <button
+                                            type="button"
+                                            onClick={() => handleAddAssignmentTask(assignmentKey, assignment)}
+                                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-semibold text-primary-600 bg-primary-50 hover:bg-primary-100 transition"
+            >
+                                            <Plus className="w-4 h-4" />
+                                            Thêm bài tập
+            </button>
+                        )}
+                      </div>
+                                      <div className="rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-x-auto scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
+                                        <table className="w-full text-base border-collapse min-w-[800px]">
+                                          <thead className="bg-gray-50 text-gray-600 uppercase text-xs tracking-[0.3em]">
+                                            <tr>
+                                              <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">Bài học</th>
+                                              <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">Nhiệm vụ</th>
+                                              <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">Trạng thái</th>
+                                              <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">Ghi chú</th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 bg-white">
+                                            {summaryRows.map((task, taskIndex) => {
+                                              const rowLesson = task.name || assignment.name || '—'
+                                              const rowMission = task.description || assignment.description || '—'
+                                              const rowStatus = (task.status as AssignmentTaskStatus) || 'pending'
+                                              const rowChip =
+                                                rowStatus === 'completed'
+                                                  ? 'bg-green-100 text-green-700'
+                                                  : rowStatus === 'in-progress'
+                                                    ? 'bg-yellow-100 text-yellow-700'
+                                                    : 'bg-gray-100 text-gray-600'
+                                              const rowNote = task.note || assignment.description || '—'
+                                              const stableKey = task.id || `${assignmentKey}-summary-${taskIndex}`
+                                              return (
+                                                <tr key={stableKey}>
+                                                  <td className="px-5 py-4 font-semibold text-gray-900 text-center">
+                                                    {isEditing ? (
+                                          <input
+                                                        value={task.name || ''}
+                                                        onChange={(e) =>
+                                                          handleAssignmentTaskFieldChange(
+                                                            assignmentKey,
+                                                            taskIndex,
+                                                            'name',
+                                                            e.target.value
+                                                          )
+                                                        }
+                                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                                        placeholder="Nhập tên bài học"
+                                          />
+                                        ) : (
+                                                      rowLesson
+                                        )}
+                                      </td>
+                                                  <td className="px-5 py-4 text-gray-700 text-center">
+                                                    {isEditing ? (
+                                                      <textarea
+                                                        value={task.description || ''}
+                                                        onChange={(e) =>
+                                                          handleAssignmentTaskFieldChange(
+                                                            assignmentKey,
+                                                            taskIndex,
+                                                            'description',
+                                                            e.target.value
+                                                          )
+                                                        }
+                                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                                        rows={2}
+                                                        placeholder="Nhập nhiệm vụ"
+                                          />
+                                        ) : (
+                                                      rowMission
+                                        )}
+                                      </td>
+                                                  <td className="px-5 py-4 text-center">
+                                                    {isEditing ? (
+                                        <select
+                                                        value={rowStatus}
+                                          onChange={(e) =>
+                                                          handleAssignmentTaskFieldChange(
+                                                            assignmentKey,
+                                                            taskIndex,
+                                                            'status',
+                                                            e.target.value as AssignmentTaskStatus
+                                                          )
+                                                        }
+                                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                                                      >
+                                                        <option value="pending">Chưa xong</option>
+                                                        <option value="in-progress">Đang làm</option>
+                                                        <option value="completed">Đã xong</option>
+                                        </select>
+                                                    ) : (
+                                                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${rowChip}`}>
+                                                        {rowStatus === 'completed'
+                                                          ? 'Đã xong'
+                                                          : rowStatus === 'in-progress'
+                                                            ? 'Đang làm'
+                                                            : 'Chưa xong'}
+                                                      </span>
+                                                    )}
+                                      </td>
+                                                  <td className="px-5 py-4 text-gray-600 text-center">
+                                                    <div className="flex items-start gap-2">
+                                                      {isEditing ? (
+                                                        <textarea
+                                                          value={task.note || ''}
+                                                          onChange={(e) =>
+                                                            handleAssignmentTaskFieldChange(
+                                                              assignmentKey,
+                                                              taskIndex,
+                                                              'note',
+                                                              e.target.value
+                                                            )
+                                                          }
+                                                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                                          rows={2}
+                                                          placeholder="Ghi chú"
+                                          />
+                                        ) : (
+                                                        <span className="flex-1">{rowNote}</span>
+                                                      )}
+                                                      {isEditing && (
+                                        <button
+                                                          type="button"
+                                                          onClick={() =>
+                                                            handleRemoveAssignmentTask(
+                                                              assignmentKey,
+                                                              assignment,
+                                                              taskIndex
+                                                            )
+                                                          }
+                                                          className="mt-1 text-xs font-semibold text-red-500 hover:text-red-600 whitespace-nowrap"
+                                                        >
+                                                          Xoá
+                                        </button>
+                                                      )}
+                                                    </div>
+                                      </td>
+                                    </tr>
+                                              )
+                                            })}
+                                </tbody>
+                              </table>
+                            </div>
+
+                                      <div className="rounded-2xl border border-gray-200 overflow-x-auto bg-white shadow-sm scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
+                                        <table className="w-full text-sm min-w-[1200px]">
+                                          <thead className="bg-gray-50 text-gray-600">
+                                            <tr>
+                                              <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[12%]">Bài học</th>
+                                              <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[10%]">
+                                                Thời gian (ước/thực)
+                                              </th>
+                                              <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[10%]">
+                                                File bài tập
+                                              </th>
+                                              <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[10%]">
+                                                Bài làm học sinh
+                                              </th>
+                                              <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[10%]">Lời giải</th>
+                                              <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[8%]">Trạng thái</th>
+                                              <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[20%]">Nhận xét</th>
+                                              <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[20%]">Ghi chú</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-gray-100 bg-white">
+                                            {displayTasks.length === 0 ? (
+                                              <tr>
+                                                <td colSpan={8} className="px-4 py-4 text-center text-sm text-gray-500">
+                                                  Chưa có nhiệm vụ nào trong checklist này.
+                                                </td>
+                                              </tr>
+                                            ) : (
+                                              displayTasks.map((task, taskIndex) => {
+                                                const taskStatus = (task.status as AssignmentTaskStatus) || 'pending'
+                                                const taskChipClass =
+                                                  taskStatus === 'completed'
+                                                    ? 'bg-green-100 text-green-700'
+                                                    : taskStatus === 'in-progress'
+                                                      ? 'bg-yellow-100 text-yellow-700'
+                                                      : 'bg-gray-100 text-gray-600'
+                                                const stableKey = task.id || `${assignmentKey}-detail-${taskIndex}`
+                    return (
+                                                  <tr key={stableKey}>
+                                                    <td className="px-4 py-3 font-semibold text-gray-900">
+                                                      {isEditing ? (
+                                                        <input
+                                                          value={task.name || ''}
+                                                          onChange={(e) =>
+                                                            handleAssignmentTaskFieldChange(
+                                                              assignmentKey,
+                                                              taskIndex,
+                                                              'name',
+                                                              e.target.value
+                                                            )
+                                                          }
+                                                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                                          placeholder="Nhập tên bài học"
+                                                        />
+                                                      ) : (
+                                                        task.name || '—'
+                                                      )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-gray-700">
+                                                      {isEditing ? (
+                                                        <div className="flex items-center gap-2">
+                                                          {renderTimeInput(
+                                                            task.estimatedTime,
+                                                            'Ước',
+                                                            (value) =>
+                                                              handleAssignmentTaskFieldChange(
+                                                                assignmentKey,
+                                                                taskIndex,
+                                                                'estimatedTime',
+                                                                value
+                                                              ),
+                                                            (delta) =>
+                                                              adjustAssignmentTaskTime(
+                                                                assignmentKey,
+                                                                taskIndex,
+                                                                'estimatedTime',
+                                                                delta
+                                                              )
+                                                          )}
+                                                          <span>/</span>
+                                                          {renderTimeInput(
+                                                            task.actualTime,
+                                                            'Thực',
+                                                            (value) =>
+                                                              handleAssignmentTaskFieldChange(
+                                                                assignmentKey,
+                                                                taskIndex,
+                                                                'actualTime',
+                                                                value
+                                                              ),
+                                                            (delta) =>
+                                                              adjustAssignmentTaskTime(
+                                                                assignmentKey,
+                                                                taskIndex,
+                                                                'actualTime',
+                                                                delta
+                                                              )
+                                                          )}
+              </div>
+                                                      ) : (
+                                                        <>
+                                                          {task.estimatedTime ? `${task.estimatedTime}’` : '—'} /{' '}
+                                                          {task.actualTime ? `${task.actualTime}’` : '—'}
+                                                        </>
+                                                      )}
+                                                    </td>
+                                                    <td className="px-4 py-3 overflow-hidden">
+                                                      {isEditing ? (
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                          <input
+                                                            value={task.assignmentUrl || ''}
+                                                            onChange={(e) =>
+                                                              handleAssignmentTaskFieldChange(
+                                                                assignmentKey,
+                                                                taskIndex,
+                                                                'assignmentUrl',
+                                                                e.target.value
+                                                              )
+                                                            }
+                                                            className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
+                                                            placeholder="Link file bài tập"
+                                                            title={task.assignmentUrl || ''}
+                                                          />
+                                                          <label
+                                                            className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 cursor-pointer hover:bg-primary-50 flex-shrink-0"
+                                                            title={
+                                                              taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl`
+                                                                ? 'Đang upload...'
+                                                                : 'Upload tài liệu'
+                                                            }
+                                                          >
+                                                            <Upload className="w-3.5 h-3.5" />
+                                  <input
+                                                              type="file"
+                                                              className="hidden"
+                                                              accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                              onChange={(e) => {
+                                                                handleAssignmentTaskFileUpload(
+                                                                  assignmentKey,
+                                                                  taskIndex,
+                                                                  'assignmentUrl',
+                                                                  e.target.files
+                                                                )
+                                                                e.target.value = ''
+                                                              }}
+                                                            />
+                                                          </label>
+                                  </div>
+                                                      ) : task.assignmentUrl ? (
+                                                        <a href={task.assignmentUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block max-w-full text-xs" title={task.assignmentUrl}>
+                                                          Xem file
+                                                        </a>
+                                                      ) : (
+                                                        <span className="text-xs">—</span>
+                                )}
+                              </td>
+                                                    <td className="px-4 py-3 overflow-hidden">
+                                                      {task.answerURL ? (
+                                                        <a href={task.answerURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block max-w-full text-xs" title={task.answerURL}>
+                                                          Bài làm học sinh
+                                                        </a>
+                                                      ) : (
+                                                        <span className="text-xs">—</span>
+                                                      )}
+                                                    </td>
+                                                    <td className="px-4 py-3 overflow-hidden">
+                                                      {isEditing ? (
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                  <input
+                                                            value={task.solutionUrl || ''}
+                                                            onChange={(e) =>
+                                                              handleAssignmentTaskFieldChange(
+                                                                assignmentKey,
+                                                                taskIndex,
+                                                                'solutionUrl',
+                                                                e.target.value
+                                                              )
+                                                            }
+                                                            className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
+                                                            placeholder="Link lời giải"
+                                                            title={task.solutionUrl || ''}
+                                                          />
+                                                          <label
+                                                            className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 cursor-pointer hover:bg-primary-50 flex-shrink-0"
+                                                            title={
+                                                              taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl`
+                                                                ? 'Đang upload...'
+                                                                : 'Upload lời giải'
+                                                            }
+                                                          >
+                                                            <Upload className="w-3.5 h-3.5" />
+                                                            <input
+                                                              type="file"
+                                                              className="hidden"
+                                                              accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                              onChange={(e) => {
+                                                                handleAssignmentTaskFileUpload(
+                                                                  assignmentKey,
+                                                                  taskIndex,
+                                                                  'solutionUrl',
+                                                                  e.target.files
+                                                                )
+                                                                e.target.value = ''
+                                                              }}
+                                                            />
+                                                          </label>
+                                  </div>
+                                                      ) : task.solutionUrl ? (
+                                                        <a href={task.solutionUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block max-w-full text-xs" title={task.solutionUrl}>
+                                                          File lời giải
+                                                        </a>
+                                                      ) : (
+                                                        <span className="text-xs">—</span>
+                                )}
+                              </td>
+                                                    <td className="px-4 py-3">
+                                                      {isEditing ? (
+                                <select
+                                                          value={taskStatus}
+                                  onChange={(e) =>
+                                                            handleAssignmentTaskFieldChange(
+                                                              assignmentKey,
+                                                              taskIndex,
+                                                              'status',
+                                                              e.target.value as AssignmentTaskStatus
+                                                            )
+                                                          }
+                                                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                                                        >
+                                                          <option value="pending">Chưa xong</option>
+                                                          <option value="in-progress">Đang làm</option>
+                                                          <option value="completed">Đã xong</option>
+                                </select>
+                                                      ) : (
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${taskChipClass}`}>
+                                                          {taskStatus === 'completed'
+                                                            ? 'Đã xong'
+                                                            : taskStatus === 'in-progress'
+                                                              ? 'Đang làm'
+                                                              : 'Chưa xong'}
+                                                        </span>
+                                                      )}
+                              </td>
+                                                    <td className="px-4 py-3 text-gray-700 whitespace-normal break-words">
+                                                      {isEditing ? (
+                                                        <textarea
+                                                          value={task.description || ''}
+                                                          onChange={(e) =>
+                                                            handleAssignmentTaskFieldChange(
+                                                              assignmentKey,
+                                                              taskIndex,
+                                                              'description',
+                                                              e.target.value
+                                                            )
+                                                          }
+                                                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                                          rows={2}
+                                                          placeholder="Nhận xét"
+                                  />
+                                ) : (
+                                                        <span className="block">{task.description || '—'}</span>
+                                )}
+                              </td>
+                                                    <td className="px-4 py-3 text-gray-600 whitespace-normal break-words">
+                                                      <div className="flex items-start gap-2">
+                                                        {isEditing ? (
+                                                          <textarea
+                                                            value={task.note || ''}
+                                                            onChange={(e) =>
+                                                              handleAssignmentTaskFieldChange(
+                                                                assignmentKey,
+                                                                taskIndex,
+                                                                'note',
+                                                                e.target.value
+                                                              )
+                                                            }
+                                                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                                            rows={2}
+                                                            placeholder="Ghi chú"
+                                                          />
+                                                        ) : (
+                                                          <span className="flex-1 block">{task.note || '—'}</span>
+                                                        )}
+                                                      </div>
+                                    </td>
+                            </tr>
+                                                )
+                                              })
+                                            )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                              )}
+                </div>
+              )
+            })}
+                      </div>
                         ) : (
                           <div className="p-4 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-sm text-gray-500">
                             Chưa có checklist nào cho học sinh này trong hôm nay.
-                          </div>
-                        )}
+            </div>
+            )}
+                      </div>
+
+                      {/* Phần đánh giá */}
+                      {activeSchedule && (() => {
+                        const scheduleId = activeSchedule.id
+                        const defaultReviews = getDefaultReviews()
+                        const savedReviews = scheduleReviews[scheduleId]
+                        
+                        // Đảm bảo reviews có đủ 5 mục và name đúng
+                        const currentReviews = savedReviews && savedReviews.length === 5
+                          ? savedReviews.map((review, idx) => ({
+              ...review,
+              name: defaultReviews[idx].name, // Đảm bảo name luôn đúng
+            }))
+                          : defaultReviews
+
+                        const evaluationCriteria = [
+                          {
+                            name: 'Mức độ tập trung',
+                            description: 'Học sinh có duy trì sự chú ý suốt buổi học.',
+                            defaultComment: 'Cần tập trung hơn trong giờ học.',
+                          },
+                          {
+                            name: 'Hiểu nội dung bài học',
+                            description: 'Hiểu khái niệm, nắm được cách làm bài.',
+                            defaultComment: 'Cần củng cố lại kiến thức cơ bản.',
+                          },
+                          {
+                            name: 'Hoàn thành nhiệm vụ',
+                            description: 'Làm đủ, đúng thời gian và yêu cầu.',
+                            defaultComment: 'Cần hoàn thành đầy đủ bài tập.',
+                          },
+                          {
+                            name: 'Thái độ & tinh thần học',
+                            description: 'Chủ động hỏi, hợp tác, tôn trọng giờ học.',
+                            defaultComment: 'Cần tích cực hơn trong học tập.',
+                          },
+                          {
+                            name: 'Kỹ năng trình bày & tư duy',
+                            description: 'Trình bày rõ ràng, biết giải thích lại bài.',
+                            defaultComment: 'Cần rèn luyện thêm kỹ năng trình bày.',
+                          },
+                        ]
+              
+              return (
+                          <div className="rounded-2xl border-2 border-primary-50 bg-white p-8 shadow-sm mt-4">
+                            <div className="flex items-center justify-between mb-6">
+                              <h4 className="text-2xl font-bold text-gray-900">Đánh giá chi tiết môn học</h4>
+                              <button
+                                onClick={() => handleSaveReviews(scheduleId, currentReviews)}
+                                disabled={savingReviews === scheduleId}
+                                className="px-6 py-3 rounded-xl text-base font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-60 disabled:cursor-not-allowed transition shadow-md"
+                              >
+                                {savingReviews === scheduleId ? 'Đang lưu...' : 'Lưu đánh giá'}
+                              </button>
+                    </div>
+                            <div className="space-y-6">
+                              {evaluationCriteria.map((criterion, index) => {
+                                const review = currentReviews[index] || { name: criterion.name, rating: 0, comment: '' }
+                                // Đảm bảo name luôn đúng từ criterion
+                                const normalizedReview = {
+                                  ...review,
+                                  name: criterion.name,
+                                }
+                                return (
+                                  <div key={criterion.name} className="border-b-2 border-gray-200 pb-6 last:border-b-0">
+                                    <div className="flex items-start gap-6">
+                                      <div className="flex-1">
+                                        <h5 className="text-lg font-bold text-gray-900 mb-2">{criterion.name}</h5>
+                                        <p className="text-sm text-gray-600 mb-4">{criterion.description}</p>
+                                        <div className="bg-blue-50 border-2 border-blue-200 rounded-xl px-4 py-3">
+                                          <textarea
+                                            value={normalizedReview.comment || ''}
+                                            onChange={(e) => handleReviewChange(scheduleId, index, 'comment', e.target.value)}
+                                            className="w-full bg-transparent border-none outline-none text-sm text-gray-700 resize-none"
+                                            rows={3}
+                                            placeholder={criterion.defaultComment}
+                                          />
                       </div>
                     </div>
+                                      <div className="flex-shrink-0 pt-1">
+                                        <StarRating
+                                          value={normalizedReview.rating || 0}
+                                          onChange={(val) => handleReviewChange(scheduleId, index, 'rating', val)}
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
                   )
                 })()}
               </>
             )}
           </div>
-
 
         </div>
       </div>

@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react'
 import { apiCall } from '../config/api'
-import { setCookie, deleteCookie, getCookie } from '../utils/cookies'
+import { setCookie, deleteCookie } from '../utils/cookies'
+import { getUserFromStorage, setUserInStorage, removeUserFromStorage, getTokensFromStorage, setTokensInStorage, removeTokensFromStorage } from '../utils/tabStorage'
 
 export interface User {
   id: string
@@ -37,17 +38,50 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const isRestoringRef = useRef(true)
 
   useEffect(() => {
-    // Check for stored user session
-    const storedUser = localStorage.getItem('user')
-    const storedTokens = localStorage.getItem('tokens')
-    const accessToken = getCookie('accessToken')
+    // Check for stored user session using tabId
+    // Each tab has its own user and tokens stored in localStorage with tabId prefix
+    const storedUser = getUserFromStorage()
+    const storedTokens = getTokensFromStorage()
     
-    if (storedUser && storedTokens && accessToken) {
-      setUser(JSON.parse(storedUser))
+    // Restore user if we have user data and tokens (accessToken can be refreshed if needed)
+    if (storedUser && storedTokens) {
+      try {
+        const user = JSON.parse(storedUser)
+        setUser(user)
+      } catch (error) {
+        console.error('Failed to parse stored user:', error)
+        // Clear corrupted data only in this tab
+        removeUserFromStorage()
+        removeTokensFromStorage()
+      }
     }
     setLoading(false)
+    // Mark restoration as complete after a delay to allow state to settle
+    // This prevents storage events from other tabs interfering during restoration
+    setTimeout(() => {
+      isRestoringRef.current = false
+    }, 1000)
+    
+    // Listen for storage changes from other tabs
+    const handleStorageChange = () => {
+      // Don't react to storage events during initial restoration
+      if (isRestoringRef.current) {
+        return
+      }
+      
+      // sessionStorage doesn't trigger storage events between tabs
+      // So we don't need to handle cross-tab sync for user/tokens
+      // Each tab manages its own session independently
+    }
+    
+    window.addEventListener('storage', handleStorageChange)
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+    }
   }, [])
 
   const login = async (email: string, password: string) => {
@@ -75,12 +109,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         avatar: apiUser.avatar,
       }
 
-      // Store user in localStorage
+      // Store both user and tokens in localStorage with tabId prefix
+      // This allows each tab to have its own user and tokens independently
+      // while still supporting "Remember me" functionality
       setUser(user)
-      localStorage.setItem('user', JSON.stringify(user))
-      
-      // Store refresh token in localStorage
-      localStorage.setItem('tokens', JSON.stringify(tokens))
+      setUserInStorage(JSON.stringify(user))
+      setTokensInStorage(JSON.stringify(tokens))
       
       // Store access token in cookie with expiration
       const expiresDate = new Date(tokens.access.expires)
@@ -96,8 +130,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      // Get refresh token from localStorage
-      const storedTokens = localStorage.getItem('tokens')
+      // Get refresh token from localStorage with tabId
+      const storedTokens = getTokensFromStorage()
       if (storedTokens) {
         const tokens: Tokens = JSON.parse(storedTokens)
         const refreshToken = tokens.refresh?.token
@@ -118,8 +152,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       // Clear local data regardless of API call result
       setUser(null)
-      localStorage.removeItem('user')
-      localStorage.removeItem('tokens')
+      removeUserFromStorage()
+      removeTokensFromStorage()
       deleteCookie('accessToken')
     }
   }

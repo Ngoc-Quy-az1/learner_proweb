@@ -1,0 +1,505 @@
+import { useEffect, useState } from 'react'
+import { ChevronUp, ChevronDown, Link as LinkIcon, Upload } from 'lucide-react'
+import { API_BASE_URL } from '../../config/api'
+import { getCookie } from '../../utils/cookies'
+
+export interface TutorChecklistExercise {
+  id: string
+  title: string
+  requirement: string
+  estimatedTime: string
+  note: string
+  assignmentUrl?: string
+}
+
+export interface ChecklistFormData {
+  studentId: string
+  scheduleId: string
+  lesson: string
+  name: string              // Tên checklist
+  description: string       // Nội dung/mô tả checklist
+  tasks: string            // Giữ lại để tương thích
+  note: string
+  dueDate: string
+  exercises: TutorChecklistExercise[]
+}
+
+interface ChecklistFormProps {
+  students: Array<{ id: string; name: string }>
+  schedulesByStudent: Record<string, Array<{ id: string; label: string }>>
+  formData: ChecklistFormData
+  isSubmitting: boolean
+  selectedStudentGrade?: string  // Grade của học sinh được chọn
+  onFormChange: (data: ChecklistFormData) => void
+  onSubmit: () => void
+  onClose: () => void
+}
+
+// Function to get subjects based on grade
+const getSubjectsByGrade = (grade?: string): string[] => {
+  if (!grade) return ['Toán', 'Ngữ văn', 'Tiếng Anh'] // Default subjects
+
+  // Extract grade number from string (e.g., "Lớp 5" -> 5, "5" -> 5)
+  const gradeMatch = grade.match(/\d+/)
+  if (!gradeMatch) return ['Toán', 'Ngữ văn', 'Tiếng Anh']
+  
+  const gradeNum = parseInt(gradeMatch[0], 10)
+
+  if (gradeNum >= 1 && gradeNum <= 5) {
+    // Lớp 1-5
+    const subjects = [
+      'Tiếng Việt',
+      'Toán',
+      'Đạo đức',
+      'Âm nhạc',
+      'Mỹ thuật',
+      'Thủ công / Kĩ thuật',
+      'Thể dục',
+      'Tin học',
+    ]
+    
+    if (gradeNum >= 1 && gradeNum <= 3) {
+      subjects.push('Tự nhiên & Xã hội')
+    }
+    
+    if (gradeNum >= 4 && gradeNum <= 5) {
+      subjects.push('Khoa học')
+      subjects.push('Lịch sử & Địa lý')
+    }
+    
+    return subjects
+  } else if (gradeNum >= 6 && gradeNum <= 9) {
+    // Lớp 6-9
+    const subjects = [
+      'Toán',
+      'Ngữ văn',
+      'Sinh học',
+      'Lịch sử',
+      'Địa lý',
+      'Công dân (GDCD)',
+      'Công nghệ',
+      'Âm nhạc',
+      'Mỹ thuật',
+      'Thể dục',
+      'Tin học',
+      'Tiếng Anh',
+    ]
+    
+    if (gradeNum >= 7) {
+      subjects.push('Vật lý')
+    }
+    
+    if (gradeNum >= 8) {
+      subjects.push('Hóa học')
+    }
+    
+    return subjects
+  } else if (gradeNum >= 10 && gradeNum <= 12) {
+    // Lớp 10-12
+    return [
+      'Toán',
+      'Ngữ văn',
+      'Vật lý',
+      'Hóa học',
+      'Sinh học',
+      'Lịch sử',
+      'Địa lý',
+      'Giáo dục công dân',
+      'Công nghệ',
+      'Tin học',
+      'Thể dục',
+      'Quốc phòng – An ninh',
+      'Tiếng Anh',
+    ]
+  }
+  
+  // Default fallback
+  return ['Toán', 'Ngữ văn', 'Tiếng Anh']
+}
+
+export default function ChecklistForm({
+  students,
+  schedulesByStudent,
+  formData,
+  isSubmitting,
+  selectedStudentGrade,
+  onFormChange,
+  onSubmit,
+  onClose,
+}: ChecklistFormProps) {
+  const [uploadingAssignments, setUploadingAssignments] = useState<Record<string, boolean>>({})
+  const [uploadErrors, setUploadErrors] = useState<Record<string, string | null>>({})
+  const availableSubjects = getSubjectsByGrade(selectedStudentGrade)
+  const studentSchedules = schedulesByStudent[formData.studentId] || []
+
+  useEffect(() => {
+    if (studentSchedules.length === 0) {
+      if (formData.scheduleId) {
+        onFormChange({ ...formData, scheduleId: '' })
+      }
+      return
+    }
+    const hasCurrent = studentSchedules.some((schedule) => schedule.id === formData.scheduleId)
+    if (!hasCurrent) {
+      onFormChange({ ...formData, scheduleId: studentSchedules[0].id })
+    }
+  }, [formData.studentId, studentSchedules.map((s) => s.id).join(','), formData.scheduleId])
+  const handleExerciseChange = (index: number, field: keyof TutorChecklistExercise, value: string | File | null) => {
+    const nextExercises = [...formData.exercises]
+    nextExercises[index] = { ...nextExercises[index], [field]: value }
+    onFormChange({ ...formData, exercises: nextExercises })
+  }
+
+  const handleAssignmentFileUpload = async (index: number, fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return
+    const file = fileList[0]
+    const exercise = formData.exercises[index]
+    if (!exercise) return
+
+    setUploadingAssignments((prev) => ({ ...prev, [exercise.id]: true }))
+    setUploadErrors((prev) => ({ ...prev, [exercise.id]: null }))
+
+    try {
+      const uploadPayload = new FormData()
+      uploadPayload.append('files', file)
+
+      const accessToken = getCookie('accessToken')
+      const response = await fetch(`${API_BASE_URL}/files/upload-multiple`, {
+        method: 'POST',
+        headers: {
+          ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+        },
+        body: uploadPayload,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || 'Không thể tải file. Vui lòng thử lại.')
+      }
+
+      const data = await response.json()
+      const uploadedUrl =
+        data?.files?.[0]?.url ||
+        data?.file?.[0]?.url ||
+        data?.urls?.[0] ||
+        data?.url ||
+        data?.file?.url
+
+      if (!uploadedUrl) {
+        throw new Error('Không nhận được đường dẫn file từ máy chủ.')
+      }
+
+      handleExerciseChange(index, 'assignmentUrl', uploadedUrl)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Tải file thất bại. Vui lòng thử lại.'
+      setUploadErrors((prev) => ({ ...prev, [exercise.id]: message }))
+    } finally {
+      setUploadingAssignments((prev) => ({ ...prev, [exercise.id]: false }))
+    }
+  }
+
+  const adjustEstimatedTime = (index: number, delta: number) => {
+    const nextExercises = [...formData.exercises]
+    const currentValue = parseInt(nextExercises[index]?.estimatedTime?.toString() || '0', 10) || 0
+    const updatedValue = Math.max(0, currentValue + delta)
+    nextExercises[index] = {
+      ...nextExercises[index],
+      estimatedTime: updatedValue === 0 ? '' : `${updatedValue}`,
+    }
+    onFormChange({ ...formData, exercises: nextExercises })
+  }
+
+  const addExercise = () => {
+    onFormChange({
+      ...formData,
+      exercises: [
+        ...formData.exercises,
+        { id: `exercise-${Date.now()}`, title: '', requirement: '', estimatedTime: '', note: '', assignmentUrl: '' },
+      ],
+    })
+  }
+
+  const removeExercise = (index: number) => {
+    if (formData.exercises.length === 1) return
+    const nextExercises = formData.exercises.filter((_, idx) => idx !== index)
+    onFormChange({ ...formData, exercises: nextExercises })
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-2xl font-bold text-gray-900">Tạo checklist mới</h3>
+            <p className="text-sm text-gray-500">Chỉ định nhiệm vụ cụ thể cho học sinh</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-2xl"
+          >
+            ×
+          </button>
+        </div>
+        <div className="space-y-5">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Chọn học sinh</label>
+            <select
+              value={formData.studentId}
+              onChange={(e) => onFormChange({ ...formData, studentId: e.target.value })}
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+            >
+              {students.map((student) => (
+                <option key={student.id} value={student.id}>
+                  {student.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Môn học</label>
+              <select
+                value={formData.lesson}
+                onChange={(e) => onFormChange({ ...formData, lesson: e.target.value })}
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+              >
+                <option value="">-- Chọn môn học --</option>
+                {availableSubjects.map((subject) => (
+                  <option key={subject} value={subject}>
+                    {subject}
+                  </option>
+                ))}
+              </select>
+              {selectedStudentGrade && (
+                <p className="text-xs text-gray-500 mt-1">Môn học phù hợp với {selectedStudentGrade}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Ngày tháng</label>
+              <input
+                type="date"
+                value={formData.dueDate}
+                onChange={(e) => onFormChange({ ...formData, dueDate: e.target.value })}
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Khung giờ / Buổi học</label>
+            <select
+              value={formData.scheduleId}
+              onChange={(e) => onFormChange({ ...formData, scheduleId: e.target.value })}
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all bg-white"
+            >
+              {studentSchedules.length === 0 ? (
+                <option value="">Không có khung giờ khả dụng</option>
+              ) : (
+                studentSchedules.map((schedule) => (
+                  <option key={schedule.id} value={schedule.id}>
+                    {schedule.label}
+                  </option>
+                ))
+              )}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">Chọn đúng buổi học để checklist xuất hiện trong khung giờ tương ứng.</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Tên checklist</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => onFormChange({ ...formData, name: e.target.value })}
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+              placeholder="Ví dụ: Bài tập về nhà tuần 1"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Nội dung/Mô tả checklist</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => onFormChange({ ...formData, description: e.target.value })}
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+              rows={4}
+              placeholder="Nhập mô tả chi tiết về checklist..."
+            />
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-700">Danh sách bài tập</p>
+                <p className="text-xs text-gray-500">Tạo từng bài kèm thời gian và tài liệu</p>
+              </div>
+              <button
+                onClick={addExercise}
+                className="text-sm font-semibold text-primary-600 hover:text-primary-700"
+              >
+                + Thêm bài tập
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {formData.exercises.map((exercise, idx) => (
+                <div key={exercise.id} className="border border-gray-200 rounded-2xl p-4 bg-gray-50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-gray-500 uppercase">Bài {idx + 1}</p>
+                    {formData.exercises.length > 1 && (
+                      <button
+                        onClick={() => removeExercise(idx)}
+                        className="text-xs text-red-500 hover:text-red-600 font-semibold"
+                      >
+                        Xóa
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Tên bài tập</label>
+                      <input
+                        value={exercise.title}
+                        onChange={(e) => handleExerciseChange(idx, 'title', e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        placeholder="Ví dụ: Giải hệ phương trình nâng cao"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Thời gian dự kiến</label>
+                      <div className="flex items-center border border-gray-200 rounded-xl bg-white overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500">
+                        <input
+                          type="number"
+                          min={0}
+                          value={exercise.estimatedTime || ''}
+                          onChange={(e) => handleExerciseChange(idx, 'estimatedTime', e.target.value)}
+                          className="flex-1 px-3 py-2 text-sm outline-none"
+                          placeholder="20"
+                        />
+                        <div className="flex flex-col border-l border-gray-200">
+                          <button
+                            type="button"
+                            onClick={() => adjustEstimatedTime(idx, 1)}
+                            className="px-2 py-1 hover:bg-gray-100 focus:outline-none"
+                          >
+                            <ChevronUp className="w-4 h-4 text-gray-600" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => adjustEstimatedTime(idx, -1)}
+                            className="px-2 py-1 hover:bg-gray-100 focus:outline-none"
+                          >
+                            <ChevronDown className="w-4 h-4 text-gray-600" />
+                          </button>
+                        </div>
+                        <div className="px-3 text-xs font-semibold text-gray-500 border-l border-gray-200 h-full flex items-center">
+                          phút
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Yêu cầu chi tiết (description)</label>
+                    <textarea
+                      value={exercise.requirement}
+                      onChange={(e) => handleExerciseChange(idx, 'requirement', e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      rows={2}
+                      placeholder="Mô tả nhiệm vụ cho học sinh..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Ghi chú (note)</label>
+                    <textarea
+                      value={exercise.note}
+                      onChange={(e) => handleExerciseChange(idx, 'note', e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      rows={2}
+                      placeholder="Ghi chú thêm cho học sinh..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">
+                      File bài tập (assignmentUrl)
+                    </label>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1 flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
+                          <LinkIcon className="w-4 h-4 text-gray-400" />
+                          <input
+                            value={exercise.assignmentUrl || ''}
+                            onChange={(e) => handleExerciseChange(idx, 'assignmentUrl', e.target.value)}
+                            placeholder="Dán link file bài tập hoặc tải từ máy"
+                            className="flex-1 text-sm outline-none"
+                          />
+                          {exercise.assignmentUrl && (
+                            <a
+                              href={exercise.assignmentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-semibold text-primary-600 hover:underline"
+                            >
+                              Xem
+                            </a>
+                          )}
+                        </div>
+                        <label
+                          className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border-2 border-dashed ${
+                            uploadingAssignments[exercise.id]
+                              ? 'border-gray-300 text-gray-500 cursor-wait'
+                              : 'border-primary-300 text-primary-600 cursor-pointer hover:bg-primary-50'
+                          } text-sm font-semibold transition`}
+                        >
+                          <Upload className="w-4 h-4" />
+                          {uploadingAssignments[exercise.id] ? 'Đang tải...' : 'Tải file'}
+                          <input
+                            type="file"
+                            accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                            className="hidden"
+                            onChange={(event) => {
+                              handleAssignmentFileUpload(idx, event.target.files)
+                              event.target.value = ''
+                            }}
+                            disabled={uploadingAssignments[exercise.id]}
+                          />
+                        </label>
+                      </div>
+                      {uploadErrors[exercise.id] && (
+                        <p className="text-xs text-red-500">{uploadErrors[exercise.id]}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </div>
+
+        <div className="flex items-center justify-end space-x-3 mt-6">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl border-2 border-gray-200 text-sm font-semibold hover:bg-gray-50"
+          >
+            Hủy
+          </button>
+          <button
+            onClick={onSubmit}
+            disabled={isSubmitting}
+            className="btn-primary text-sm px-6 py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? 'Đang gửi...' : 'Gửi checklist'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+

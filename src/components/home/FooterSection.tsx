@@ -15,10 +15,8 @@ export default function FooterSection() {
                 </div>
               </div>
               <div className="text-white text-base sm:text-lg font-medium space-y-1">
-                <p>Footer tagline thay đổi</p>
-                <p className="text-2xl font-semibold">Where Focus Begins</p>
-                <p className="text-base">Hoặc</p>
-                <p className="text-xl font-semibold">Where Better Study Habits Grow</p>
+                <p className="text-2xl font-semibold">Where Growth Begins
+                </p>
               </div>
             </div>
           </div>
