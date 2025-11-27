@@ -65,9 +65,8 @@ async function refreshAccessToken(): Promise<string> {
 
       return access.token
     } catch (error) {
-      // Clear tokens on refresh failure
-      localStorage.removeItem('tokens')
-      localStorage.removeItem('user')
+      // Don't clear localStorage on refresh failure - let each tab handle its own session
+      // Only clear cookie for this tab
       setCookie(ACCESS_TOKEN_COOKIE_NAME, '', -1)
       throw error
     } finally {
