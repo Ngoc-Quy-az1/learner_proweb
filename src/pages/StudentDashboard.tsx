@@ -2,12 +2,17 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Layout } from '../components/common'
 import { Sidebar, ScheduleItem, MonthlyCalendar, ChecklistItem, TaskItem } from '../components/dashboard'
-import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, FileText, AlertTriangle, Star, Eye, Download, Search, Filter, ExternalLink } from 'lucide-react'
+import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, FileText, AlertTriangle, Star, Eye, Download, ExternalLink } from 'lucide-react'
 import { format, isToday } from 'date-fns'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { apiCall } from '../config/api'
 import { useAuth } from '../contexts/AuthContext'
 import { ChecklistDetailTable, HomeworkDetailTable, MaterialUploadSection, HomeSection, ScheduleSection, type ChecklistDetailItem, type HomeworkDetailItem } from '../components/student'
+import StudentSubjectReviewSection from '../components/student/StudentSubjectReviewSection'
+import StudentSessionEvaluationSection from '../components/student/StudentSessionEvaluationSection'
+import StudentReportSection from '../components/student/StudentReportSection'
+import type { ChecklistWithDate } from '../components/student/types'
+import type { AssignmentApiItem as TutorAssignmentApiItem } from './TutorDashboard'
 
 interface ScheduleApiItem {
   id: string
@@ -72,13 +77,15 @@ interface SupplementaryMaterialApiItem {
 }
 
 interface AssignmentApiItem {
-  id: string
+  id?: string
+  _id?: string
   name?: string
   description?: string
   subject?: string
   status?: AssignmentStatus
   tasks?: AssignmentTaskApiItem[]
-  scheduleId?: string | { _id?: string }
+  scheduleId?: string | { _id?: string; studentId?: { _id: string; name?: string } }
+  studentId?: string | { _id: string; name?: string }
   supplementaryMaterials?: SupplementaryMaterialApiItem[]
   createdAt?: string
   updatedAt?: string
@@ -126,8 +133,6 @@ interface HomeworkPaginatedResponse {
 }
 
 type HomeworkTaskItem = TaskItem & { sessionDate?: Date; sessionTime?: string; sessionId?: string; scheduleId?: string }
-
-type ChecklistWithDate = ChecklistItem & { date: Date }
 
 const SUBJECT_LABELS: Record<string, string> = {
   math: 'Toán',
@@ -190,26 +195,40 @@ const mapAssignmentsToChecklistItems = (
 
     if (assignment.tasks && assignment.tasks.length > 0) {
       assignment.tasks.forEach((task, index) => {
+        const assignmentId = assignment.id || assignment._id || `assignment-${index}`
         items.push({
-          id: task.id || `${assignment.id}-task-${index}`,
+          id: task.id || `${assignmentId}-task-${index}`,
           subject,
-          lesson: assignment.name || 'Bài học',
-          task: task.name || assignment.description || 'Nhiệm vụ',
+          // Bài học: dùng tên nhiệm vụ (task) để khớp bảng tóm tắt của tutor
+          lesson: task.name || assignment.name || 'Bài học',
+          // Nhiệm vụ: dùng phần mô tả / ghi chú chính của nhiệm vụ
+          task: task.description || assignment.description || 'Nhiệm vụ',
+          // Ghi chú: lấy trường note riêng của task nếu có
           status: mapAssignmentStatusToChecklist(task.status),
-          note: task.description || assignment.description,
-          attachment: task.assignmentUrl || task.solutionUrl,
+          note: (task as any).note || assignment.description,
+          attachment: task.assignmentUrl || assignment.supplementaryMaterials?.[0]?.url,
           date: new Date(date),
+          assignmentId: assignmentId,
+          taskId: task.id,
+          scheduleId,
+          assignmentUrl: task.assignmentUrl,
+          solutionUrl: task.solutionUrl,
         })
       })
     } else {
+      const assignmentId = assignment.id || assignment._id || `assignment-${items.length}`
       items.push({
-        id: assignment.id,
+        id: assignmentId,
         subject,
+        // Không có task con: coi tên assignment là bài học, mô tả là nhiệm vụ
         lesson: assignment.name || 'Bài học',
         task: assignment.description || 'Nhiệm vụ',
         status: mapAssignmentStatusToChecklist(assignment.status),
         note: assignment.description,
         date: new Date(date),
+        assignmentId: assignmentId,
+        scheduleId,
+        attachment: assignment.supplementaryMaterials?.[0]?.url,
       })
     }
   })
@@ -331,20 +350,12 @@ export default function StudentDashboard() {
     }
   }, [searchParams, validSections, defaultSection, setSearchParams])
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null)
-  const [expandedHomeworkSession, setExpandedHomeworkSession] = useState<string | null>(null)
-  const [expandedChecklistDate, setExpandedChecklistDate] = useState<string | null>(null)
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
   const [showChecklistOverlay, setShowChecklistOverlay] = useState(false)
   const [selectedTutorSchedule, setSelectedTutorSchedule] = useState<string | null>(null) // ID của schedule được chọn để xem chi tiết tutor
-  // Bộ lọc cho checklist
-  const [checklistSearchQuery, setChecklistSearchQuery] = useState<string>('')
-  const [checklistDateRange, setChecklistDateRange] = useState<'all' | 'week' | 'month' | 'custom'>('all')
-  const [checklistCustomStartDate, setChecklistCustomStartDate] = useState<string>('')
-  const [checklistCustomEndDate, setChecklistCustomEndDate] = useState<string>('')
   const [homeworks, setHomeworks] = useState<HomeworkApiItem[]>([])
   const [isHomeworkLoading, setIsHomeworkLoading] = useState<boolean>(false)
   const [homeworkError, setHomeworkError] = useState<string | null>(null)
-  const [taskItems, setTaskItems] = useState<HomeworkTaskItem[]>([])
   const [homeworkDetailItems, setHomeworkDetailItems] = useState<Record<string, HomeworkDetailItem[]>>({})
 
   useEffect(() => {
@@ -354,8 +365,27 @@ export default function StudentDashboard() {
   }, [activeSection, showChecklistOverlay])
   
   const [checklistItems, setChecklistItems] = useState<ChecklistWithDate[]>([])
+  const [assignments, setAssignments] = useState<AssignmentApiItem[]>([])
   const [isChecklistLoading, setIsChecklistLoading] = useState<boolean>(false)
   const [checklistError, setChecklistError] = useState<string | null>(null)
+  
+  // State cho reviews và reports
+  interface ScheduleReview {
+    name: string
+    rating: number
+    comment: string
+  }
+  const [scheduleReviews, setScheduleReviews] = useState<Record<string, ScheduleReview[]>>({})
+  interface ScheduleReport {
+    id: string
+    subjectCode: string
+    startTime: string
+    tutor: string
+    reportURL: string
+  }
+  const [scheduleReports, setScheduleReports] = useState<Record<string, ScheduleReport | null>>({})
+  const [assignmentReviews, setAssignmentReviews] = useState<Record<string, { reviewId?: string; taskId: string; result: number; comment: string }>>({})
+  const [assignmentReviewsLoading, setAssignmentReviewsLoading] = useState(false)
   // Schedules data fetched from API
   const [schedules, setSchedules] = useState<ScheduleItem[]>([])
   const [tutorInfoMap, setTutorInfoMap] = useState<Record<string, TutorInfo>>({})
@@ -363,6 +393,27 @@ export default function StudentDashboard() {
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [scheduleFetchTrigger, setScheduleFetchTrigger] = useState(0)
   const [selectedUploadScheduleId, setSelectedUploadScheduleId] = useState<string | null>(null)
+  const [selectedChecklistScheduleId, setSelectedChecklistScheduleId] = useState<string | null>(null)
+  const [selectedHomeworkScheduleId, setSelectedHomeworkScheduleId] = useState<string | null>(null)
+
+  const getScheduleStartDateTime = (schedule: ScheduleItem) => {
+    const [startRaw] = schedule.time.split(' - ')
+    const startDate = new Date(schedule.date)
+    if (startRaw) {
+      const [hours, minutes] = startRaw.split(':').map(Number)
+      startDate.setHours(hours || 0, minutes || 0, 0, 0)
+    }
+    return startDate
+  }
+
+  const upcomingSchedule = useMemo(() => {
+    const now = new Date()
+    const upcoming = schedules
+      .map((schedule) => ({ schedule, start: getScheduleStartDateTime(schedule) }))
+      .filter(({ start }) => start >= now)
+      .sort((a, b) => a.start.getTime() - b.start.getTime())[0]
+    return upcoming ? upcoming.schedule : null
+  }, [schedules])
 
   useEffect(() => {
     let isActive = true
@@ -475,8 +526,9 @@ export default function StudentDashboard() {
       try {
         const response = await apiCall<AssignmentPaginatedResponse>(`/assignments?${query}`)
         if (!isActive) return
-        const assignments = response.results || []
-        setChecklistItems(mapAssignmentsToChecklistItems(assignments, scheduleInfoById))
+        const assignmentsData = response.results || []
+        setAssignments(assignmentsData)
+        setChecklistItems(mapAssignmentsToChecklistItems(assignmentsData, scheduleInfoById))
       } catch (error) {
         if (!isActive) return
         const message = error instanceof Error ? error.message : 'Không thể tải checklist'
@@ -585,6 +637,7 @@ export default function StudentDashboard() {
           solutionType: task.solutionUrl ? 'file' : undefined,
           solutionText: undefined,
           solutionFileName: getFileNameFromUrl(task.solutionUrl),
+          solutionUrl: task.solutionUrl,
           assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
         })) || []
 
@@ -610,15 +663,152 @@ export default function StudentDashboard() {
       detailsMap[sessionId] = [...(detailsMap[sessionId] || []), ...mappedTasks, ...fallbackTask]
     })
 
-    setTaskItems(Array.from(sessionMap.values()))
     setHomeworkDetailItems(detailsMap)
   }, [homeworks, schedules])
+
+  // Filter today's data
+  const todaySchedules = schedules.filter(s => isToday(s.date))
+  
+  // Fetch schedule reviews và reports
+  useEffect(() => {
+    if (!user?.id || schedules.length === 0) return
+    let cancelled = false
+
+    const fetchScheduleDetails = async () => {
+      for (const schedule of schedules) {
+        if (cancelled) return
+        try {
+          // Fetch reviews
+          if (!scheduleReviews[schedule.id]) {
+            const scheduleData = await apiCall<{ id: string; reviews?: Array<{ name: string; rating: number; comment: string }> }>(`/schedules/${schedule.id}`)
+            if (scheduleData.reviews && Array.isArray(scheduleData.reviews)) {
+              const defaultReviews = [
+                { name: 'Mức độ tập trung', rating: 0, comment: '' },
+                { name: 'Hiểu nội dung bài học', rating: 0, comment: '' },
+                { name: 'Hoàn thành nhiệm vụ', rating: 0, comment: '' },
+                { name: 'Thái độ & tinh thần học', rating: 0, comment: '' },
+                { name: 'Kỹ năng trình bày & tư duy', rating: 0, comment: '' },
+              ]
+              const normalizedReviews = defaultReviews.map((defaultReview, index) => {
+                const savedReview = scheduleData.reviews?.[index]
+                if (savedReview) {
+                  return {
+                    name: defaultReview.name,
+                    rating: savedReview.rating ?? 0,
+                    comment: savedReview.comment || '',
+                  }
+                }
+                return defaultReview
+              })
+              setScheduleReviews((prev) => ({
+                ...prev,
+                [schedule.id]: normalizedReviews,
+              }))
+            }
+          }
+          // Fetch reports
+          if (!scheduleReports[schedule.id]) {
+            try {
+              const report = await apiCall<ScheduleReport>(`/reports/${schedule.id}`)
+              setScheduleReports((prev) => ({
+                ...prev,
+                [schedule.id]: report,
+              }))
+            } catch (error) {
+              // Report có thể chưa tồn tại, không cần xử lý lỗi
+              setScheduleReports((prev) => ({
+                ...prev,
+                [schedule.id]: null,
+              }))
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to fetch schedule details for ${schedule.id}:`, error)
+        }
+      }
+    }
+
+    fetchScheduleDetails()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, schedules, scheduleReviews, scheduleReports])
+
+  // Fetch assignment reviews
+  useEffect(() => {
+    if (!user?.id || assignments.length === 0) return
+    let cancelled = false
+    setAssignmentReviewsLoading(true)
+
+    const loadReviews = async () => {
+      try {
+        const reviewResults = await Promise.all(
+          assignments.map(async (assignment, index) => {
+            const assignmentID = assignment.id || assignment._id
+            const assignmentKey =
+              assignment.id || assignment._id || `${assignment.subject || 'subject'}-${index}`
+
+            if (!assignmentID) return { assignmentKey, review: null }
+
+            try {
+              const review = await apiCall<{ id: string; assignmentID?: string; comment?: string }>(
+                `/reviews/assignment/${assignmentID}`
+              )
+              return { assignmentKey, review }
+            } catch {
+              // Nếu API đánh giá chưa tồn tại (404) hoặc lỗi khác, coi như chưa có review
+              return { assignmentKey, review: null }
+            }
+          })
+        )
+
+        if (cancelled) return
+
+        const next: Record<string, { reviewId?: string; taskId: string; result: number; comment: string }> = {}
+        reviewResults.forEach((result) => {
+          const key = result.assignmentKey
+          if (!key) return
+          next[key] = {
+            reviewId: result.review?.id,
+            taskId: result.review?.assignmentID || '',
+            result: 0,
+            comment: result.review?.comment || '',
+          }
+        })
+        setAssignmentReviews(next)
+      } catch {
+        // Bỏ qua lỗi tổng, vì từng request đã được xử lý an toàn phía trên
+      } finally {
+        if (!cancelled) {
+          setAssignmentReviewsLoading(false)
+        }
+      }
+    }
+
+    loadReviews()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, assignments])
 
   const handleStatusChange = (id: string, status: ChecklistItem['status']) => {
     setChecklistItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, status } : item))
     )
   }
+
+  const checklistItemsBySchedule = useMemo(() => {
+    return checklistItems.reduce<Record<string, ChecklistWithDate[]>>((acc, item) => {
+      if (!item.scheduleId) return acc
+      if (!acc[item.scheduleId]) {
+        acc[item.scheduleId] = []
+      }
+      acc[item.scheduleId].push(item)
+      return acc
+    }, {})
+  }, [checklistItems])
 
 
   const [detailItemsBySubject, setDetailItemsBySubject] = useState<Record<string, ChecklistDetailItem[]>>({
@@ -975,9 +1165,15 @@ useEffect(() => {
     return 'completed'
   }
 
-  // Filter today's data
-  const todaySchedules = schedules.filter(s => isToday(s.date))
+  // Filter today's data (already declared above)
   const todayChecklist = checklistItems.filter(item => isToday(item.date))
+  const todayScheduleChecklistMap = useMemo(() => {
+    const map: Record<string, ChecklistWithDate[]> = {}
+    todaySchedules.forEach((schedule) => {
+      map[schedule.id] = checklistItemsBySchedule[schedule.id] || []
+    })
+    return map
+  }, [checklistItemsBySchedule, todaySchedules])
   
   const completedCount = checklistItems.filter(item => item.status === 'done').length
   const totalCount = checklistItems.length
@@ -986,62 +1182,8 @@ useEffect(() => {
   // Group checklist by date
   const checklistByDate = groupByDate(checklistItems)
   
-  // Lọc checklist dựa trên bộ lọc
-  const getFilteredChecklistItems = () => {
-    let filtered = [...checklistItems]
-    
-    // Lọc theo tìm kiếm
-    if (checklistSearchQuery.trim()) {
-      const query = checklistSearchQuery.toLowerCase()
-      filtered = filtered.filter(item => 
-        item.lesson.toLowerCase().includes(query) ||
-        item.task.toLowerCase().includes(query) ||
-        item.subject.toLowerCase().includes(query) ||
-        (item.note && item.note.toLowerCase().includes(query))
-      )
-    }
-    
-    // Lọc theo mốc thời gian
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    
-    if (checklistDateRange === 'week') {
-      const weekAgo = new Date(today)
-      weekAgo.setDate(weekAgo.getDate() - 7)
-      filtered = filtered.filter(item => {
-        const itemDate = new Date(item.date)
-        itemDate.setHours(0, 0, 0, 0)
-        return itemDate >= weekAgo && itemDate <= today
-      })
-    } else if (checklistDateRange === 'month') {
-      const monthAgo = new Date(today)
-      monthAgo.setMonth(monthAgo.getMonth() - 1)
-      filtered = filtered.filter(item => {
-        const itemDate = new Date(item.date)
-        itemDate.setHours(0, 0, 0, 0)
-        return itemDate >= monthAgo && itemDate <= today
-      })
-    } else if (checklistDateRange === 'custom' && checklistCustomStartDate && checklistCustomEndDate) {
-      const startDate = new Date(checklistCustomStartDate)
-      startDate.setHours(0, 0, 0, 0)
-      const endDate = new Date(checklistCustomEndDate)
-      endDate.setHours(23, 59, 59, 999)
-      filtered = filtered.filter(item => {
-        const itemDate = new Date(item.date)
-        return itemDate >= startDate && itemDate <= endDate
-      })
-    }
-    // 'all' không lọc gì
-    
-    return filtered
-  }
-  
-  const filteredChecklistItems = getFilteredChecklistItems()
-  const filteredChecklistByDate = groupByDate(filteredChecklistItems)
-  
-  // Get sorted date keys - hiển thị tất cả ngày sau khi lọc
-  const allDates = Object.keys(filteredChecklistByDate).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
-  const checklistDates = allDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime()) // Sắp xếp mới nhất trước
+  // Get sorted date keys
+  const checklistDates = Object.keys(checklistByDate).sort((a, b) => new Date(b).getTime() - new Date(a).getTime()) // Sắp xếp mới nhất trước
 
   const checklistBySubject = checklistItems.reduce<Record<string, { total: number; completed: number }>>((acc, item) => {
     if (!acc[item.subject]) {
@@ -1285,29 +1427,31 @@ useEffect(() => {
         case 'home':
           return (
             <HomeSection
-              schedules={schedules}
               todaySchedules={todaySchedules}
-              checklistItems={checklistItems}
-              todayChecklist={todayChecklist}
-              todayReports={todayReports}
+              studentName={user?.name || 'Học sinh'}
+              studentEmail={user?.email}
+              studentAvatarUrl={(user as any)?.avatarUrl || (user as any)?.avatar}
+              upcomingSchedule={upcomingSchedule}
               tutorInfoMap={tutorInfoMap}
               progressPercentage={progressPercentage}
               completedCount={completedCount}
               totalCount={totalCount}
-              studentHighlightCards={studentHighlightCards}
+              scheduleChecklistMap={todayScheduleChecklistMap}
+              homeworkDetailsMap={homeworkDetailItems}
               uploadScheduleOptions={uploadScheduleOptions}
               selectedUploadScheduleId={selectedUploadScheduleId}
-              onScheduleChange={handleSectionChange}
+              getSubjectLabel={getSubjectLabel}
               onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
               onUploadSuccess={() => setScheduleFetchTrigger((prev) => prev + 1)}
               onJoinClass={handleJoinClass}
               onChecklistClick={() => setShowChecklistOverlay(true)}
               onSubjectSelect={setSelectedSubject}
               getScheduleStatus={getScheduleStatus}
-              getSubjectColor={getSubjectColor}
-              onExportCombinedReport={handleExportCombinedReport}
-              onOpenReportPreview={handleOpenReportPreview}
-              scheduleFetchTrigger={scheduleFetchTrigger}
+              assignments={assignments as TutorAssignmentApiItem[]}
+              scheduleReviews={scheduleReviews}
+              scheduleReports={scheduleReports}
+              assignmentReviews={assignmentReviews}
+              assignmentReviewsLoading={assignmentReviewsLoading}
             />
           )
         case 'schedule':
@@ -1330,29 +1474,27 @@ useEffect(() => {
         default:
           return (
             <HomeSection
-              schedules={schedules}
               todaySchedules={todaySchedules}
-              checklistItems={checklistItems}
-              todayChecklist={todayChecklist}
-              todayReports={todayReports}
               tutorInfoMap={tutorInfoMap}
               progressPercentage={progressPercentage}
               completedCount={completedCount}
               totalCount={totalCount}
-              studentHighlightCards={studentHighlightCards}
+              scheduleChecklistMap={todayScheduleChecklistMap}
+              homeworkDetailsMap={homeworkDetailItems}
               uploadScheduleOptions={uploadScheduleOptions}
               selectedUploadScheduleId={selectedUploadScheduleId}
-              onScheduleChange={handleSectionChange}
+              getSubjectLabel={getSubjectLabel}
               onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
               onUploadSuccess={() => setScheduleFetchTrigger((prev) => prev + 1)}
               onJoinClass={handleJoinClass}
               onChecklistClick={() => setShowChecklistOverlay(true)}
               onSubjectSelect={setSelectedSubject}
               getScheduleStatus={getScheduleStatus}
-              getSubjectColor={getSubjectColor}
-              onExportCombinedReport={handleExportCombinedReport}
-              onOpenReportPreview={handleOpenReportPreview}
-              scheduleFetchTrigger={scheduleFetchTrigger}
+              assignments={assignments as TutorAssignmentApiItem[]}
+              scheduleReviews={scheduleReviews}
+              scheduleReports={scheduleReports}
+              assignmentReviews={assignmentReviews}
+              assignmentReviewsLoading={assignmentReviewsLoading}
             />
           )
       }
@@ -1516,9 +1658,7 @@ useEffect(() => {
                     <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center mb-2 group-hover:scale-110 transition-transform shadow-lg">
                       <Play className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                     </div>
-                    <h3 className="text-xs sm:text-sm font-bold text-gray-900 mb-0.5">Vào lớp học</h3>
-                    <p className="text-[10px] sm:text-xs text-gray-600 leading-tight">Tham gia buổi học trực tuyến</p>
-                  </div>
+                    <h3 className="text-xs sm:text-sm font-bold text-gray-900 mb-0.5">Vào lớp học</h3>                  </div>
                 </button>
 
                 <button
@@ -1534,9 +1674,7 @@ useEffect(() => {
                     <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center mb-2 group-hover:scale-110 transition-transform shadow-lg">
                       <Target className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                     </div>
-                    <h3 className="text-xs sm:text-sm font-bold text-gray-900 mb-0.5">Xem checklist</h3>
-                    <p className="text-[10px] sm:text-xs text-gray-600 leading-tight">Theo dõi tiến độ học tập</p>
-                  </div>
+                    <h3 className="text-xs sm:text-sm font-bold text-gray-900 mb-0.5">Xem checklist</h3>                  </div>
                 </button>
               </div>
 
@@ -2213,233 +2351,157 @@ useEffect(() => {
   )
 
   const renderChecklistSection = () => {
-    // Calculate stats for each date
-    const getChecklistStats = (items: (ChecklistItem & { date: Date })[]) => {
-      const completed = items.filter(item => item.status === 'done').length
-      const total = items.length
-      const percentage = total > 0 ? Math.round((completed / total) * 100) : 0
-      return { completed, total, percentage }
-    }
+    // Schedules có checklist (bao gồm cả quá khứ)
+    const checklistScheduleIds = Object.keys(checklistItemsBySchedule)
+    const checklistScheduleOptionsRaw = checklistScheduleIds
+      .map((id) => {
+        const schedule = schedules.find((s) => s.id === id)
+        return { id, schedule }
+      })
+      .filter((opt) => !!opt.schedule) as { id: string; schedule: ScheduleItem }[]
+    const checklistScheduleOptions = checklistScheduleOptionsRaw.sort(
+      (a, b) => a.schedule.date.getTime() - b.schedule.date.getTime()
+    )
 
-    // Group checklist items by subject for a specific date
-    const getChecklistBySubject = (dateKey: string) => {
-      const items = checklistByDate[dateKey] || []
-      const subjects = Array.from(new Set(items.map(item => item.subject)))
-      return subjects.map(subject => ({
-        subject,
-        items: items.filter(item => item.subject === subject),
+    const activeChecklistSchedule =
+      checklistScheduleOptions.find((opt) => opt.id === selectedChecklistScheduleId)?.schedule ||
+      checklistScheduleOptions[checklistScheduleOptions.length - 1]?.schedule
+
+    const activeChecklistScheduleId = activeChecklistSchedule?.id
+
+    const mapChecklistItemsToDetail = (items: ChecklistWithDate[]): ChecklistDetailItem[] => {
+      return items.map((item) => ({
+        id: item.id,
+        lesson: item.lesson,
+        estimatedTime: 0,
+        actualTime: 0,
+        result:
+          item.status === 'done'
+            ? 'completed'
+            : item.status === 'in_progress'
+            ? 'not_accurate'
+            : 'not_completed',
+        qualityNote: item.note || '',
+        solutionType: item.solutionUrl ? 'file' : 'text',
+        solutionText: undefined,
+        solutionFileName: item.solutionUrl ? getFileNameFromUrl(item.solutionUrl) : undefined,
+        solutionUrl: item.solutionUrl,
+        solutionPreview: undefined,
+        uploadedFileName: undefined,
+        assignmentFileName: getFileNameFromUrl(item.attachment),
       }))
     }
 
+    const activeChecklistItemsDetail: ChecklistDetailItem[] =
+      activeChecklistScheduleId && checklistItemsBySchedule[activeChecklistScheduleId]
+        ? mapChecklistItemsToDetail(checklistItemsBySchedule[activeChecklistScheduleId])
+        : []
+
+    // Assignments cho phần "Đánh giá chung cho từng môn"
+    const scheduleAssignments = activeChecklistSchedule
+      ? (() => {
+          let filtered = assignments.filter((assignment) => {
+            const assignmentScheduleId = getAssignmentScheduleId(assignment)
+            return assignmentScheduleId === activeChecklistSchedule.id
+          })
+
+          if (filtered.length === 0 && activeChecklistSchedule.subject) {
+            filtered = assignments.filter((assignment) => {
+              const subjectLabel =
+                (getSubjectLabel && getSubjectLabel(assignment.subject as any)) ||
+                (assignment.subject as any) ||
+                ''
+              return subjectLabel === activeChecklistSchedule.subject
+            })
+          }
+
+          return filtered
+        })()
+      : []
+
+    const scheduleStatus =
+      activeChecklistSchedule && getScheduleStatus(activeChecklistSchedule as ScheduleItem)
+
     return (
       <div className="h-full overflow-y-auto space-y-3 sm:space-y-4">
-        {/* Checklist list by date with expand/collapse */}
+        {/* Chọn buổi học & chi tiết giống trang chủ */}
         <div className="card hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center space-x-2 mb-4 sm:mb-6">
-            <Target className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
-            <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Checklist</h2>
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <div className="flex items-center space-x-2">
+              <Target className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
+              <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Checklist theo buổi học</h2>
+            </div>
+            {checklistScheduleOptions.length > 0 && (
+              <select
+                value={activeChecklistScheduleId || ''}
+                onChange={(e) => setSelectedChecklistScheduleId(e.target.value || null)}
+                className="px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              >
+                {checklistScheduleOptions.map(({ id, schedule }) => (
+                  <option key={id} value={id}>
+                    {`${format(schedule.date, 'dd/MM/yyyy')} · ${schedule.time}${schedule.subject ? ` · ${schedule.subject}` : ''}`}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
-          {isChecklistLoading && (
-            <p className="mb-4 text-sm text-gray-500">Đang tải checklist...</p>
-          )}
+          {checklistScheduleOptions.length === 0 || !activeChecklistScheduleId || !activeChecklistSchedule ? (
+            <p className="text-sm text-gray-500 italic">
+              Chưa có checklist nào được tạo cho học sinh này.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {/* Bảng tóm tắt + chi tiết */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-1">
+                  Checklist buổi học
+                </p>
+                <ChecklistDetailTable
+                  items={activeChecklistItemsDetail}
+                  onUpload={() => {}}
+                  onUploadSolution={() => {}}
+                  canUploadSolution={false}
+                />
+              </div>
 
-          {checklistError && !isChecklistLoading && (
-            <p className="mb-4 text-sm text-red-500">{checklistError}</p>
-          )}
-          
-          {/* Bộ lọc */}
-          <div className="mb-4 space-y-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
-            {/* Tìm kiếm */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Tìm kiếm theo bài học, nhiệm vụ, môn học..."
-                value={checklistSearchQuery}
-                onChange={(e) => setChecklistSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+              {/* Đánh giá chung cho từng môn */}
+              <StudentSubjectReviewSection
+                title="Đánh giá chung cho từng môn"
+                assignments={scheduleAssignments as TutorAssignmentApiItem[]}
+                scheduleSubject={activeChecklistSchedule.subject}
+                loading={assignmentReviewsLoading}
+                assignmentReviews={assignmentReviews}
+                getAssignmentKey={(assignment, idx) =>
+                  assignment.id || assignment._id || `${assignment.subject || 'subject'}-${idx}`
+                }
+                alwaysExpanded={true}
+              />
+
+              {/* Đánh giá buổi học */}
+              <StudentSessionEvaluationSection
+                scheduleId={activeChecklistScheduleId}
+                reviews={scheduleReviews[activeChecklistScheduleId]}
+                isExpanded={true}
+                scheduleStatus={
+                  scheduleStatus === 'ongoing'
+                    ? 'in_progress'
+                    : scheduleStatus === 'completed'
+                    ? 'completed'
+                    : 'upcoming'
+                }
+                onToggle={() => {}}
+                alwaysExpanded={true}
+              />
+
+              {/* Báo cáo buổi học */}
+              <StudentReportSection
+                scheduleId={activeChecklistScheduleId}
+                report={scheduleReports[activeChecklistScheduleId] ?? null}
+                alwaysExpanded={true}
               />
             </div>
-            
-            {/* Mốc thời gian */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center space-x-2">
-                <Filter className="w-4 h-4 text-gray-500" />
-                <span className="text-sm font-semibold text-gray-700">Mốc thời gian:</span>
-              </div>
-              <select
-                value={checklistDateRange}
-                onChange={(e) => setChecklistDateRange(e.target.value as 'all' | 'week' | 'month' | 'custom')}
-                className="px-3 py-1.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
-              >
-                <option value="all">Tất cả</option>
-                <option value="week">7 ngày qua</option>
-                <option value="month">30 ngày qua</option>
-                <option value="custom">Tùy chọn</option>
-              </select>
-              
-              {checklistDateRange === 'custom' && (
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="date"
-                    value={checklistCustomStartDate}
-                    onChange={(e) => setChecklistCustomStartDate(e.target.value)}
-                    className="px-3 py-1.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
-                    placeholder="Từ ngày"
-                  />
-                  <span className="text-gray-500">đến</span>
-                  <input
-                    type="date"
-                    value={checklistCustomEndDate}
-                    onChange={(e) => setChecklistCustomEndDate(e.target.value)}
-                    className="px-3 py-1.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
-                    placeholder="Đến ngày"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <div className="space-y-2 sm:space-y-3">
-            {checklistDates.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-8">Không tìm thấy checklist nào phù hợp với bộ lọc.</p>
-            ) : (
-              checklistDates.map((dateKey) => {
-                const dateObj = new Date(dateKey)
-                const dayChecklist = filteredChecklistByDate[dateKey] || []
-              const isTodayDate = isToday(dateObj)
-              const isExpanded = expandedChecklistDate === dateKey
-              const stats = getChecklistStats(dayChecklist)
-              const subjectGroups = getChecklistBySubject(dateKey)
-
-              return (
-                <div
-                  key={dateKey}
-                  className={`border-2 rounded-lg sm:rounded-xl p-3 sm:p-4 transition-all ${
-                    isExpanded
-                      ? 'border-primary-500 bg-gradient-to-r from-primary-50 to-blue-50 shadow-lg'
-                      : 'border-gray-200 hover:border-primary-300 hover:shadow-md bg-gradient-to-br from-white to-gray-50'
-                  }`}
-                >
-                  <button
-                    className="w-full flex items-center justify-between text-left"
-                    onClick={() => {
-                      setExpandedChecklistDate(isExpanded ? null : dateKey)
-                    }}
-                  >
-                    <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
-                      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center font-bold flex-shrink-0 ${
-                        isTodayDate
-                          ? 'bg-primary-500 text-white'
-                          : 'bg-gray-200 text-gray-700'
-                      }`}>
-                        <span className="text-sm sm:text-base">{format(dateObj, 'dd')}</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm sm:text-base font-bold truncate ${isTodayDate ? 'text-primary-600' : 'text-gray-900'}`}>
-                          {isTodayDate ? 'Hôm nay' : format(dateObj, 'EEEE, dd/MM/yyyy')}
-                        </p>
-                        <p className="text-xs sm:text-sm text-gray-600">
-                          {stats.completed}/{stats.total} hoàn thành ({stats.percentage}%)
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
-                      {/* Progress bar */}
-                      <div className="w-16 sm:w-24 h-2 bg-gray-200 rounded-full overflow-hidden hidden sm:block">
-                        <div
-                          className={`h-full rounded-full transition-all ${
-                            stats.percentage === 100 ? 'bg-green-500' :
-                            stats.percentage >= 50 ? 'bg-primary-500' :
-                            'bg-yellow-500'
-                          }`}
-                          style={{ width: `${stats.percentage}%` }}
-                        ></div>
-                      </div>
-                      <ChevronRight className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90 text-primary-600' : 'text-gray-400'}`} />
-                    </div>
-                  </button>
-                  
-                  {isExpanded && dayChecklist.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
-                      {subjectGroups.map((group) => {
-                        const subjectCompleted = group.items.filter(item => item.status === 'done').length
-                        const subjectTotal = group.items.length
-                        const subjectPercentage = subjectTotal > 0 ? Math.round((subjectCompleted / subjectTotal) * 100) : 0
-
-                        return (
-                          <div key={group.subject} className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-3">
-                                <span className={`px-4 py-1.5 rounded-lg text-sm font-bold shadow-md ${
-                                  group.subject === 'Toán' ? 'bg-blue-500 text-white' :
-                                  group.subject === 'Hóa' ? 'bg-green-500 text-white' :
-                                  group.subject === 'Lý' ? 'bg-purple-500 text-white' :
-                                  'bg-gray-500 text-white'
-                                }`}>
-                                  {group.subject}
-                                </span>
-                                <div>
-                                  <p className="text-sm font-semibold text-gray-900">
-                                    {subjectCompleted}/{subjectTotal} hoàn thành ({subjectPercentage}%)
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${
-                                  subjectPercentage === 100 ? 'bg-green-500' :
-                                  subjectPercentage >= 50 ? 'bg-primary-500' :
-                                  'bg-yellow-500'
-                                }`}
-                                style={{ width: `${subjectPercentage}%` }}
-                              ></div>
-                            </div>
-
-                            <div className="space-y-2">
-                              {group.items.map((item) => (
-                                <div key={item.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-sm text-gray-900 truncate">{item.lesson}</p>
-                                    <p className="text-xs text-gray-600 truncate">{item.task}</p>
-                                    {item.note && (
-                                      <p className="text-xs text-gray-500 mt-1">Ghi chú: {item.note}</p>
-                                    )}
-                                  </div>
-                                  <select
-                                    value={item.status}
-                                    onChange={(e) => handleStatusChange(item.id, e.target.value as ChecklistItem['status'])}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="text-xs border-2 border-gray-200 rounded-lg px-2 py-1 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all ml-3 bg-white hover:border-primary-300 cursor-pointer"
-                                  >
-                                    <option value="not_done">Chưa xong</option>
-                                    <option value="in_progress">Đang làm</option>
-                                    <option value="done">Đã xong</option>
-                                  </select>
-                                </div>
-                              ))}
-                            </div>
-
-                            <div className="mt-4 pt-4 border-t border-gray-200">
-                              <h4 className="text-sm font-bold text-gray-900 mb-3">Chi tiết bài tập</h4>
-                              <ChecklistDetailTable
-                                items={getSubjectDetailItems(group.subject)}
-                                onUpload={(id, file) => handleDetailFileUpload(group.subject, id, file)}
-                                onUploadSolution={(id, file) => handleDetailSolutionUpload(group.subject, id, file)}
-                              />
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )
-            }))}
-          </div>
+          )}
         </div>
       </div>
     )
@@ -2450,154 +2512,62 @@ useEffect(() => {
   void _renderScheduleSection_OLD
 
   const renderHomeworkSection = () => {
-    // Group homework by date
-    const groupHomeworkByDate = () => {
-      const grouped: Record<string, typeof taskItems> = {}
-      taskItems.forEach(task => {
-        if (task.sessionDate) {
-          const dateKey = format(task.sessionDate, 'yyyy-MM-dd')
-          if (!grouped[dateKey]) {
-            grouped[dateKey] = []
-          }
-          grouped[dateKey].push(task)
-        }
+    // Các buổi học có bài tập về nhà (bao gồm cả quá khứ)
+    const homeworkScheduleIds = Object.keys(homeworkDetailItems)
+    const homeworkScheduleOptionsRaw = homeworkScheduleIds
+      .map((id) => {
+        const schedule = schedules.find((s) => s.id === id)
+        return { id, schedule }
       })
-      return grouped
-    }
-
-    // Group by session within each date
-    const groupBySession = (tasks: typeof taskItems) => {
-      const grouped: Record<string, typeof taskItems> = {}
-      tasks.forEach(task => {
-        if (task.sessionId && task.sessionTime) {
-          const key = `${task.sessionId}-${task.sessionTime}`
-          if (!grouped[key]) {
-            grouped[key] = []
-          }
-          grouped[key].push(task)
-        }
-      })
-      return grouped
-    }
-    
-    const homeworkByDate = groupHomeworkByDate()
-    const homeworkDates = Object.keys(homeworkByDate).sort(
-      (a, b) => new Date(b).getTime() - new Date(a).getTime()
+      .filter((opt) => !!opt.schedule) as { id: string; schedule: ScheduleItem }[]
+    const homeworkScheduleOptions = homeworkScheduleOptionsRaw.sort(
+      (a, b) => a.schedule.date.getTime() - b.schedule.date.getTime()
     )
-    
-    // Get session info
-    const getSessionInfo = (tasks: typeof taskItems) => {
-      if (tasks.length === 0) return null
-      const firstTask = tasks[0]
-      return {
-        subject: firstTask.subject,
-        date: firstTask.sessionDate,
-        time: firstTask.sessionTime,
-      }
-    }
-    
+
+    const activeHomeworkSchedule =
+      homeworkScheduleOptions.find((opt) => opt.id === selectedHomeworkScheduleId)?.schedule ||
+      homeworkScheduleOptions[homeworkScheduleOptions.length - 1]?.schedule
+
+    const activeHomeworkScheduleId = activeHomeworkSchedule?.id
+    const activeHomeworkItems: HomeworkDetailItem[] =
+      activeHomeworkScheduleId && homeworkDetailItems[activeHomeworkScheduleId]
+        ? homeworkDetailItems[activeHomeworkScheduleId]
+        : []
+
     return (
       <div className="h-full overflow-y-auto space-y-3 sm:space-y-4">
+        {/* Bài tập theo buổi học */}
         <div className="card hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center space-x-2 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-gray-200">
-            <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
-            <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Bài tập về nhà</h2>
-          </div>
-          
-          {isHomeworkLoading && (
-            <p className="text-sm text-gray-500 mb-4">Đang tải danh sách bài tập...</p>
-          )}
-
-          {homeworkError && !isHomeworkLoading && (
-            <p className="text-sm text-red-500 mb-4">{homeworkError}</p>
-          )}
-          
-          {/* Homework list by date with expand/collapse */}
-          <div className="space-y-2 sm:space-y-4">
-            {homeworkDates.length === 0 && !isHomeworkLoading && !homeworkError ? (
-              <p className="text-sm text-gray-500 text-center py-8">Chưa có bài tập nào.</p>
-            ) : (
-              homeworkDates.map((dateKey) => {
-                const dateObj = new Date(dateKey)
-                const dayTasks = homeworkByDate[dateKey] || []
-                const isTodayDate = isToday(dateObj)
-                const isExpanded = expandedHomeworkSession === dateKey
-                const sessionGroups = groupBySession(dayTasks)
-                const sessionKeys = Object.keys(sessionGroups)
-                
-                return (
-                  <div
-                    key={dateKey}
-                    className={`border-2 rounded-lg sm:rounded-xl p-3 sm:p-4 transition-all ${
-                      isExpanded
-                        ? 'border-primary-500 bg-gradient-to-r from-primary-50 to-blue-50 shadow-lg'
-                        : 'border-gray-200 hover:border-primary-300 hover:shadow-md bg-gradient-to-br from-white to-gray-50'
-                    }`}
-                  >
-                    <button
-                      className="w-full flex items-center justify-between text-left"
-                      onClick={() => {
-                        setExpandedHomeworkSession(isExpanded ? null : dateKey)
-                      }}
-                    >
-                      <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
-                        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center font-bold flex-shrink-0 ${
-                          isTodayDate
-                            ? 'bg-primary-500 text-white'
-                            : 'bg-gray-200 text-gray-700'
-                        }`}>
-                          <span className="text-sm sm:text-base">{format(dateObj, 'dd')}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm sm:text-base font-bold truncate ${isTodayDate ? 'text-primary-600' : 'text-gray-900'}`}>
-                            {isTodayDate ? 'Hôm nay' : format(dateObj, 'EEEE, dd/MM/yyyy')}
-                          </p>
-                          <p className="text-xs sm:text-sm text-gray-600">{dayTasks.length} bài tập</p>
-                        </div>
-                      </div>
-                      <ChevronRight className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90 text-primary-600' : 'text-gray-400'}`} />
-                    </button>
-                    
-                    {isExpanded && dayTasks.length > 0 && (
-                      <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
-                        {sessionKeys.map((sessionKey) => {
-                          const sessionTasks = sessionGroups[sessionKey]
-                          const sessionInfo = getSessionInfo(sessionTasks)
-                          if (!sessionInfo) return null
-                          
-                          return (
-                            <div key={sessionKey} className="space-y-3">
-                              <div className="flex items-center space-x-3">
-                                <span className={`px-4 py-1.5 rounded-lg text-sm font-bold shadow-md ${
-                                  sessionInfo.subject === 'Toán' ? 'bg-blue-500 text-white' :
-                                  sessionInfo.subject === 'Hóa' ? 'bg-green-500 text-white' :
-                                  sessionInfo.subject === 'Lý' ? 'bg-purple-500 text-white' :
-                                  'bg-gray-500 text-white'
-                                }`}>
-                                  {sessionInfo.subject}
-                                </span>
-                                <span className="text-sm text-gray-600">
-                                  {sessionInfo.time}
-                                </span>
-                              </div>
-                              
-                              <div className="pl-4">
-                                <h4 className="text-sm font-bold text-gray-900 mb-3">Chi tiết bài tập</h4>
-                                <HomeworkDetailTable
-                                  items={homeworkDetailItems[sessionTasks[0]?.sessionId || ''] || []}
-                                  onUpload={(id, file) => handleFileUpload(id, file)}
-                                />
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )
-              })
+          <div className="flex items-center justify-between mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-gray-200">
+            <div className="flex items-center space-x-2">
+              <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
+              <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Bài tập theo buổi học</h2>
+            </div>
+            {homeworkScheduleOptions.length > 0 && (
+              <select
+                value={activeHomeworkScheduleId || ''}
+                onChange={(e) => setSelectedHomeworkScheduleId(e.target.value || null)}
+                className="px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              >
+                {homeworkScheduleOptions.map(({ id, schedule }) => (
+                  <option key={id} value={id}>
+                    {`${format(schedule.date, 'dd/MM/yyyy')} · ${schedule.time}${schedule.subject ? ` · ${schedule.subject}` : ''}`}
+                  </option>
+                ))}
+              </select>
             )}
           </div>
+
+          {homeworkScheduleOptions.length === 0 || !activeHomeworkScheduleId || !activeHomeworkSchedule ? (
+            <p className="text-sm text-gray-500 italic">Chưa có bài tập về nhà nào cho học sinh này.</p>
+          ) : (
+            <div className="mt-2 pt-1">
+              <HomeworkDetailTable
+                items={activeHomeworkItems}
+                onUpload={(id, file) => handleFileUpload(id, file)}
+              />
+            </div>
+          )}
         </div>
       </div>
     )
