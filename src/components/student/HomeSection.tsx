@@ -39,9 +39,6 @@ interface HomeSectionProps {
   totalCount: number
   scheduleChecklistMap: Record<string, ChecklistWithDate[]>
   homeworkDetailsMap: Record<string, HomeworkDetailItem[]>
-  uploadScheduleOptions: ScheduleItem[]
-  selectedUploadScheduleId: string | null
-  onUploadScheduleChange: (scheduleId: string) => void
   onUploadSuccess: () => void
   onJoinClass: (scheduleId: string) => void
   getScheduleStatus: (schedule: ScheduleItem) => 'ongoing' | 'upcoming' | 'completed'
@@ -79,9 +76,6 @@ export default function HomeSection({
   totalCount,
   scheduleChecklistMap,
   homeworkDetailsMap,
-  uploadScheduleOptions,
-  selectedUploadScheduleId,
-  onUploadScheduleChange,
   onUploadSuccess,
   onJoinClass,
   getScheduleStatus,

@@ -1,13 +1,11 @@
 import { ReactNode } from 'react'
 import {
   Award,
-  BookOpen,
   Calendar,
   ClipboardList,
   GraduationCap,
   Heart,
   MapPin,
-  MessageSquare,
   PenSquare,
   Phone,
   School,

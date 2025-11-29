@@ -354,8 +354,8 @@ export default function StudentDashboard() {
   const [showChecklistOverlay, setShowChecklistOverlay] = useState(false)
   const [selectedTutorSchedule, setSelectedTutorSchedule] = useState<string | null>(null) // ID của schedule được chọn để xem chi tiết tutor
   const [homeworks, setHomeworks] = useState<HomeworkApiItem[]>([])
-  const [isHomeworkLoading, setIsHomeworkLoading] = useState<boolean>(false)
-  const [homeworkError, setHomeworkError] = useState<string | null>(null)
+  const [_isHomeworkLoading, setIsHomeworkLoading] = useState<boolean>(false)
+  const [_homeworkError, setHomeworkError] = useState<string | null>(null)
   const [homeworkDetailItems, setHomeworkDetailItems] = useState<Record<string, HomeworkDetailItem[]>>({})
 
   useEffect(() => {
@@ -1438,10 +1438,7 @@ useEffect(() => {
               totalCount={totalCount}
               scheduleChecklistMap={todayScheduleChecklistMap}
               homeworkDetailsMap={homeworkDetailItems}
-              uploadScheduleOptions={uploadScheduleOptions}
-              selectedUploadScheduleId={selectedUploadScheduleId}
               getSubjectLabel={getSubjectLabel}
-              onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
               onUploadSuccess={() => setScheduleFetchTrigger((prev) => prev + 1)}
               onJoinClass={handleJoinClass}
               getScheduleStatus={getScheduleStatus}
@@ -1479,10 +1476,7 @@ useEffect(() => {
               totalCount={totalCount}
               scheduleChecklistMap={todayScheduleChecklistMap}
               homeworkDetailsMap={homeworkDetailItems}
-              uploadScheduleOptions={uploadScheduleOptions}
-              selectedUploadScheduleId={selectedUploadScheduleId}
               getSubjectLabel={getSubjectLabel}
-              onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
               onUploadSuccess={() => setScheduleFetchTrigger((prev) => prev + 1)}
               onJoinClass={handleJoinClass}
               getScheduleStatus={getScheduleStatus}
