@@ -62,7 +62,7 @@ export default function DetailTable({ items, onChange }: DetailTableProps) {
               <th className="px-4 py-2 font-semibold min-w-[250px]">Upload bài làm</th>
               <th className="px-4 py-2 font-semibold min-w-[250px]">Lời giải</th>
               <th className="px-4 py-2 font-semibold min-w-[150px]">Kết quả</th>
-              <th className="px-4 py-2 font-semibold min-w-[200px]">Nhận xét</th>
+              <th className="px-4 py-2 font-semibold min-w-[200px]">Nhiệm vụ</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 bg-white">
@@ -215,7 +215,7 @@ export default function DetailTable({ items, onChange }: DetailTableProps) {
                     value={detail.note}
                     onChange={(e) => onChange(detail.id, 'note', e.target.value)}
                     className="text-sm text-gray-700 w-full min-w-[180px] px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
-                    placeholder="Nhập nhận xét"
+                    placeholder="Nhập nhiệm vụ"
                   />
                 </td>
               </tr>

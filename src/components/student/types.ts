@@ -29,7 +29,14 @@ export interface DailyReport {
   }[]
 }
 
-export type ChecklistWithDate = ChecklistItem & { date: Date }
+export type ChecklistWithDate = ChecklistItem & {
+  date: Date
+  assignmentId: string
+  taskId?: string
+  scheduleId?: string
+  assignmentUrl?: string
+  solutionUrl?: string
+}
 
 export interface StudentHighlightCard {
   id: string

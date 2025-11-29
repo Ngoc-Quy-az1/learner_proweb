@@ -3,7 +3,6 @@ import {
   Award,
   BookOpen,
   Calendar,
-  Cake,
   ClipboardList,
   GraduationCap,
   Heart,
@@ -16,7 +15,6 @@ import {
   UserCircle,
 } from 'lucide-react'
 import InfoCard from './InfoCard'
-import StatCard from './StatCard'
 
 interface StudentBasics {
   id: string
@@ -64,11 +62,6 @@ interface StudentDetailExtras {
   parent2Number?: string
 }
 
-interface ChecklistStats {
-  completed: number
-  total: number
-}
-
 interface NextScheduleInfo {
   subject?: string
   dateLabel?: string
@@ -78,8 +71,6 @@ interface NextScheduleInfo {
 interface StudentInfoDetailsProps {
   student?: StudentBasics
   detail?: StudentDetailExtras
-  checklistStats?: ChecklistStats
-  upcomingCount?: number
   nextSchedule?: NextScheduleInfo | null
   onJoinNextSchedule?: () => void
 }
@@ -118,16 +109,11 @@ const Section = ({ title, icon, children }: { title: string; icon: ReactNode; ch
 export default function StudentInfoDetails({
   student,
   detail,
-  checklistStats,
-  upcomingCount,
   nextSchedule,
   onJoinNextSchedule,
 }: StudentInfoDetailsProps) {
   if (!student) return null
 
-  const completed = checklistStats?.completed ?? 0
-  const total = checklistStats?.total ?? 0
-  const checklistProgress = total > 0 ? `${completed}/${total}` : '0/0'
   const enrolledSubjects = student.subjects ?? []
   const favoriteSubjects = detail?.favoriteSubjects ?? student.favoriteSubjects ?? []
   const hobbies = detail?.hobbies ?? student.hobbies ?? []
@@ -171,45 +157,12 @@ export default function StudentInfoDetails({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <StatCard
-          icon={<ClipboardList className="w-4 h-4 text-amber-600" />}
-          label="Checklist"
-          value={checklistProgress}
-          helper="Nhiệm vụ đã xong"
-        />
-        <StatCard
-          icon={<Calendar className="w-4 h-4 text-blue-600" />}
-          label="Buổi sắp tới"
-          value={upcomingCount ?? 0}
-          helper="Theo lịch"
-        />
-        <StatCard
-          icon={<BookOpen className="w-4 h-4 text-emerald-600" />}
-          label="Môn học"
-          value={enrolledSubjects.length}
-          helper="Đang theo học"
-        />
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <InfoCard icon={<Cake className="w-4 h-4 text-primary-600" />} label="Tuổi" value={student.age ?? 'Chưa cập nhật'} />
-        <InfoCard
-          icon={<Calendar className="w-4 h-4 text-primary-600" />}
-          label="Ngày sinh"
-          value={student.dateOfBirth || 'Chưa cập nhật'}
-        />
         <InfoCard icon={<School className="w-4 h-4 text-primary-600" />} label="Trường học" value={displaySchool} />
         <InfoCard icon={<GraduationCap className="w-4 h-4 text-primary-600" />} label="Lớp học" value={displayGrade} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <InfoCard
-          icon={<UserCircle className="w-4 h-4 text-primary-600" />}
-          label="Phụ huynh"
-          value={student.parent || 'Chưa cập nhật'}
-          helper={displayParent1Name || displayParent2Name || undefined}
-        />
         <InfoCard
           icon={<Phone className="w-4 h-4 text-primary-600" />}
           label="Liên hệ"
@@ -217,11 +170,6 @@ export default function StudentInfoDetails({
           helper={student.preferredChannel || undefined}
         />
         <InfoCard icon={<MapPin className="w-4 h-4 text-primary-600" />} label="Địa chỉ" value={student.address || 'Chưa cập nhật'} />
-        <InfoCard
-          icon={<MessageSquare className="w-4 h-4 text-primary-600" />}
-          label="Kênh ưu tiên"
-          value={student.preferredChannel || 'Chưa cập nhật'}
-        />
       </div>
 
       {(displayParent1Name || displayParent2Name) && (

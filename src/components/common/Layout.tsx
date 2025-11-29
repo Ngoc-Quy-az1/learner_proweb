@@ -1,6 +1,7 @@
-import { cloneElement, isValidElement, ReactElement, useState } from 'react'
+import { cloneElement, isValidElement, ReactElement, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { apiCall } from '../../config/api'
 import { LogOut, Menu, User } from 'lucide-react'
 
 interface LayoutProps {
@@ -13,6 +14,34 @@ export default function Layout({ children, sidebar }: LayoutProps) {
   const navigate = useNavigate()
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [userProfile, setUserProfile] = useState<any>(null)
+
+  // Fetch user profile to get avatarUrl
+  useEffect(() => {
+    let isMounted = true
+    const fetchUserProfile = async () => {
+      if (!user?.id) {
+        if (isMounted) setUserProfile(null)
+        return
+      }
+      try {
+        const profile = await apiCall<any>(`/users/${user.id}`)
+        if (!isMounted) return
+        setUserProfile(profile)
+      } catch (error) {
+        console.error('Failed to fetch user profile:', error)
+        if (isMounted) setUserProfile(null)
+      }
+    }
+
+    fetchUserProfile()
+    return () => {
+      isMounted = false
+    }
+  }, [user?.id])
+
+  // Get avatar URL from user profile (priority: profile.avatarUrl > user.avatar > user.avatarUrl)
+  const avatarUrl = userProfile?.avatarUrl || user?.avatar || (user as any)?.avatarUrl
 
   const handleLogout = async () => {
     await logout()
@@ -89,8 +118,21 @@ export default function Layout({ children, sidebar }: LayoutProps) {
               
               <div className="flex items-center space-x-3">
                 <div className="hidden md:flex items-center space-x-2">
-                  <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center">
-                    <User className="w-6 h-6 text-white" />
+                  <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center overflow-hidden">
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt={user?.name || 'User'}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          // Hide image and show icon on error
+                          e.currentTarget.style.display = 'none'
+                        }}
+                      />
+                    ) : (
+                      <User className="w-6 h-6 text-white" />
+                    )}
                   </div>
                   <div className="text-base">
                     <div className="font-semibold text-gray-900 text-sm">{user?.name}</div>

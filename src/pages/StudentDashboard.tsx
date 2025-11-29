@@ -1444,8 +1444,6 @@ useEffect(() => {
               onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
               onUploadSuccess={() => setScheduleFetchTrigger((prev) => prev + 1)}
               onJoinClass={handleJoinClass}
-              onChecklistClick={() => setShowChecklistOverlay(true)}
-              onSubjectSelect={setSelectedSubject}
               getScheduleStatus={getScheduleStatus}
               assignments={assignments as TutorAssignmentApiItem[]}
               scheduleReviews={scheduleReviews}
@@ -1487,8 +1485,6 @@ useEffect(() => {
               onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
               onUploadSuccess={() => setScheduleFetchTrigger((prev) => prev + 1)}
               onJoinClass={handleJoinClass}
-              onChecklistClick={() => setShowChecklistOverlay(true)}
-              onSubjectSelect={setSelectedSubject}
               getScheduleStatus={getScheduleStatus}
               assignments={assignments as TutorAssignmentApiItem[]}
               scheduleReviews={scheduleReviews}

@@ -137,7 +137,7 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
           <button className="hover:bg-primary-700 rounded p-1 transition-colors">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <h2 className="text-lg font-bold">Lịch học</h2>
+          <h2 className="text-2xl md:text-3xl font-bold">Lịch học</h2>
           <button className="hover:bg-primary-700 rounded p-1 transition-colors">
             <Filter className="w-4 h-4" />
           </button>
@@ -157,7 +157,7 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
               >
                 <ChevronLeft className="w-4 h-4 text-gray-600" />
               </button>
-              <h3 className="text-sm font-semibold text-gray-900">
+              <h3 className="text-lg md:text-xl font-semibold text-gray-900">
                 {format(currentMonth, 'MMMM yyyy')}
               </h3>
               <button
@@ -171,7 +171,7 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
             {/* Day names header */}
             <div className="grid grid-cols-7 gap-1 mb-2">
               {dayNames.map((day) => (
-                <div key={day} className="text-center text-xs font-semibold text-gray-600 py-2">
+                <div key={day} className="text-center text-base md:text-lg font-semibold text-gray-600 py-2">
                   {day}
                 </div>
               ))}
@@ -200,7 +200,7 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
                     }`}
                   >
                     <div className="flex flex-col items-center justify-center h-full">
-                      <span className="text-base">{format(day, 'd')}</span>
+                      <span className="text-lg md:text-xl font-semibold">{format(day, 'd')}</span>
                       {hasEvents && isCurrentMonth && (
                         <div className={`absolute bottom-2 left-1/2 transform -translate-x-1/2 w-2 h-2 rounded-full ${
                           isSelected ? 'bg-white' : 'bg-primary-500'
@@ -218,7 +218,7 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
         <div className="w-full lg:w-1/2 overflow-y-auto min-h-[780px] mt-2 lg:mt-0 flex flex-col">
           {selectedDate ? (
             <div>
-              <h4 className="text-lg font-bold text-gray-900 mb-4">
+              <h4 className="text-lg font-bold text-gray-1200 mb-4">
                 Ngày {format(selectedDate, 'dd')} tháng {format(selectedDate, 'MM')}
               </h4>
               <div className="space-y-3">
@@ -279,16 +279,11 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
                             <div className="flex items-center gap-2">
                               <span className="text-4xl font-bold text-primary-600">{schedule.time}</span>
                             </div>
-                            {schedule.tutor && (
-                              <div className="text-sm text-gray-700">
-                                <span className="font-semibold">Học sinh:</span> {schedule.tutor}
-                              </div>
-                            )}
                           </div>
                           <div className="flex flex-col items-end gap-3">
-                            {schedule.note && (
-                              <div className="text-sm text-gray-700 bg-gray-50 rounded-lg px-4 py-2.5 border border-gray-200 max-w-2xl text-right">
-                                {schedule.note}
+                            {schedule.tutor && (
+                              <div className="text-2xl md:text-3xl font-bold text-gray-900 text-right">
+                                {schedule.tutor}
                               </div>
                             )}
                             {schedule.meetLink && onJoinClass && statusInfo.status !== 'completed' && (

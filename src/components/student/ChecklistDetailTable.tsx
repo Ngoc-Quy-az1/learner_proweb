@@ -11,6 +11,7 @@ export interface ChecklistDetailItem {
   solutionType: 'text' | 'file' | 'image'
   solutionText?: string
   solutionFileName?: string
+  solutionUrl?: string
   solutionPreview?: string
   uploadedFileName?: string
   assignmentFileName?: string
@@ -29,12 +30,14 @@ interface ChecklistDetailTableProps {
   items: ChecklistDetailItem[]
   onUpload: (id: string, file: File) => void
   onUploadSolution: (id: string, file: File) => void
+  canUploadSolution?: boolean
 }
 
 export default function ChecklistDetailTable({
   items,
   onUpload,
   onUploadSolution,
+  canUploadSolution = true,
 }: ChecklistDetailTableProps) {
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, string>>({})
   const [solutionUploads, setSolutionUploads] = useState<Record<string, string>>({})
@@ -132,7 +135,32 @@ export default function ChecklistDetailTable({
                     {item.solutionText && (
                       <p className="text-xs sm:text-sm text-gray-700 leading-snug">{item.solutionText}</p>
                     )}
-                    {item.solutionFileName && (
+                    {item.solutionUrl ? (
+                      <div className="flex items-center gap-1 sm:gap-2 text-primary-600">
+                        <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                        <a
+                          href={item.solutionUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-semibold hover:underline truncate max-w-[120px] sm:max-w-none"
+                          title={item.solutionUrl}
+                        >
+                          {item.solutionFileName || 'Xem lời giải'}
+                        </a>
+                        <Download className="w-3 h-3 sm:w-4 sm:h-4 cursor-pointer hover:text-primary-700 flex-shrink-0" 
+                          onClick={(e) => {
+                            e.preventDefault()
+                            const link = document.createElement('a')
+                            link.href = item.solutionUrl!
+                            link.download = item.solutionFileName || 'solution'
+                            link.target = '_blank'
+                            document.body.appendChild(link)
+                            link.click()
+                            document.body.removeChild(link)
+                          }}
+                        />
+                      </div>
+                    ) : item.solutionFileName && (
                       <div className="text-xs font-semibold text-gray-700 flex items-center gap-1 sm:gap-2">
                         <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                         <span className="truncate max-w-[120px] sm:max-w-none">{item.solutionFileName}</span>
@@ -145,16 +173,21 @@ export default function ChecklistDetailTable({
                         className="w-20 h-12 sm:w-24 sm:h-16 object-cover rounded-lg border"
                       />
                     )}
-                    <label className="inline-flex items-center gap-1 sm:gap-2 text-primary-600 cursor-pointer hover:text-primary-700 text-xs font-semibold">
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        onChange={(e) => handleSolutionChange(item.id, e.target.files?.[0])}
-                      />
-                      <Upload className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                      <span className="whitespace-nowrap">{solutionUploads[item.id] || item.solutionFileName ? 'Cập nhật lời giải' : 'Thêm lời giải'}</span>
-                    </label>
+                    {canUploadSolution && (
+                      <label className="inline-flex items-center gap-1 sm:gap-2 text-primary-600 cursor-pointer hover:text-primary-700 text-xs font-semibold">
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                          onChange={(e) => handleSolutionChange(item.id, e.target.files?.[0])}
+                        />
+                        <Upload className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                        <span className="whitespace-nowrap">{solutionUploads[item.id] || item.solutionFileName ? 'Cập nhật lời giải' : 'Thêm lời giải'}</span>
+                      </label>
+                    )}
+                    {!canUploadSolution && !item.solutionUrl && !item.solutionFileName && !item.solutionText && (
+                      <span className="text-xs text-gray-400 italic">Chưa có lời giải</span>
+                    )}
                   </td>
                   <td className="px-2 sm:px-3 py-2 whitespace-nowrap">{renderResultBadge(item.result)}</td>
                   <td className="px-2 sm:px-3 py-2 text-gray-500 min-w-[100px]">{item.qualityNote}</td>

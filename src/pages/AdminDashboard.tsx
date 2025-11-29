@@ -2298,15 +2298,14 @@ useEffect(() => {
     return (
       <div className="h-full overflow-hidden">
         <div className="flex flex-col gap-2 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">Quản lý tutor</h2>
-          <p className="text-sm text-gray-600">Theo dõi hồ sơ tutor và cập nhật nhanh CV, thông tin liên hệ</p>
+          <h2 className="text-4xl font-extrabold text-gray-900">Quản lý tutor</h2>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full">
           <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
             <div className="flex items-center justify-between gap-3 flex-wrap border-b border-gray-200 pb-4">
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Danh sách tutor</p>
+              <p className="text-sm font-bold text-gray-600 uppercase tracking-[0.3em]">Danh sách tutor</p>
                 <h3 className="text-lg font-semibold text-gray-900">{displayedTutors.length} tutor đang hiển thị</h3>
               </div>
               <div className="flex items-center bg-white border border-gray-200 rounded-2xl px-3 py-2 shadow-sm">
@@ -2369,7 +2368,7 @@ useEffect(() => {
             <div>
               <div className="flex items-center justify-between gap-3 flex-wrap mb-6 pb-4 border-b border-gray-200">
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Hồ sơ tutor</p>
+                <p className="text-sm font-bold text-gray-600 uppercase tracking-[0.3em]">Hồ sơ tutor</p>
                   <h3 className="text-xl font-semibold text-gray-900">{selectedTutor.name}</h3>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="px-3 py-0.5 text-xs font-semibold rounded-full bg-white border border-gray-200 text-gray-700">{selectedTutor.status}</span>
@@ -2681,8 +2680,9 @@ useEffect(() => {
   const renderScheduleManagementSection = () => (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
-        <h2 className="text-2xl font-bold text-gray-900">Quản lý lịch dạy</h2>
-        <p className="text-sm text-gray-600">Chọn ngày để xem lịch học và tạo mới buổi dạy với học sinh, tutor tương ứng</p>
+      <h2 className="text-4xl font-extrabold text-gray-900">
+  Quản lý lịch dạy
+</h2>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

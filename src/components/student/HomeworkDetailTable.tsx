@@ -12,6 +12,7 @@ export interface HomeworkDetailItem {
   solutionType?: 'text' | 'file' | 'image'
   solutionText?: string
   solutionFileName?: string
+  solutionUrl?: string
   solutionPreview?: string
   uploadedFileName?: string
   assignmentFileName?: string
@@ -141,7 +142,32 @@ export default function HomeworkDetailTable({
                       {item.solutionText && (
                         <p className="text-xs sm:text-sm text-gray-700 leading-snug">{item.solutionText}</p>
                       )}
-                      {item.solutionFileName && (
+                      {item.solutionUrl ? (
+                        <div className="flex items-center gap-1 sm:gap-2 text-primary-600">
+                          <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                          <a
+                            href={item.solutionUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-semibold hover:underline truncate max-w-[120px] sm:max-w-none"
+                            title={item.solutionUrl}
+                          >
+                            {item.solutionFileName || 'Xem lời giải'}
+                          </a>
+                          <Download className="w-3 h-3 sm:w-4 sm:h-4 cursor-pointer hover:text-primary-700 flex-shrink-0" 
+                            onClick={(e) => {
+                              e.preventDefault()
+                              const link = document.createElement('a')
+                              link.href = item.solutionUrl!
+                              link.download = item.solutionFileName || 'solution'
+                              link.target = '_blank'
+                              document.body.appendChild(link)
+                              link.click()
+                              document.body.removeChild(link)
+                            }}
+                          />
+                        </div>
+                      ) : item.solutionFileName && (
                         <div className="text-xs font-semibold text-gray-700 flex items-center gap-1 sm:gap-2">
                           <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                           <span className="truncate max-w-[120px] sm:max-w-none">{item.solutionFileName}</span>
@@ -154,7 +180,7 @@ export default function HomeworkDetailTable({
                           className="w-20 h-12 sm:w-24 sm:h-16 object-cover rounded-lg border"
                         />
                       )}
-                      {!item.solutionText && !item.solutionFileName && (
+                      {!item.solutionText && !item.solutionUrl && !item.solutionFileName && (
                         <span className="text-xs text-gray-400">Chưa có lời giải</span>
                       )}
                     </td>

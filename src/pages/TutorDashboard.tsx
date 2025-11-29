@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Layout } from '../components/common'
 import { TutorSidebar, ChecklistItem, MonthlyCalendar, ScheduleItem } from '../components/dashboard'
-import { Users, Calendar, Plus, Clock, UserCircle, Copy, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Upload, Search, Loader2, FileText, Download } from 'lucide-react'
+import { Users, Calendar, Plus, Clock, UserCircle, Copy, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Upload, Search, Loader2 } from 'lucide-react'
 import { format, isToday, differenceInYears } from 'date-fns'
 import { useAuth } from '../contexts/AuthContext'
 import { apiCall, API_BASE_URL } from '../config/api'
@@ -388,7 +388,6 @@ export default function TutorDashboard() {
   }, [searchParams, validSections, defaultSection, setSearchParams])
   const [selectedStudent, setSelectedStudent] = useState<string>('1')
   const [studentSearch, setStudentSearch] = useState('')
-  const [subjectFilter, setSubjectFilter] = useState<'all' | string>('all')
   const [tutorSchedules, setTutorSchedules] = useState<TutorSchedule[]>([])
   const [schedulesLoading, setSchedulesLoading] = useState(true)
   const [studentInfoMap, setStudentInfoMap] = useState<Record<string, StudentInfo>>({})
@@ -586,12 +585,9 @@ export default function TutorDashboard() {
 const [expandedHomeworkSections, setExpandedHomeworkSections] = useState<Record<string, boolean>>({})
 const [assignmentReviews, setAssignmentReviews] = useState<Record<string, AssignmentReviewState>>({})
 const [assignmentReviewsLoading, setAssignmentReviewsLoading] = useState(false)
-const [assignmentReviewSaving, setAssignmentReviewSaving] = useState<Record<string, boolean>>({})
-const [assignmentReviewDeleting, setAssignmentReviewDeleting] = useState<Record<string, boolean>>({})
+  const [assignmentReviewSaving, setAssignmentReviewSaving] = useState<Record<string, boolean>>({})
 
   const [isHomeChecklistExpanded, setIsHomeChecklistExpanded] = useState(false)
-  // Thu / mở checklist hôm nay trong tab Checklist
-  const [isChecklistTabChecklistExpanded, setIsChecklistTabChecklistExpanded] = useState(false)
   // Thu / mở báo cáo buổi học
   const [isHomeReportExpanded, setIsHomeReportExpanded] = useState(false)
   const [isChecklistReportExpanded, setIsChecklistReportExpanded] = useState(false)
@@ -847,7 +843,7 @@ const [assignmentReviewDeleting, setAssignmentReviewDeleting] = useState<Record<
         
         // Build fallback info from schedules and collect IDs to fetch
         const studentIds = new Set<string>()
-        const fallbackStudentInfoMap: Record<string, StudentInfo> = {}
+        const fallbackStudentInfoMapLocal: Record<string, StudentInfo> = {}
         response.results.forEach((schedule) => {
           const studentRef = schedule.studentId
           const studentId = resolveUserId(studentRef)
@@ -855,7 +851,7 @@ const [assignmentReviewDeleting, setAssignmentReviewDeleting] = useState<Record<
           studentIds.add(studentId)
           if (studentRef && typeof studentRef === 'object') {
             const studentRefData = studentRef as any
-            fallbackStudentInfoMap[studentId] = {
+            fallbackStudentInfoMapLocal[studentId] = {
               id: studentId,
               userId: resolveUserId(studentRefData.userId, studentId) || studentId,
               name: studentRefData.name || 'Chưa có tên',
@@ -882,7 +878,7 @@ const [assignmentReviewDeleting, setAssignmentReviewDeleting] = useState<Record<
         })
         
         const studentInfoResults = await Promise.all(studentInfoPromises)
-        const mergedStudentInfoMap: Record<string, StudentInfo> = { ...fallbackStudentInfoMap }
+        const mergedStudentInfoMap: Record<string, StudentInfo> = { ...fallbackStudentInfoMapLocal }
         studentInfoResults.forEach((result) => {
           if (result) {
             mergedStudentInfoMap[result.studentId] = {
@@ -916,7 +912,7 @@ const [assignmentReviewDeleting, setAssignmentReviewDeleting] = useState<Record<
             id: schedule.id,
             studentId: studentId,
             subject: subject,
-            student: studentInfo?.name || fallbackStudentInfoMap[studentId]?.name || 'Chưa có tên',
+            student: studentInfo?.name || fallbackStudentInfoMapLocal[studentId]?.name || 'Chưa có tên',
             time: timeString,
             date: startTime,
             meetLink: schedule.meetingURL,
@@ -1154,29 +1150,16 @@ const [assignmentReviewDeleting, setAssignmentReviewDeleting] = useState<Record<
 
   const [studentPage, setStudentPage] = useState(1)
   const studentsPerPage = 12
-  const subjectOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          students
-            .map((student) => student.subject)
-            .filter((subject): subject is string => Boolean(subject))
-        )
-      ).sort(),
-    [students]
-  )
   const filteredStudents = useMemo(() => {
     const normalizedQuery = studentSearch.trim().toLowerCase()
     return students.filter((student) => {
       const matchesName = student.name.toLowerCase().includes(normalizedQuery)
-      const matchesSubject =
-        subjectFilter === 'all' ? true : student.subject === subjectFilter
-      return matchesName && matchesSubject
+      return matchesName
     })
-  }, [students, studentSearch, subjectFilter])
+  }, [students, studentSearch])
   useEffect(() => {
     setStudentPage(1)
-  }, [studentSearch, subjectFilter])
+  }, [studentSearch])
   const studentPages = Math.max(1, Math.ceil(filteredStudents.length / studentsPerPage))
   const paginatedStudents = filteredStudents.slice(
     (studentPage - 1) * studentsPerPage,
@@ -1510,6 +1493,39 @@ const [assignmentReviewDeleting, setAssignmentReviewDeleting] = useState<Record<
       .sort((a, b) => a.start.getTime() - b.start.getTime())[0]
     return upcoming ? upcoming.schedule : null
   }, [tutorSchedules])
+
+  // Số học sinh & danh sách học sinh trong cùng ca sắp tới (cùng thời gian bắt đầu)
+  const { upcomingStudentCount, upcomingStudents } = useMemo(() => {
+    if (!upcomingSchedule) {
+      return { upcomingStudentCount: 0, upcomingStudents: [] as string[] }
+    }
+    const upcomingStart = getScheduleStartDateTime(upcomingSchedule).getTime()
+    const sameSlotSchedules = tutorSchedules.filter(
+      (schedule) => getScheduleStartDateTime(schedule).getTime() === upcomingStart
+    )
+    const names = sameSlotSchedules.map((schedule) => {
+      const info = studentInfoMap[schedule.studentId]
+      return info?.name || 'Chưa có tên'
+    })
+    return { upcomingStudentCount: sameSlotSchedules.length, upcomingStudents: names }
+  }, [upcomingSchedule, tutorSchedules, studentInfoMap])
+
+  // Đồng hồ thời gian thực cho tutor
+  const [currentTime, setCurrentTime] = useState<Date>(new Date())
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const hours = currentTime.getHours() % 12
+  const minutes = currentTime.getMinutes()
+  const seconds = currentTime.getSeconds()
+  const hourDeg = hours * 30 + minutes * 0.5
+  const minuteDeg = minutes * 6
+  const secondDeg = seconds * 6
+
+  const [showUpcomingStudentList, setShowUpcomingStudentList] = useState(false)
 
   const averageStudentProgress = useMemo(() => {
     if (students.length === 0) return 0
@@ -2131,7 +2147,7 @@ const quickViewData = useMemo(() => {
   // Hàm upload file cho homework
   const handleHomeworkFileUpload = async (
     homeworkId: string,
-    field: 'assignmentUrl' | 'tutorSolution',
+    field: 'assignmentUrl' | 'tutorSolution' | 'studentSolutionFile',
     files: FileList | null
   ) => {
     if (!files || files.length === 0) return
@@ -2232,7 +2248,7 @@ const quickViewData = useMemo(() => {
 
     const handleUploadFileWrapper = (
       homeworkId: string,
-      field: 'assignmentUrl' | 'tutorSolution',
+      field: 'assignmentUrl' | 'tutorSolution' | 'studentSolutionFile',
       files: FileList | null
     ) => {
       handleHomeworkFileUpload(homeworkId, field, files)
@@ -2462,14 +2478,18 @@ const quickViewData = useMemo(() => {
           description: assignment.description,
           subject: assignment.subject,
           status: assignment.status,
+          // Backend không cho phép field "id" trong từng task và yêu cầu estimatedTime >= 1,
+          // nên ta chuẩn hóa lại payload tại đây.
           tasks: draftTasks.map((task) => ({
-            id: task.id,
             name: task.name,
             description: task.description,
             status: task.status,
             note: task.note,
-            estimatedTime: task.estimatedTime,
-            actualTime: task.actualTime,
+            estimatedTime:
+              typeof task.estimatedTime === 'number' && !Number.isNaN(task.estimatedTime)
+                ? Math.max(task.estimatedTime, 1)
+                : 1,
+            actualTime: typeof task.actualTime === 'number' ? task.actualTime : undefined,
             assignmentUrl: task.assignmentUrl,
             answerURL: task.answerURL,
             solutionUrl: task.solutionUrl,
@@ -2907,7 +2927,7 @@ const quickViewData = useMemo(() => {
         {/* Main Layout - 2 Columns */}
         <div className="grid grid-cols-1 lg:grid-cols-[420px_minmax(0,1fr)] gap-5 lg:items-start">
           {/* Left Column - Profile & Resources */}
-          <div className="lg:col-auto lg:sticky lg:top-4 self-start">
+          <div className="lg:col-auto lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-2 scrollbar-thin scrollbar-thumb-primary-300 scrollbar-track-gray-100">
             {/* Profile Card */}
             <div className="card-no-transition h-full flex flex-col px-2 lg:px-4">
               <div className="flex flex-col items-center text-center pb-6 border-b border-gray-100">
@@ -2930,86 +2950,122 @@ const quickViewData = useMemo(() => {
               {/* Quick Stats */}
               <div className="flex-1 flex flex-col gap-4 py-6">
                 <div className="grid grid-cols-2 gap-4">
+                  {/* Tổng số học sinh đã dạy */}
                   <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-3xl p-6 text-center border border-blue-200 shadow-md min-h-[160px] flex flex-col justify-center">
-                    <Users className="w-10 h-10 text-blue-600 mx-auto mb-3" />
-                    <p className="text-sm text-gray-600 mb-3 uppercase tracking-[0.3em] font-semibold">Số học sinh đã dạy</p>
-                    <p className="text-5xl font-black text-gray-900">{students.length}</p>
-                </div>
+                    <Users className="w-12 h-12 text-blue-600 mx-auto mb-3" />
+                    <p className="text-base text-gray-600 mb-3 uppercase tracking-[0.35em] font-semibold">
+                      Học sinh đã dạy
+                    </p>
+                    <p className="text-6xl font-black text-gray-900">{students.length}</p>
+                  </div>
+                  {/* Số ca dạy hôm nay */}
                   <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-md min-h-[160px] flex flex-col justify-center text-center">
-                    <p className="text-sm text-gray-500 uppercase tracking-[0.3em] mb-3 font-semibold">Số ca dạy hôm nay</p>
-                    <p className="text-5xl font-black text-gray-900 mb-2">{todayTutorSchedules.length}</p>
-                    </div>
-              </div>
+                    <Calendar className="w-12 h-12 text-primary-500 mx-auto mb-3" />
+                    <p className="text-base text-gray-500 mb-3 uppercase tracking-[0.35em] font-semibold">
+                      Số ca dạy hôm nay
+                    </p>
+                    <p className="text-6xl font-black text-gray-900 mb-1">{todayTutorSchedules.length}</p>
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-1 gap-4">
-                  <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-md min-h-[200px] flex flex-col justify-center">
-                    <p className="text-sm text-gray-500 uppercase tracking-[0.3em] mb-4 font-semibold text-center">Khung giờ sắp tới dạy</p>
+                  {/* Đồng hồ analog riêng */}
+                  <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-md min-h-[220px] flex flex-col items-center justify-center">
+                    <p className="text-base text-gray-600 uppercase tracking-[0.35em] mb-4 font-semibold text-center">
+                      Đồng hồ hiện tại
+                    </p>
+                    <div className="flex flex-col items-center gap-4">
+                      {/* Digital time (nổi bật) */}
+                      <p className="text-4xl md:text-5xl font-black text-primary-700 tracking-[0.35em]">
+                        {format(currentTime, 'HH:mm:ss')}
+                      </p>
+                      {/* Analog clock */}
+                      <svg viewBox="0 0 100 100" className="w-36 h-36 text-primary-600 drop-shadow-sm bg-white rounded-full">
+                        {/* Outer ring - nền trắng */}
+                        <circle cx="50" cy="50" r="46" className="fill-white stroke-primary-200" strokeWidth="3" />
+                        {/* Markers */}
+                        {Array.from({ length: 12 }).map((_, i) => (
+                          <line
+                            key={i}
+                            x1="50"
+                            y1="8"
+                            x2="50"
+                            y2={i % 3 === 0 ? 16 : 14}
+                            stroke={i % 3 === 0 ? '#1d4ed8' : '#9ca3af'}
+                            strokeWidth={i % 3 === 0 ? 2.4 : 1.4}
+                            transform={`rotate(${i * 30} 50 50)`}
+                          />
+                        ))}
+                        {/* Hour hand */}
+                        <line
+                          x1="50"
+                          y1="50"
+                          x2="50"
+                          y2="30"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          transform={`rotate(${hourDeg} 50 50)`}
+                        />
+                        {/* Minute hand */}
+                        <line
+                          x1="50"
+                          y1="50"
+                          x2="50"
+                          y2="22"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          className="text-primary-500"
+                          transform={`rotate(${minuteDeg} 50 50)`}
+                        />
+                        {/* Second hand */}
+                        <line
+                          x1="50"
+                          y1="52"
+                          x2="50"
+                          y2="18"
+                          stroke="#ef4444"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          transform={`rotate(${secondDeg} 50 50)`}
+                        />
+                        {/* Center cap */}
+                        <circle cx="50" cy="50" r="3" className="fill-white stroke-primary-600" strokeWidth="1.5" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* Khung giờ sắp tới */}
+                  <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-md min-h-[220px] flex flex-col justify-center">
+                    <p className="text-base text-gray-600 uppercase tracking-[0.35em] mb-4 font-semibold text-center">
+                      Khung giờ sắp tới dạy
+                    </p>
                     {upcomingSchedule ? (
-                      <div className="space-y-3">
-                        <div className="flex justify-center mb-2">
-                          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-lg overflow-hidden">
-                            {tutorAvatar ? (
-                              <img
-                                src={tutorAvatar}
-                                alt={tutorName}
-                                className="w-full h-full object-cover"
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : (
-                              <UserCircle className="w-8 h-8 text-white" />
-                            )}
-                          </div>
-                        </div>
+                      <div className="flex flex-col items-center space-y-4">
                         <div className="text-center">
-                          <p className="text-2xl font-black text-gray-900 mb-1">{upcomingSchedule.time}</p>
-                          <p className="text-sm font-semibold text-gray-600 mb-1">{upcomingSchedule.subject || 'Chung'}</p>
-                          <p className="text-xs text-gray-500 mb-2">
-                            {format(new Date(upcomingSchedule.date), 'dd/MM/yyyy')}
-                          </p>
+                          <p className="text-4xl font-black text-gray-900 mb-1">{upcomingSchedule.time}</p>
+                          <button
+                            type="button"
+                            onClick={() => setShowUpcomingStudentList((prev) => !prev)}
+                            className="text-sm font-semibold text-primary-600 hover:text-primary-700 underline-offset-4 hover:underline"
+                          >
+                            {upcomingStudentCount} học sinh
+                          </button>
                         </div>
-                        {upcomingSchedule.student && (
-                          <div className="pt-2 border-t border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase tracking-[0.2em] mb-1">Học sinh</p>
-                            <p className="text-sm font-semibold text-gray-900">{upcomingSchedule.student}</p>
-                          </div>
-                        )}
-                        {(() => {
-                          const startTime = getScheduleStartDateTime(upcomingSchedule)
-                          const now = new Date()
-                          const diffMs = startTime.getTime() - now.getTime()
-                          const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-                          const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-                          let timeUntilText = ''
-                          if (diffHours > 24) {
-                            const days = Math.floor(diffHours / 24)
-                            timeUntilText = `Còn ${days} ngày`
-                          } else if (diffHours > 0) {
-                            timeUntilText = `Còn ${diffHours} giờ ${diffMinutes > 0 ? `${diffMinutes} phút` : ''}`
-                          } else if (diffMinutes > 0) {
-                            timeUntilText = `Còn ${diffMinutes} phút`
-                          } else {
-                            timeUntilText = 'Đang diễn ra'
-                          }
-                          return (
-                            <div className="pt-2 border-t border-gray-100">
-                              <p className="text-xs text-gray-500 uppercase tracking-[0.2em] mb-1">Thời gian</p>
-                              <p className={`text-sm font-semibold ${diffMinutes < 30 && diffHours === 0 ? 'text-orange-600' : 'text-primary-600'}`}>
-                                {timeUntilText}
-                              </p>
-                            </div>
-                          )
-                        })()}
-                        {upcomingSchedule.meetLink && (
-                          <div className="pt-2">
-                            <a
-                              href={upcomingSchedule.meetLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 hover:bg-primary-100 text-xs font-semibold transition-colors"
-                            >
-                              <Clock className="w-3.5 h-3.5" />
-                              Vào lớp
-                            </a>
+                        {showUpcomingStudentList && upcomingStudents.length > 0 && (
+                          <div className="w-full pt-3 border-t border-gray-100">
+                            <p className="text-xs uppercase tracking-[0.2em] text-gray-400 mb-2 text-center">
+                              Danh sách học sinh
+                            </p>
+                            <ul className="space-y-1 text-sm text-gray-800 text-left max-h-32 overflow-y-auto">
+                              {upcomingStudents.map((name, idx) => (
+                                <li key={`${name}-${idx}`} className="flex items-center gap-2">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
+                                  <span>{name}</span>
+                                </li>
+                              ))}
+                            </ul>
                           </div>
                         )}
                       </div>
@@ -3019,8 +3075,8 @@ const quickViewData = useMemo(() => {
                         <p className="text-xs text-gray-500">Chưa có buổi học nào sắp tới</p>
                       </div>
                     )}
+                  </div>
                 </div>
-              </div>
               </div>
             </div>
 
@@ -3082,37 +3138,49 @@ const quickViewData = useMemo(() => {
                       paddingRight: canScrollRight ? '3rem' : '0',
                     }}
                   >
-                    {scheduleSlots.map((slot) => {
+                    {scheduleSlots.map((slot, index) => {
                       const isSelected = selectedScheduleSlotId === slot.id
+                      const caLabel = `Ca ${index + 1}`
                       return (
-                    <button
-                      key={slot.id}
-                      onClick={() => {
-                        setSelectedScheduleSlotId(slot.id)
-                      }}
+                        <button
+                          key={slot.id}
+                          onClick={() => {
+                            setSelectedScheduleSlotId(slot.id)
+                          }}
                           className={`min-w-[220px] flex flex-col justify-between rounded-2xl px-6 py-5 text-left transition-all ${
                             isSelected
                               ? 'border-2 border-primary-500 bg-gradient-to-br from-primary-50 to-primary-100 shadow-xl text-primary-800 ring-2 ring-primary-200 ring-offset-2'
                               : 'border-2 border-gray-300 bg-white hover:border-primary-400 hover:bg-primary-50 hover:shadow-lg'
-                      }`}
+                          }`}
                           style={{
-                            boxShadow: isSelected ? '0 10px 25px -5px rgba(59, 130, 246, 0.3), 0 0 0 2px rgba(59, 130, 246, 0.1)' : undefined
+                            boxShadow: isSelected
+                              ? '0 10px 25px -5px rgba(59, 130, 246, 0.3), 0 0 0 2px rgba(59, 130, 246, 0.1)'
+                              : undefined,
                           }}
-                    >
-                          <div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <Clock className={`w-5 h-5 ${isSelected ? 'text-primary-600' : 'text-gray-400'}`} />
-                              <p className="text-lg font-extrabold">{slot.time}</p>
+                        >
+                          <div className="flex flex-col gap-3">
+                            <div className="flex items-center gap-3">
+                              <Clock className={`w-6 h-6 ${isSelected ? 'text-primary-600' : 'text-gray-400'}`} />
+                              <p
+                                className={`text-2xl font-black ${
+                                  isSelected ? 'text-primary-800' : 'text-gray-900'
+                                }`}
+                              >
+                                {caLabel}: {slot.time}
+                              </p>
                             </div>
-                            <p className="text-sm text-gray-600 truncate mb-3 font-medium">
-                        {slot.subjects.length > 0 ? slot.subjects.join(', ') : 'Khác'}
-                      </p>
+                            <div className="flex items-center gap-3 mt-1">
+                              <Users className={`w-5 h-5 ${isSelected ? 'text-primary-600' : 'text-gray-400'}`} />
+                              <p
+                                className={`text-xl font-extrabold ${
+                                  isSelected ? 'text-primary-800' : 'text-gray-800'
+                                }`}
+                              >
+                                {slot.schedules.length} học sinh
+                              </p>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Users className={`w-4 h-4 ${isSelected ? 'text-primary-600' : 'text-gray-400'}`} />
-                            <p className="text-base text-gray-700 font-bold">{slot.schedules.length} học sinh</p>
-                          </div>
-                    </button>
+                        </button>
                       )
                     })}
                   </div>
@@ -3368,7 +3436,7 @@ const quickViewData = useMemo(() => {
                                               <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">Bài học</th>
                                               <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">Nhiệm vụ</th>
                                               <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">Trạng thái</th>
-                                              <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">Ghi chú</th>
+                                              <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">Nhận xét</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100 bg-white">
@@ -3513,8 +3581,8 @@ const quickViewData = useMemo(() => {
                                               </th>
                                               <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[10%]">Lời giải</th>
                                               <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[8%]">Trạng thái</th>
+                                              <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[20%]">Nhiệm vụ</th>
                                               <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[20%]">Nhận xét</th>
-                                              <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[20%]">Ghi chú</th>
                                             </tr>
                                           </thead>
                                           <tbody className="divide-y divide-gray-100 bg-white">
@@ -3835,7 +3903,6 @@ const quickViewData = useMemo(() => {
                           loading={assignmentReviewsLoading}
                           assignmentReviews={assignmentReviews}
                           assignmentReviewSaving={assignmentReviewSaving}
-                          assignmentReviewDeleting={assignmentReviewDeleting}
                           getAssignmentKey={(assignment, idx) => getAssignmentIdentifier(assignment, idx)}
                           onChangeField={handleAssignmentReviewFieldChange}
                           onSave={handleSaveAssignmentReview}
@@ -4556,7 +4623,6 @@ const handleDeleteAssignmentReview = (assignmentKey: string) => {
 const renderChecklistSection = () => {
     const {
       selectedDateObj,
-      schedulesForDate,
       canEdit,
     } = checklistData
 
@@ -4564,35 +4630,6 @@ const renderChecklistSection = () => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const isPastDate = selectedDateObj.getTime() < today.getTime()
-
-    // Get active schedule from selected slot
-    const activeSchedule = selectedChecklistScheduleSlot && selectedChecklistScheduleSlot.schedules.length > 0
-      ? (() => {
-          const slotSchedules = selectedChecklistScheduleSlot.schedules
-          const activeStudentId =
-            (checklistSelectedStudentId &&
-              slotSchedules.some((schedule) => schedule.studentId === checklistSelectedStudentId)
-              ? checklistSelectedStudentId
-              : slotSchedules[0]?.studentId) || null
-          return slotSchedules.find((schedule) => schedule.studentId === activeStudentId) || slotSchedules[0]
-        })()
-      : null
-
-    const activeAssignments = activeSchedule
-      ? assignments
-          .filter((assignment) => {
-            const assignmentScheduleId = resolveAssignmentScheduleId(assignment.scheduleId)
-            const assignmentStudentId = resolveAssignmentStudentId(assignment.studentId)
-            if (assignmentScheduleId) {
-              return assignmentScheduleId === activeSchedule.id
-            }
-            return assignmentStudentId === activeSchedule.studentId
-          })
-          .sort((a, b) => {
-            const getTime = (value?: string) => (value ? new Date(value).getTime() : 0)
-            return getTime(b.updatedAt || b.createdAt) - getTime(a.updatedAt || a.createdAt)
-          })
-      : []
 
     return (
       <div className="h-full space-y-4">
@@ -4888,7 +4925,7 @@ const renderChecklistSection = () => {
 
                         const handleUploadFileWrapper = (
                           homeworkId: string,
-                          field: 'assignmentUrl' | 'tutorSolution',
+                          field: 'assignmentUrl' | 'tutorSolution' | 'studentSolutionFile',
                           files: FileList | null
                         ) => {
                           handleHomeworkFileUpload(homeworkId, field, files)
@@ -4924,7 +4961,6 @@ const renderChecklistSection = () => {
                           loading={assignmentReviewsLoading}
                           assignmentReviews={assignmentReviews}
                           assignmentReviewSaving={assignmentReviewSaving}
-                          assignmentReviewDeleting={assignmentReviewDeleting}
                           getAssignmentKey={(assignment, index) => getAssignmentIdentifier(assignment, index)}
                           onChangeField={handleAssignmentReviewFieldChange}
                           onSave={handleSaveAssignmentReview}
@@ -5096,7 +5132,7 @@ const renderChecklistSection = () => {
           />
         }
       >
-        <div className="h-full overflow-hidden">
+        <div className="h-full overflow-hidden lg:-ml-4">
           {renderContent()}
         </div>
 

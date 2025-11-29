@@ -466,26 +466,23 @@ export default function MaterialUploadSection({
         <p className="text-base text-gray-500 py-4">Hiện chưa có buổi học nào để gửi tài liệu thêm cho Tutor.</p>
       ) : (
         <div className="space-y-6">
-          <div>
-            <label className="text-base font-bold text-gray-900 mb-3 block">Chọn buổi học</label>
-            <select
-              value={selectedScheduleId ?? ''}
-              onChange={(e) => onScheduleChange(e.target.value)}
-              className="w-full border-2 border-gray-300 rounded-2xl px-5 py-4 text-base font-medium focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all bg-white hover:border-primary-400 cursor-pointer"
-            >
-              {scheduleOptions.map((schedule) => (
-                <option key={schedule.id} value={schedule.id}>
-                  {(schedule.subject && schedule.subject.length > 0 ? schedule.subject : 'Chung')}{' '}
-                  · {format(schedule.date, 'dd/MM/yyyy HH:mm')}
-                </option>
-              ))}
-            </select>
-            {selectedSchedule && (
-              <p className="text-sm text-gray-600 mt-2 font-medium">
-                Buổi học: <span className="font-semibold">{selectedSchedule.subject || 'Chung'}</span> · {format(selectedSchedule.date, 'EEEE, dd/MM/yyyy')}
-              </p>
-            )}
-          </div>
+          {scheduleOptions.length > 1 ? (
+            <div>
+              <label className="text-base font-bold text-gray-900 mb-3 block">Chọn buổi học</label>
+              <select
+                value={selectedScheduleId ?? ''}
+                onChange={(e) => onScheduleChange(e.target.value)}
+                className="w-full border-2 border-gray-300 rounded-2xl px-5 py-4 text-base font-medium focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all bg-white hover:border-primary-400 cursor-pointer"
+              >
+                {scheduleOptions.map((schedule) => (
+                  <option key={schedule.id} value={schedule.id}>
+                    {(schedule.subject && schedule.subject.length > 0 ? schedule.subject : 'Chung')}{' '}
+                    · {format(schedule.date, 'dd/MM/yyyy HH:mm')}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
 
           <div>
             <label className="text-base font-bold text-gray-900 mb-3 block">Ghi chú cho Tutor</label>

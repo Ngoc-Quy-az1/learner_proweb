@@ -141,5 +141,17 @@
   html.theme-dark .feature-card {
     @apply bg-slate-900 border-slate-800 text-gray-100;
   }
+
+  @keyframes subtle-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-2px); }
+    40% { transform: translateX(2px); }
+    60% { transform: translateX(-1px); }
+    80% { transform: translateX(1px); }
+  }
+
+  .shake-soft {
+    animation: subtle-shake 0.6s ease-in-out infinite;
+  }
 }
 

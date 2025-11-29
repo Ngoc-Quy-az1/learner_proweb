@@ -106,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         birthday: apiUser.birthday,
         isEmailVerified: apiUser.isEmailVerified,
         isActive: apiUser.isActive,
-        avatar: apiUser.avatar,
+        avatar: apiUser.avatarUrl || apiUser.avatar, // Use avatarUrl from API, fallback to avatar
       }
 
       // Store both user and tokens in localStorage with tabId prefix

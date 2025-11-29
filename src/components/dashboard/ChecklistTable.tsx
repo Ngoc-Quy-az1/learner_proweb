@@ -138,7 +138,7 @@ export default function ChecklistTable({
                     <th className="text-left py-3 px-4 font-bold text-gray-900">Bài học</th>
                     <th className="text-left py-3 px-4 font-bold text-gray-900">Nhiệm vụ</th>
                     <th className="text-center py-3 px-4 font-bold text-gray-900">Trạng thái</th>
-                    <th className="text-left py-3 px-4 font-bold text-gray-900">Ghi chú</th>
+                    <th className="text-left py-3 px-4 font-bold text-gray-900">Nhận xét</th>
                     {editable && (onEdit || onDelete) && (
                       <th className="text-center py-3 px-4 font-bold text-gray-900">Thao tác</th>
                     )}

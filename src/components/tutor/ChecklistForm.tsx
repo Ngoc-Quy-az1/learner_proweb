@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { ChevronUp, ChevronDown, Link as LinkIcon, Upload } from 'lucide-react'
 import { API_BASE_URL } from '../../config/api'
 import { getCookie } from '../../utils/cookies'
@@ -132,18 +132,61 @@ export default function ChecklistForm({
   const availableSubjects = getSubjectsByGrade(selectedStudentGrade)
   const studentSchedules = schedulesByStudent[formData.studentId] || []
 
+  // Hiển thị nhãn khung giờ: chỉ giờ + buổi (sáng / trưa / tối)
+  const getScheduleDisplayLabel = (label: string): string => {
+    // label gốc: "29/11 · 06:02 - 11:02 · Toán"
+    const parts = label.split('·')
+    const timePart = (parts[1] || label).trim() // "06:02 - 11:02"
+
+    const startTime = timePart.split('-')[0]?.trim() // "06:02"
+    const hourStr = startTime.split(':')[0]
+    const hour = parseInt(hourStr, 10)
+
+    let period = ''
+    if (!Number.isNaN(hour)) {
+      if (hour < 12) period = 'Sáng'
+      else if (hour < 18) period = 'Trưa'
+      else period = 'Tối'
+    }
+
+    return period ? `${timePart} (${period})` : timePart
+  }
+
+  // Chỉ hiển thị các khung giờ thuộc đúng ngày được chọn
+  const filteredSchedules = useMemo(() => {
+    if (!formData.dueDate) return studentSchedules
+
+    const selectedDate = new Date(formData.dueDate)
+    if (Number.isNaN(selectedDate.getTime())) return studentSchedules
+
+    const day = String(selectedDate.getDate()).padStart(2, '0')
+    const month = String(selectedDate.getMonth() + 1).padStart(2, '0')
+    const selectedLabelDate = `${day}/${month}` // Ví dụ: "29/11"
+
+    return studentSchedules.filter((schedule) => {
+      // Label đang được build ở TutorDashboard dạng "29/11 · 06:02 - 11:02 ..."
+      const labelDate = schedule.label.split('·')[0]?.trim()
+      return labelDate === selectedLabelDate
+    })
+  }, [formData.dueDate, studentSchedules])
+
   useEffect(() => {
-    if (studentSchedules.length === 0) {
+    if (filteredSchedules.length === 0) {
       if (formData.scheduleId) {
         onFormChange({ ...formData, scheduleId: '' })
       }
       return
     }
-    const hasCurrent = studentSchedules.some((schedule) => schedule.id === formData.scheduleId)
+    const hasCurrent = filteredSchedules.some((schedule) => schedule.id === formData.scheduleId)
     if (!hasCurrent) {
-      onFormChange({ ...formData, scheduleId: studentSchedules[0].id })
+      onFormChange({ ...formData, scheduleId: filteredSchedules[0].id })
     }
-  }, [formData.studentId, studentSchedules.map((s) => s.id).join(','), formData.scheduleId])
+  }, [
+    formData.studentId,
+    formData.dueDate,
+    filteredSchedules.map((s) => s.id).join(','),
+    formData.scheduleId,
+  ])
   const handleExerciseChange = (index: number, field: keyof TutorChecklistExercise, value: string | File | null) => {
     const nextExercises = [...formData.exercises]
     nextExercises[index] = { ...nextExercises[index], [field]: value }
@@ -299,12 +342,12 @@ export default function ChecklistForm({
               onChange={(e) => onFormChange({ ...formData, scheduleId: e.target.value })}
               className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all bg-white"
             >
-              {studentSchedules.length === 0 ? (
+              {filteredSchedules.length === 0 ? (
                 <option value="">Không có khung giờ khả dụng</option>
               ) : (
-                studentSchedules.map((schedule) => (
+                filteredSchedules.map((schedule, index) => (
                   <option key={schedule.id} value={schedule.id}>
-                    {schedule.label}
+                    {`Ca ${index + 1} | ${getScheduleDisplayLabel(schedule.label)}`}
                   </option>
                 ))
               )}
