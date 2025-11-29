@@ -87,12 +87,12 @@ export default function ContactModal({ isOpen, onClose }: ContactModalProps) {
                 Zalo liên hệ
               </p>
               <a 
-                href="https://zalo.me/0901234567" 
+                href="https://zalo.me/0815 836 636" 
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 hover:text-blue-600 transition-colors break-all"
               >
-                0901 234 567
+                0815 836 636
               </a>
             </div>
           </div>
