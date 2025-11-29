@@ -28,7 +28,7 @@ export interface Tokens {
 
 interface AuthContextType {
   user: User | null
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<User>
   logout: () => Promise<void>
   loading: boolean
 }
@@ -120,6 +120,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const expiresDate = new Date(tokens.access.expires)
       const daysUntilExpiry = Math.ceil((expiresDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
       setCookie('accessToken', tokens.access.token, daysUntilExpiry)
+      
+      // Return user for immediate use in navigation
+      return user
     } catch (error) {
       if (error instanceof Error) {
         throw error

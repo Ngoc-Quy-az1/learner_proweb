@@ -18,17 +18,20 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      await login(email, password)
+      const loggedInUser = await login(email, password)
+      
       // Redirect based on role
-      const user = JSON.parse(localStorage.getItem('user') || '{}')
-      if (user.role === 'student' || user.role === 'parent') {
+      if (loggedInUser.role === 'student' || loggedInUser.role === 'parent') {
         navigate('/student')
-      } else if (user.role === 'tutor') {
+      } else if (loggedInUser.role === 'tutor') {
         navigate('/tutor')
-      } else if (user.role === 'teacher') {
+      } else if (loggedInUser.role === 'teacher') {
         navigate('/teacher')
-      } else if (user.role === 'admin') {
+      } else if (loggedInUser.role === 'admin') {
         navigate('/admin')
+      } else {
+        // Fallback to home if role is unknown
+        navigate('/')
       }
     } catch (err) {
       setError('Tên đăng nhập hoặc mật khẩu không đúng')
