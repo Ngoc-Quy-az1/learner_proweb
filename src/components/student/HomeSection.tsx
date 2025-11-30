@@ -62,6 +62,7 @@ interface HomeSectionProps {
   uploadScheduleOptions?: ScheduleItem[]
   selectedUploadScheduleId?: string | null
   onUploadScheduleChange?: (scheduleId: string) => void
+  onUploadChecklistFile?: (taskId: string, file: File) => Promise<void>
 }
 
 type ScheduleSlotGroup = {
@@ -103,6 +104,7 @@ export default function HomeSection({
   uploadScheduleOptions = [],
   selectedUploadScheduleId = null,
   onUploadScheduleChange,
+  onUploadChecklistFile,
 }: HomeSectionProps) {
   const [selectedTutorSchedule, setSelectedTutorSchedule] = useState<string | null>(null)
   const [selectedScheduleSlotId, setSelectedScheduleSlotId] = useState<string | null>(null)
@@ -310,7 +312,8 @@ export default function HomeSection({
               solutionFileName: getFileNameFromUrl(task.solutionUrl),
               solutionUrl: task.solutionUrl,
               solutionPreview: undefined,
-              uploadedFileName: undefined,
+              uploadedFileName: task.answerURL ? getFileNameFromUrl(task.answerURL) : undefined,
+              uploadedFileUrl: task.answerURL || undefined,
               assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
             })
           })
@@ -1108,7 +1111,8 @@ export default function HomeSection({
                                                     solutionFileName: getFileNameFromUrl(task.solutionUrl),
                                                     solutionUrl: task.solutionUrl,
                                                     solutionPreview: undefined,
-                                                    uploadedFileName: undefined,
+                                                    uploadedFileName: task.answerURL ? getFileNameFromUrl(task.answerURL) : undefined,
+                                                    uploadedFileUrl: task.answerURL || undefined,
                                                     assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
                                                   })
                                                 })
@@ -1135,7 +1139,11 @@ export default function HomeSection({
                                               return (
                                 <ChecklistDetailTable
                                                   items={detailItemsForAssignment}
-                                  onUpload={() => {}}
+                                  onUpload={onUploadChecklistFile ? (taskId, file) => {
+                                    onUploadChecklistFile(taskId, file).catch((error) => {
+                                      console.error('Upload checklist file error:', error)
+                                    })
+                                  } : () => {}}
                                 />
                                               )
                                             })()}
@@ -1200,7 +1208,11 @@ export default function HomeSection({
                                               items={mapChecklistToDetailItems(activeSchedule.id).filter(
                                                 (detailItem) => detailItem.id === item.id
                                               )}
-                                              onUpload={() => {}}
+                                              onUpload={onUploadChecklistFile ? (taskId, file) => {
+                                                onUploadChecklistFile(taskId, file).catch((error) => {
+                                                  console.error('Upload checklist file error:', error)
+                                                })
+                                              } : () => {}}
                                             />
                         </div>
                                         )}

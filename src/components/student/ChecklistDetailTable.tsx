@@ -13,6 +13,7 @@ export interface ChecklistDetailItem {
   solutionUrl?: string
   solutionPreview?: string
   uploadedFileName?: string
+  uploadedFileUrl?: string
   assignmentFileName?: string
 }
 
@@ -118,16 +119,16 @@ export default function ChecklistDetailTable({
                     )}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {item.uploadedFileName || (item as any).uploadedFileUrl ? (
+                    {item.uploadedFileName || item.uploadedFileUrl ? (
                       <div className="flex items-center justify-center gap-2">
                         <a
-                          href={(item as any).uploadedFileUrl || '#'}
+                          href={item.uploadedFileUrl || '#'}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-block text-primary-600 hover:underline text-xs font-medium"
-                          title={(item as any).uploadedFileUrl || item.uploadedFileName}
+                          title={item.uploadedFileUrl || item.uploadedFileName}
                         >
-                          Bài làm học sinh
+                          {item.uploadedFileName || 'Bài làm học sinh'}
                         </a>
                         <label
                           className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 cursor-pointer hover:bg-primary-50"

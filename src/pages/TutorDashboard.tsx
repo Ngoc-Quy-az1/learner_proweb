@@ -510,6 +510,27 @@ export default function TutorDashboard() {
       name?: string
     }>
   }>({})
+  const deadlineInputRef = useRef<HTMLInputElement>(null)
+
+  // Ẩn native calendar picker indicator
+  useEffect(() => {
+    if (deadlineInputRef.current) {
+      const style = document.createElement('style')
+      style.textContent = `
+        #homework-deadline-input::-webkit-calendar-picker-indicator {
+          display: none !important;
+          -webkit-appearance: none !important;
+          opacity: 0 !important;
+          width: 0 !important;
+          height: 0 !important;
+        }
+      `
+      document.head.appendChild(style)
+      return () => {
+        document.head.removeChild(style)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -2926,7 +2947,7 @@ const quickViewData = useMemo(() => {
     return scheduleReports[scheduleId] || null
   }
 
-  const fetchScheduleReport = async (scheduleId: string) => {
+  const fetchScheduleReport = async (scheduleId: string, openAfterFetch: boolean = false) => {
     setReportError(null)
     setReportLoadingScheduleId(scheduleId)
     try {
@@ -2935,6 +2956,10 @@ const quickViewData = useMemo(() => {
         ...prev,
         [scheduleId]: data,
       }))
+      // Nếu có reportURL và cần mở sau khi fetch
+      if (openAfterFetch && data?.reportURL) {
+        window.open(data.reportURL, '_blank')
+      }
     } catch (error) {
       console.error('Failed to fetch schedule report:', error)
       const message = error instanceof Error ? error.message : 'Không thể tải báo cáo. Vui lòng thử lại.'
@@ -2960,7 +2985,7 @@ const quickViewData = useMemo(() => {
     }
   }
 
-  const handleDownloadReport = (scheduleId: string) => {
+  const handleDownloadReport = async (scheduleId: string) => {
     const report = getScheduleReport(scheduleId)
     if (!report?.reportURL) {
       setReportError('Chưa có báo cáo để xuất. Vui lòng tạo hoặc xem báo cáo trước.')
@@ -2968,16 +2993,30 @@ const quickViewData = useMemo(() => {
     }
 
     try {
+      // Fetch file từ URL
+      const response = await fetch(report.reportURL)
+      if (!response.ok) {
+        throw new Error('Không thể tải file báo cáo.')
+      }
+      
+      // Chuyển đổi response sang blob
+      const blob = await response.blob()
+      
+      // Tạo blob URL và tải về
+      const blobUrl = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
-      link.href = report.reportURL
-      link.target = '_blank'
+      link.href = blobUrl
       link.download = `Bao_cao_buoi_hoc_${scheduleId}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+      
+      // Giải phóng blob URL sau khi tải
+      window.URL.revokeObjectURL(blobUrl)
     } catch (error) {
       console.error('Failed to download report:', error)
-      setReportError('Không thể tải báo cáo. Vui lòng thử lại.')
+      const message = error instanceof Error ? error.message : 'Không thể tải báo cáo. Vui lòng thử lại.'
+      setReportError(message)
     }
   }
 
@@ -4050,7 +4089,16 @@ const quickViewData = useMemo(() => {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => fetchScheduleReport(activeSchedule.id)}
+                                  onClick={() => {
+                                    const report = scheduleReports[activeSchedule.id]
+                                    if (report?.reportURL) {
+                                      // Nếu đã có báo cáo, mở link trực tiếp
+                                      window.open(report.reportURL, '_blank')
+                                    } else {
+                                      // Nếu chưa có, fetch rồi tự động mở
+                                      fetchScheduleReport(activeSchedule.id, true)
+                                    }
+                                  }}
                                   disabled={reportLoadingScheduleId === activeSchedule.id}
                                   className="px-4 py-2 rounded-xl border border-primary-300 text-sm font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
@@ -4066,67 +4114,8 @@ const quickViewData = useMemo(() => {
                               </div>
                             )}
                           </div>
-                          {isHomeReportExpanded && (
-                            <>
-                              {reportError && (
-                                <p className="mt-1 text-sm text-red-600">{reportError}</p>
-                              )}
-                              {getScheduleReport(activeSchedule.id) && (
-                                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                  <div className="space-y-1">
-                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
-                                      Môn học
-                                    </p>
-                                    <p className="text-base font-semibold text-gray-900">
-                                      {getSubjectDisplayName(
-                                        getScheduleReport(activeSchedule.id)?.subjectCode,
-                                        getScheduleReport(activeSchedule.id)?.subjectCode
-                                      )}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
-                                      Thời gian
-                                    </p>
-                                    <p className="text-base font-semibold text-gray-900">
-                                      {getScheduleReport(activeSchedule.id)?.startTime
-                                        ? format(
-                                            new Date(getScheduleReport(activeSchedule.id)!.startTime),
-                                            'dd/MM/yyyy HH:mm'
-                                          )
-                                        : '—'}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
-                                      Gia sư
-                                    </p>
-                                    <p className="text-base font-semibold text-gray-900">
-                                      {getScheduleReport(activeSchedule.id)?.tutor || '—'}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
-                                      File báo cáo
-                                    </p>
-                                    {getScheduleReport(activeSchedule.id)?.reportURL ? (
-                                      <a
-                                        href={getScheduleReport(activeSchedule.id)!.reportURL}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center text-sm font-semibold text-primary-600 hover:underline"
-                                      >
-                                        Mở báo cáo
-                                      </a>
-                                    ) : (
-                                      <p className="text-sm text-gray-500">
-                                        Chưa có file báo cáo. Hãy tạo hoặc xem báo cáo mẫu trước.
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </>
+                          {isHomeReportExpanded && reportError && (
+                            <p className="mt-1 text-sm text-red-600">{reportError}</p>
                           )}
                         </div>
                       )}
@@ -4392,6 +4381,55 @@ const checklistData = useMemo(() => {
 ])
 
 // Schedule slots cho checklist section (dựa trên ngày được chọn)
+// Lấy danh sách ngày duy nhất từ các schedules
+const checklistUniqueDates = useMemo(() => {
+  const dates = new Set<string>()
+  tutorSchedules.forEach((schedule) => {
+    const dateKey = format(schedule.date, 'yyyy-MM-dd')
+    dates.add(dateKey)
+  })
+  return Array.from(dates).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+}, [tutorSchedules])
+
+// Tự động chọn ngày đầu tiên nếu chưa chọn
+useEffect(() => {
+  if (checklistUniqueDates.length > 0 && !checklistUniqueDates.includes(checklistSelectedDate)) {
+    setChecklistSelectedDate(checklistUniqueDates[0])
+  }
+}, [checklistUniqueDates, checklistSelectedDate])
+
+// Lọc các buổi học theo ngày đã chọn
+const checklistSchedulesForSelectedDate = useMemo(() => {
+  if (!checklistSelectedDate) return []
+  const selectedDateObj = new Date(checklistSelectedDate)
+  selectedDateObj.setHours(0, 0, 0, 0)
+  
+  return tutorSchedules.filter((schedule) => {
+    const scheduleDate = new Date(schedule.date)
+    scheduleDate.setHours(0, 0, 0, 0)
+    return scheduleDate.getTime() === selectedDateObj.getTime()
+  }).sort((a, b) => {
+    // Sort by time
+    const timeA = a.time || ''
+    const timeB = b.time || ''
+    return timeA.localeCompare(timeB)
+  })
+}, [tutorSchedules, checklistSelectedDate])
+
+// Tự động chọn buổi học đầu tiên trong ngày nếu chưa chọn hoặc buổi học hiện tại không thuộc ngày đã chọn
+useEffect(() => {
+  if (checklistSchedulesForSelectedDate.length > 0) {
+    const currentScheduleInDate = checklistSchedulesForSelectedDate.find(
+      (schedule) => schedule.id === checklistSelectedScheduleId
+    )
+    if (!currentScheduleInDate) {
+      const firstSchedule = checklistSchedulesForSelectedDate[0]
+      setChecklistSelectedScheduleId(firstSchedule.id)
+      setChecklistSelectedStudentId(firstSchedule.studentId)
+    }
+  }
+}, [checklistSchedulesForSelectedDate, checklistSelectedScheduleId])
+
 const checklistScheduleSlots = useMemo<ScheduleSlotGroup[]>(() => {
   const selectedDateObj = checklistSelectedDate ? new Date(checklistSelectedDate) : new Date()
   selectedDateObj.setHours(0, 0, 0, 0)
@@ -4731,90 +4769,92 @@ const renderChecklistSection = () => {
         )}
         {/* Main Content - Full Width */}
         <div className="space-y-4 max-h-[calc(100vh-2rem)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-primary-300 scrollbar-track-gray-100">
-            {/* Date Picker */}
+            {/* Chọn ngày và buổi học */}
             <div className="card-no-transition">
-              <div className="flex items-center justify-between mb-6 pb-4 border-b-2 border-gray-200">
-                <div className="flex items-center space-x-3">
+              <div className="mb-6 pb-4 border-b-2 border-gray-200">
+                <div className="flex items-center space-x-3 mb-4">
                   <Calendar className="w-6 h-6 text-primary-600" />
                   <div>
                     <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Lịch dạy</h2>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="date"
-                    value={checklistSelectedDate}
-                    onChange={(e) => {
-                      setChecklistSelectedDate(e.target.value)
-                      setSelectedChecklistScheduleSlotId(null)
-                      setChecklistSelectedScheduleId(null)
-                      setChecklistSelectedStudentId(null)
-                    }}
-                    className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
-                  />
-                </div>
+                {checklistUniqueDates.length > 0 && (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* Dropdown chọn ngày */}
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">Chọn ngày:</label>
+                      <select
+                        value={checklistSelectedDate || ''}
+                        onChange={(e) => {
+                          const newDate = e.target.value || ''
+                          setChecklistSelectedDate(newDate)
+                          // Reset buổi học khi đổi ngày
+                          setSelectedChecklistScheduleSlotId(null)
+                          setChecklistSelectedScheduleId(null)
+                          setChecklistSelectedStudentId(null)
+                        }}
+                        className="px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      >
+                        {checklistUniqueDates.map((dateKey) => (
+                          <option key={dateKey} value={dateKey}>
+                            {format(new Date(dateKey), 'dd/MM/yyyy')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {/* Dropdown chọn buổi học trong ngày */}
+                    {checklistSelectedDate && checklistSchedulesForSelectedDate.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">Chọn buổi học:</label>
+                        <select
+                          value={checklistSelectedScheduleId || ''}
+                          onChange={(e) => {
+                            const scheduleId = e.target.value || null
+                            setChecklistSelectedScheduleId(scheduleId)
+                            if (scheduleId) {
+                              const selectedSchedule = checklistSchedulesForSelectedDate.find(
+                                (s) => s.id === scheduleId
+                              )
+                              if (selectedSchedule) {
+                                setChecklistSelectedStudentId(selectedSchedule.studentId)
+                              }
+                            }
+                          }}
+                          className="px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        >
+                          {checklistSchedulesForSelectedDate.map((schedule) => {
+                            const subjectPart = schedule.subject && schedule.subject !== 'Chung' ? ` · ${schedule.subject}` : ''
+                            return (
+                              <option key={schedule.id} value={schedule.id}>
+                                {`${schedule.time}${subjectPart}${schedule.student ? ` · ${schedule.student}` : ''}`}
+                              </option>
+                            )
+                          })}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {checklistScheduleSlots.length === 0 ? (
+              {checklistSchedulesForSelectedDate.length === 0 ? (
                 <div className="text-center py-12">
                   <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-base font-semibold text-gray-600">
-                    Không có lịch dạy cho ngày {format(selectedDateObj, 'dd/MM/yyyy')}
+                    Không có lịch dạy cho ngày {checklistSelectedDate ? format(new Date(checklistSelectedDate), 'dd/MM/yyyy') : 'đã chọn'}
                   </p>
                 </div>
-              ) : (
-                <>
-                  {/* Time slots */}
-                  <div className="mb-6 relative">
-                    <div 
-                      className="flex items-stretch gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-primary-300 scrollbar-track-gray-100"
-                    >
-                      {checklistScheduleSlots.map((slot) => {
-                        const isSelected = selectedChecklistScheduleSlotId === slot.id
-                        return (
-                          <button
-                            key={slot.id}
-                            onClick={() => {
-                              setSelectedChecklistScheduleSlotId(slot.id)
-                            }}
-                            className={`min-w-[220px] flex flex-col justify-between rounded-2xl px-6 py-5 text-left transition-all ${
-                              isSelected
-                                ? 'border-2 border-primary-500 bg-gradient-to-br from-primary-50 to-primary-100 shadow-xl text-primary-800 ring-2 ring-primary-200 ring-offset-2'
-                                : 'border-2 border-gray-300 bg-white hover:border-primary-400 hover:bg-primary-50 hover:shadow-lg'
-                            }`}
-                            style={{
-                              boxShadow: isSelected ? '0 10px 25px -5px rgba(59, 130, 246, 0.3), 0 0 0 2px rgba(59, 130, 246, 0.1)' : undefined
-                            }}
-                          >
-                            <div>
-                              <div className="flex items-center gap-2 mb-2">
-                                <Clock className={`w-5 h-5 ${isSelected ? 'text-primary-600' : 'text-gray-400'}`} />
-                                <p className="text-lg font-extrabold">{slot.time}</p>
-                              </div>
-                              <p className="text-sm text-gray-600 truncate mb-3 font-medium">
-                                {slot.subjects.length > 0 ? slot.subjects.join(', ') : 'Khác'}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Users className={`w-4 h-4 ${isSelected ? 'text-primary-600' : 'text-gray-400'}`} />
-                              <p className="text-base text-gray-700 font-bold">{slot.schedules.length} học sinh</p>
-                            </div>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  {selectedChecklistScheduleSlot && selectedChecklistScheduleSlot.schedules.length > 0 && (() => {
-                    const slotSchedules = selectedChecklistScheduleSlot.schedules
-                    const activeStudentId =
-                      (checklistSelectedStudentId &&
-                        slotSchedules.some((schedule) => schedule.studentId === checklistSelectedStudentId)
-                        ? checklistSelectedStudentId
-                        : slotSchedules[0]?.studentId) || null
-                    const activeSchedule =
-                      slotSchedules.find((schedule) => schedule.studentId === activeStudentId) ||
-                      slotSchedules[0]
+              ) : !checklistSelectedScheduleId ? (
+                <div className="text-center py-12">
+                  <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <p className="text-base font-semibold text-gray-600">
+                    Vui lòng chọn buổi học
+                  </p>
+                </div>
+              ) : (() => {
+                    const activeSchedule = checklistSchedulesForSelectedDate.find(
+                      (schedule) => schedule.id === checklistSelectedScheduleId
+                    )
                     if (!activeSchedule) return null
                     const activeStudentInfo = studentInfoMap[activeSchedule.studentId]
                     const materials = activeSchedule.materials || []
@@ -4841,26 +4881,6 @@ const renderChecklistSection = () => {
                             </h3>
                                     </div>
                           <div className="flex flex-col sm:flex-row sm:items-end gap-3 w-full sm:w-auto">
-                            <div className="flex flex-col flex-1">
-                              <select
-                                value={activeStudentId || ''}
-                                onChange={(e) => {
-                                  const newStudentId = e.target.value || null
-                                  setChecklistSelectedStudentId(newStudentId)
-                                  const newSchedule = slotSchedules.find((schedule) => schedule.studentId === newStudentId) || slotSchedules[0]
-                                  if (newSchedule) {
-                                    setChecklistSelectedScheduleId(newSchedule.id)
-                                  }
-                                }}
-                                className="px-5 py-3 rounded-2xl border-2 border-primary-200 bg-white text-base font-semibold text-gray-900 focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all shadow-sm"
-                              >
-                                {slotSchedules.map((schedule) => (
-                                  <option key={schedule.id} value={schedule.studentId}>
-                                    {studentInfoMap[schedule.studentId]?.name || schedule.student}
-                                  </option>
-                                ))}
-                              </select>
-                                  </div>
                             {!isPastDate && activeSchedule.meetLink && (
                               <div className="flex flex-col sm:flex-row gap-3">
                                       <button
@@ -5106,7 +5126,16 @@ const renderChecklistSection = () => {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => fetchScheduleReport(activeSchedule.id)}
+                                  onClick={() => {
+                                    const report = scheduleReports[activeSchedule.id]
+                                    if (report?.reportURL) {
+                                      // Nếu đã có báo cáo, mở link trực tiếp
+                                      window.open(report.reportURL, '_blank')
+                                    } else {
+                                      // Nếu chưa có, fetch rồi tự động mở
+                                      fetchScheduleReport(activeSchedule.id, true)
+                                    }
+                                  }}
                                   disabled={reportLoadingScheduleId === activeSchedule.id}
                                   className="px-4 py-2 rounded-full text-sm font-semibold text-primary-600 bg-white border-2 border-primary-200 hover:bg-primary-50 disabled:opacity-60 disabled:cursor-not-allowed transition whitespace-nowrap shadow-sm"
                                 >
@@ -5124,29 +5153,6 @@ const renderChecklistSection = () => {
                               </div>
                             )}
                           </div>
-                          {isChecklistReportExpanded && scheduleReports[activeSchedule.id] && (
-                            <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
-                              <p className="text-sm font-semibold text-gray-700">
-                                <span className="text-gray-500">Môn học:</span> {scheduleReports[activeSchedule.id]!.subjectCode}
-                              </p>
-                              <p className="text-sm font-semibold text-gray-700">
-                                <span className="text-gray-500">Thời gian bắt đầu:</span> {format(new Date(scheduleReports[activeSchedule.id]!.startTime), 'dd/MM/yyyy HH:mm')}
-                              </p>
-                              <p className="text-sm font-semibold text-gray-700">
-                                <span className="text-gray-500">Giáo viên:</span> {scheduleReports[activeSchedule.id]!.tutor}
-                              </p>
-                              {scheduleReports[activeSchedule.id]!.reportURL && (
-                                <a
-                                  href={scheduleReports[activeSchedule.id]!.reportURL}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm font-semibold text-primary-600 hover:underline block"
-                                >
-                                  Xem báo cáo: {scheduleReports[activeSchedule.id]!.reportURL}
-                                </a>
-                              )}
-                            </div>
-                          )}
                           {isChecklistReportExpanded && reportError && (
                             <div className="mt-4 p-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700">
                               {reportError}
@@ -5156,9 +5162,8 @@ const renderChecklistSection = () => {
                       )}
                     </div>
                       )
-                  })()}
-                </>
-              )}
+                  })()
+              }
             </div>
         </div>
       </div>
@@ -5238,8 +5243,8 @@ const renderChecklistSection = () => {
 
         {/* Form thêm bài tập về nhà */}
         {showHomeworkForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
+            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" style={{ zIndex: 10000 }}>
               <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
                 <h3 className="text-xl font-bold text-gray-900">Thêm bài tập về nhà</h3>
                 <button
@@ -5285,6 +5290,8 @@ const renderChecklistSection = () => {
                   </label>
                   <div className="relative">
                     <input
+                      ref={deadlineInputRef}
+                      id="homework-deadline-input"
                       type="date"
                       value={homeworkFormData.deadline ? (() => {
                         // Chuyển đổi sang local date để tránh lỗi timezone
@@ -5317,11 +5324,53 @@ const renderChecklistSection = () => {
                           setHomeworkFormData(prev => ({ ...prev, deadline: today.toISOString() }))
                         }
                       }}
-                      className={`w-full border-2 rounded-xl px-5 py-3 pr-12 text-base focus:ring-2 focus:ring-primary-500 focus:border-primary-500 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden ${
+                      onClick={(e) => {
+                        // Đảm bảo click vào input sẽ mở date picker
+                        const target = e.target as HTMLInputElement
+                        if (target && 'showPicker' in target && typeof (target as any).showPicker === 'function') {
+                          try {
+                            (target as any).showPicker()
+                          } catch (err) {
+                            // Browser không hỗ trợ showPicker(), bỏ qua
+                            console.log('showPicker not supported')
+                          }
+                        }
+                      }}
+                      className={`w-full border-2 rounded-xl px-5 py-3 pr-12 text-base focus:ring-2 focus:ring-primary-500 focus:border-primary-500 cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none ${
                         homeworkFormErrors.deadline ? 'border-red-500' : 'border-gray-300'
                       }`}
+                      style={{ 
+                        WebkitAppearance: 'none',
+                        appearance: 'none'
+                      }}
                     />
-                    <Calendar className="absolute right-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        if (deadlineInputRef.current) {
+                          deadlineInputRef.current.focus()
+                          // Thử nhiều cách để mở date picker
+                          if ('showPicker' in deadlineInputRef.current && typeof (deadlineInputRef.current as any).showPicker === 'function') {
+                            try {
+                              (deadlineInputRef.current as any).showPicker()
+                            } catch (err) {
+                              // Fallback: trigger click event
+                              deadlineInputRef.current.click()
+                            }
+                          } else {
+                            // Fallback: trigger click event
+                            deadlineInputRef.current.click()
+                          }
+                        }
+                      }}
+                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-primary-500 cursor-pointer flex items-center justify-center bg-transparent border-none p-0"
+                      style={{ pointerEvents: 'auto' }}
+                      aria-label="Chọn ngày"
+                    >
+                      <Calendar className="w-5 h-5" />
+                    </button>
                   </div>
                   {homeworkFormErrors.deadline && (
                     <p className="text-xs text-red-500 mt-1">{homeworkFormErrors.deadline}</p>

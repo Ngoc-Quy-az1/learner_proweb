@@ -411,8 +411,10 @@ export default function StudentDashboard() {
   const [isSchedulesLoading, setIsSchedulesLoading] = useState<boolean>(false)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [scheduleFetchTrigger, setScheduleFetchTrigger] = useState(0)
+  const [assignmentFetchTrigger, setAssignmentFetchTrigger] = useState(0)
   const [selectedUploadScheduleId, setSelectedUploadScheduleId] = useState<string | null>(null)
   const [selectedChecklistScheduleId, setSelectedChecklistScheduleId] = useState<string | null>(null)
+  const [selectedChecklistDate, setSelectedChecklistDate] = useState<string | null>(null)
   const [selectedHomeworkScheduleId, setSelectedHomeworkScheduleId] = useState<string | null>(null)
   const [expandedChecklistItems, setExpandedChecklistItems] = useState<Record<string, boolean>>({})
 
@@ -595,7 +597,7 @@ export default function StudentDashboard() {
     return () => {
       isActive = false
     }
-  }, [user, scheduleInfoById])
+  }, [user, scheduleInfoById, assignmentFetchTrigger])
 
   useEffect(() => {
     let isActive = true
@@ -1079,6 +1081,129 @@ export default function StudentDashboard() {
     updateSubjectDetailItems(subject, (items) =>
       items.map((item) => (item.id === id ? { ...item, uploadedFileName: file.name } : item))
     )
+  }
+
+  const handleUploadChecklistFile = async (taskId: string, file: File) => {
+    try {
+      // Upload file lên server
+      const formData = new FormData()
+      formData.append('file', file)
+      const accessToken = getCookie('accessToken')
+      const response = await fetch(`${API_BASE_URL}/files/upload`, {
+        method: 'POST',
+        headers: {
+          ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+        },
+        body: formData,
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || 'Không thể tải file. Vui lòng thử lại.')
+      }
+      
+      const data = await response.json()
+      const fileUrl =
+        data?.url ||
+        data?.file?.url ||
+        (Array.isArray(data?.files) ? data.files[0]?.url : null)
+      
+      if (!fileUrl) {
+        throw new Error('Không nhận được link file sau khi tải lên.')
+      }
+
+      // Tìm assignment và task tương ứng
+      for (const assignment of assignments) {
+        const assignmentId = assignment._id || assignment.id
+        if (!assignmentId) continue
+        
+        const tasks = assignment.tasks || []
+        const taskIndex = tasks.findIndex((t, idx) => {
+          const tId = t.id || `${assignmentId}-task-${idx}`
+          return tId === taskId || t.id === taskId
+        })
+        
+        if (taskIndex >= 0 && tasks[taskIndex]) {
+          const task = tasks[taskIndex]
+          
+          // Map task status từ API sang frontend
+          const mapTaskStatusToApi = (status?: string): 'pending' | 'in-progress' | 'submitted' | 'undone' => {
+            if (!status || status === 'pending') return 'pending'
+            if (status === 'in-progress') return 'in-progress'
+            if (status === 'completed' || status === 'submitted') return 'submitted'
+            return 'pending'
+          }
+          
+          // Cập nhật assignment task với answerURL
+          const payload: any = {
+            tasks: tasks.map((t, idx) => {
+              const isTargetTask = (t.id === task.id || `${assignmentId}-task-${idx}` === taskId)
+              
+              if (isTargetTask) {
+                // Chỉ gửi các trường được phép
+                return {
+                  name: t.name || '',
+                  description: t.description || undefined,
+                  status: mapTaskStatusToApi(t.status),
+                  estimatedTime: typeof t.estimatedTime === 'number' && !Number.isNaN(t.estimatedTime)
+                    ? Math.max(t.estimatedTime, 1)
+                    : 1,
+                  actualTime: typeof t.actualTime === 'number' ? t.actualTime : undefined,
+                  assignmentUrl: t.assignmentUrl || undefined,
+                  answerURL: fileUrl, // Cập nhật answerURL
+                  solutionUrl: t.solutionUrl || undefined,
+                  note: (t as any).note || undefined,
+                }
+              } else {
+                // Giữ nguyên task khác
+                return {
+                  name: t.name || '',
+                  description: t.description || undefined,
+                  status: mapTaskStatusToApi(t.status),
+                  estimatedTime: typeof t.estimatedTime === 'number' && !Number.isNaN(t.estimatedTime)
+                    ? Math.max(t.estimatedTime, 1)
+                    : 1,
+                  actualTime: typeof t.actualTime === 'number' ? t.actualTime : undefined,
+                  assignmentUrl: t.assignmentUrl || undefined,
+                  answerURL: t.answerURL || undefined,
+                  solutionUrl: t.solutionUrl || undefined,
+                  note: (t as any).note || undefined,
+                }
+              }
+            })
+          }
+          
+          // Loại bỏ các trường undefined để payload gọn hơn
+          payload.tasks = payload.tasks.map((task: any) => {
+            const cleaned: any = {}
+            Object.keys(task).forEach(key => {
+              if (task[key] !== undefined && task[key] !== null && task[key] !== '') {
+                cleaned[key] = task[key]
+              }
+            })
+            return cleaned
+          })
+
+          await apiCall(`/assignments/${assignmentId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+          })
+
+          // Reload assignments để cập nhật dữ liệu
+          setAssignmentFetchTrigger((prev) => prev + 1)
+          
+          alert('Đã upload bài làm thành công!')
+          return
+        }
+      }
+      
+      throw new Error('Không tìm thấy task tương ứng.')
+    } catch (error) {
+      console.error('Failed to upload checklist file:', error)
+      const message = error instanceof Error ? error.message : 'Không thể tải file. Vui lòng thử lại.'
+      alert(message)
+      throw error
+    }
   }
 
   const handleJoinClass = (scheduleId: string) => {
@@ -1584,6 +1709,7 @@ useEffect(() => {
               uploadScheduleOptions={uploadScheduleOptions}
               selectedUploadScheduleId={selectedUploadScheduleId}
               onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
+              onUploadChecklistFile={handleUploadChecklistFile}
             />
           )
         case 'schedule':
@@ -2421,6 +2547,58 @@ useEffect(() => {
     }
   }
 
+  // Tính toán checklist schedule options ở top-level
+  const checklistScheduleOptions = useMemo(() => {
+    const checklistScheduleIds = Object.keys(checklistItemsBySchedule)
+    const checklistScheduleOptionsRaw = checklistScheduleIds
+      .map((id) => {
+        const schedule = schedules.find((s) => s.id === id)
+        return { id, schedule }
+      })
+      .filter((opt) => !!opt.schedule) as { id: string; schedule: ScheduleItem }[]
+    return checklistScheduleOptionsRaw.sort(
+      (a, b) => a.schedule.date.getTime() - b.schedule.date.getTime()
+    )
+  }, [checklistItemsBySchedule, schedules])
+
+  // Lấy danh sách ngày duy nhất từ các buổi học
+  const uniqueDates = useMemo(() => {
+    const dates = new Set<string>()
+    checklistScheduleOptions.forEach(({ schedule }) => {
+      const dateKey = format(schedule.date, 'yyyy-MM-dd')
+      dates.add(dateKey)
+    })
+    return Array.from(dates).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+  }, [checklistScheduleOptions])
+
+  // Tự động chọn ngày đầu tiên nếu chưa chọn
+  useEffect(() => {
+    if (uniqueDates.length > 0 && !selectedChecklistDate) {
+      setSelectedChecklistDate(uniqueDates[0])
+    }
+  }, [uniqueDates, selectedChecklistDate])
+
+  // Lọc các buổi học theo ngày đã chọn
+  const schedulesForSelectedDate = useMemo(() => {
+    if (!selectedChecklistDate) return []
+    return checklistScheduleOptions.filter(({ schedule }) => {
+      const dateKey = format(schedule.date, 'yyyy-MM-dd')
+      return dateKey === selectedChecklistDate
+    })
+  }, [checklistScheduleOptions, selectedChecklistDate])
+
+  // Tự động chọn buổi học đầu tiên trong ngày nếu chưa chọn hoặc buổi học hiện tại không thuộc ngày đã chọn
+  useEffect(() => {
+    if (schedulesForSelectedDate.length > 0) {
+      const currentScheduleInDate = schedulesForSelectedDate.find(
+        ({ id }) => id === selectedChecklistScheduleId
+      )
+      if (!currentScheduleInDate) {
+        setSelectedChecklistScheduleId(schedulesForSelectedDate[0].id)
+      }
+    }
+  }, [schedulesForSelectedDate, selectedChecklistScheduleId])
+
   // Old renderScheduleSection removed - now using ScheduleSection component
   const _renderScheduleSection_OLD = () => (
     <div className="h-full overflow-hidden">
@@ -2458,20 +2636,9 @@ useEffect(() => {
   )
 
   const renderChecklistSection = () => {
-    // Schedules có checklist (bao gồm cả quá khứ)
-    const checklistScheduleIds = Object.keys(checklistItemsBySchedule)
-    const checklistScheduleOptionsRaw = checklistScheduleIds
-      .map((id) => {
-        const schedule = schedules.find((s) => s.id === id)
-        return { id, schedule }
-      })
-      .filter((opt) => !!opt.schedule) as { id: string; schedule: ScheduleItem }[]
-    const checklistScheduleOptions = checklistScheduleOptionsRaw.sort(
-      (a, b) => a.schedule.date.getTime() - b.schedule.date.getTime()
-    )
-
     const activeChecklistSchedule =
       checklistScheduleOptions.find((opt) => opt.id === selectedChecklistScheduleId)?.schedule ||
+      schedulesForSelectedDate[0]?.schedule ||
       checklistScheduleOptions[checklistScheduleOptions.length - 1]?.schedule
 
     const activeChecklistScheduleId = activeChecklistSchedule?.id
@@ -2533,23 +2700,59 @@ useEffect(() => {
       <div className="h-full overflow-y-auto space-y-3 sm:space-y-4">
         {/* Chọn buổi học & chi tiết giống trang chủ */}
         <div className="card hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center justify-between mb-4 sm:mb-6">
-            <div className="flex items-center space-x-2">
+          <div className="mb-4 sm:mb-6">
+            <div className="flex items-center space-x-2 mb-4">
               <Target className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
               <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Checklist theo buổi học</h2>
             </div>
             {checklistScheduleOptions.length > 0 && (
-              <select
-                value={activeChecklistScheduleId || ''}
-                onChange={(e) => setSelectedChecklistScheduleId(e.target.value || null)}
-                className="px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              >
-                {checklistScheduleOptions.map(({ id, schedule }) => (
-                  <option key={id} value={id}>
-                    {`${format(schedule.date, 'dd/MM/yyyy')} · ${schedule.time}${schedule.subject ? ` · ${schedule.subject}` : ''}`}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Dropdown chọn ngày */}
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">Chọn ngày:</label>
+                  <select
+                    value={selectedChecklistDate || ''}
+                    onChange={(e) => {
+                      const newDate = e.target.value || null
+                      setSelectedChecklistDate(newDate)
+                      // Reset buổi học khi đổi ngày
+                      if (newDate) {
+                        const firstScheduleInNewDate = checklistScheduleOptions.find(({ schedule }) => {
+                          const dateKey = format(schedule.date, 'yyyy-MM-dd')
+                          return dateKey === newDate
+                        })
+                        if (firstScheduleInNewDate) {
+                          setSelectedChecklistScheduleId(firstScheduleInNewDate.id)
+                        }
+                      }
+                    }}
+                    className="px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    {uniqueDates.map((dateKey) => (
+                      <option key={dateKey} value={dateKey}>
+                        {format(new Date(dateKey), 'dd/MM/yyyy')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Dropdown chọn buổi học trong ngày */}
+                {selectedChecklistDate && schedulesForSelectedDate.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">Chọn buổi học:</label>
+                    <select
+                      value={activeChecklistScheduleId || ''}
+                      onChange={(e) => setSelectedChecklistScheduleId(e.target.value || null)}
+                      className="px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    >
+                      {schedulesForSelectedDate.map(({ id, schedule }) => (
+                        <option key={id} value={id}>
+                          {`${schedule.time}${schedule.subject ? ` · ${schedule.subject}` : ''}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -2716,7 +2919,8 @@ useEffect(() => {
                                         solutionFileName: getFileNameFromUrl(task.solutionUrl),
                                         solutionUrl: task.solutionUrl,
                                         solutionPreview: undefined,
-                                        uploadedFileName: undefined,
+                                        uploadedFileName: task.answerURL ? getFileNameFromUrl(task.answerURL) : undefined,
+                                        uploadedFileUrl: task.answerURL || undefined,
                                         assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
                                       })
                                     })
@@ -2743,7 +2947,11 @@ useEffect(() => {
                                   return (
                                     <ChecklistDetailTable
                                       items={detailItemsForAssignment}
-                                      onUpload={() => {}}
+                                      onUpload={handleUploadChecklistFile ? (taskId, file) => {
+                                        handleUploadChecklistFile(taskId, file).catch((error) => {
+                                          console.error('Upload checklist file error:', error)
+                                        })
+                                      } : () => {}}
                                       onStatusChange={(taskId, result) => {
                                         // Map ChecklistDetailItem['result'] to ChecklistItem['status']
                                         const status: ChecklistItem['status'] = 
@@ -2771,7 +2979,11 @@ useEffect(() => {
                     </p>
                     <ChecklistDetailTable
                       items={activeChecklistItemsDetail}
-                      onUpload={() => {}}
+                      onUpload={handleUploadChecklistFile ? (taskId, file) => {
+                        handleUploadChecklistFile(taskId, file).catch((error) => {
+                          console.error('Upload checklist file error:', error)
+                        })
+                      } : () => {}}
                       onStatusChange={(taskId, result: ChecklistDetailItem['result']) => {
                         // Map ChecklistDetailItem['result'] to ChecklistItem['status']
                         const status: ChecklistItem['status'] = 

@@ -15,7 +15,6 @@ interface StudentReportSectionProps {
   scheduleId: string
   report: ScheduleReport | null
   loading?: boolean
-  getSubjectDisplayName?: (code?: string, fallback?: string) => string
   onDownload?: (scheduleId: string) => void
   alwaysExpanded?: boolean
 }
@@ -25,24 +24,50 @@ const StudentReportSection: React.FC<StudentReportSectionProps> = ({
   scheduleId,
   report,
   loading = false,
-  getSubjectDisplayName = (code) => code || '—',
   onDownload,
   alwaysExpanded = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(alwaysExpanded || true)
 
-  const handleDownload = () => {
-    if (report?.reportURL && onDownload) {
+  const handleDownload = async () => {
+    if (!report?.reportURL) return
+
+    if (onDownload) {
       onDownload(scheduleId)
-    } else if (report?.reportURL) {
-      // Fallback: direct download
+      return
+    }
+
+    try {
+      // Fetch file từ URL
+      const response = await fetch(report.reportURL)
+      if (!response.ok) {
+        throw new Error('Không thể tải file báo cáo.')
+      }
+      
+      // Chuyển đổi response sang blob
+      const blob = await response.blob()
+      
+      // Tạo blob URL và tải về
+      const blobUrl = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
-      link.href = report.reportURL
-      link.target = '_blank'
-      link.rel = 'noopener noreferrer'
+      link.href = blobUrl
+      link.download = `Bao_cao_buoi_hoc_${scheduleId}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+      
+      // Giải phóng blob URL sau khi tải
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (error) {
+      console.error('Failed to download report:', error)
+      // Fallback: mở URL trực tiếp
+      window.open(report.reportURL, '_blank')
+    }
+  }
+
+  const handleOpenReport = () => {
+    if (report?.reportURL) {
+      window.open(report.reportURL, '_blank')
     }
   }
 
@@ -81,10 +106,10 @@ const StudentReportSection: React.FC<StudentReportSectionProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
-                    Môn học
+                    Gia sư
                   </p>
                   <p className="text-base font-semibold text-gray-900">
-                    {getSubjectDisplayName(report.subjectCode, report.subjectCode)}
+                    {report.tutor || '—'}
                   </p>
                 </div>
                 <div className="space-y-1">
@@ -97,43 +122,27 @@ const StudentReportSection: React.FC<StudentReportSectionProps> = ({
                       : '—'}
                   </p>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
-                    Gia sư
-                  </p>
-                  <p className="text-base font-semibold text-gray-900">
-                    {report.tutor || '—'}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
-                    File báo cáo
-                  </p>
-                  {report.reportURL ? (
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={report.reportURL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-sm font-semibold text-primary-600 hover:underline"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        Mở báo cáo
-                      </a>
-                      <button
-                        type="button"
-                        onClick={handleDownload}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition"
-                      >
-                        <Download className="w-4 h-4" />
-                        Tải xuống
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-500">Chưa có file báo cáo.</p>
-                  )}
-                </div>
               </div>
+              {report.reportURL && (
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleOpenReport}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Mở báo cáo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition"
+                  >
+                    <Download className="w-4 h-4" />
+                    Tải xuống
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </>
