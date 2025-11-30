@@ -418,6 +418,7 @@ export default function AdminDashboard() {
   const [studentAvatarUploading, setStudentAvatarUploading] = useState(false)
   const [studentList, setStudentList] = useState<StudentListItem[]>([])
   const [studentProfiles, setStudentProfiles] = useState<Record<string, StudentProfile>>({})
+  const [scheduleStudentList, setScheduleStudentList] = useState<Array<{ id: string; name: string }>>([])
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [studentSearchTerm, setStudentSearchTerm] = useState('')
   const [isStudentEditing, setIsStudentEditing] = useState(false)
@@ -452,6 +453,19 @@ export default function AdminDashboard() {
   const [tutorSubjectsInput, setTutorSubjectsInput] = useState<string>('')
   const [tutorSpecialtiesInput, setTutorSpecialtiesInput] = useState<string>('')
   const [tutorsLoading, setTutorsLoading] = useState(true)
+  const [tutorCurrentPage, setTutorCurrentPage] = useState(1)
+  const tutorsPerPage = 10
+  const [tutorPagination, setTutorPagination] = useState<{
+    page: number
+    limit: number
+    totalPages: number
+    totalResults: number
+  }>({
+    page: 1,
+    limit: 10,
+    totalPages: 1,
+    totalResults: 0,
+  })
   const [isSavingTutor, setIsSavingTutor] = useState(false)
   const [tutorAvatarUploading, setTutorAvatarUploading] = useState(false)
   const [tutorCvUploading, setTutorCvUploading] = useState(false)
@@ -731,16 +745,37 @@ useEffect(() => {
     }
   }, [studentCurrentPage, studentSearchTerm, studentsPerPage])
 
+  // Fetch student names for schedule creation using /users/names API
+  const fetchScheduleStudents = useCallback(async () => {
+    try {
+      const response = await apiCall<Array<{ id: string; name: string }>>('/users/names?role=student')
+      setScheduleStudentList(response || [])
+    } catch (error) {
+      console.error('Error fetching schedule students:', error)
+      setScheduleStudentList([])
+    }
+  }, [])
+
   const fetchTutors = useCallback(async () => {
     try {
       setTutorsLoading(true)
 
       const params = new URLSearchParams()
       params.append('role', 'tutor')
-      params.append('limit', '100')
+      params.append('page', tutorCurrentPage.toString())
+      params.append('limit', tutorsPerPage.toString())
+      
+      // Add search term if exists (server-side search)
+      if (tutorSearchTerm.trim()) {
+        params.append('name', tutorSearchTerm.trim())
+      }
 
       const usersResponse = await apiCall<{
         results: User[]
+        page: number
+        limit: number
+        totalPages: number
+        totalResults: number
       }>(`/users?${params.toString()}`)
 
       const tutors: TutorListItem[] = []
@@ -811,6 +846,15 @@ useEffect(() => {
 
       setTutorList(tutors)
       setTutorProfiles(profiles)
+      
+      // Update pagination state
+      setTutorPagination({
+        page: usersResponse.page || tutorCurrentPage,
+        limit: usersResponse.limit || tutorsPerPage,
+        totalPages: usersResponse.totalPages || 1,
+        totalResults: usersResponse.totalResults || 0,
+      })
+      
       setSelectedTutorId((prev) => {
         if (tutors.length === 0) {
           return ''
@@ -830,12 +874,18 @@ useEffect(() => {
       console.error('Error fetching tutors:', error)
       setTutorList([])
       setTutorProfiles({})
+      setTutorPagination({
+        page: 1,
+        limit: tutorsPerPage,
+        totalPages: 1,
+        totalResults: 0,
+      })
       setSelectedTutorId('')
       setNewSchedule((prev) => ({ ...prev, tutorId: '' }))
     } finally {
       setTutorsLoading(false)
     }
-  }, [])
+  }, [tutorCurrentPage, tutorSearchTerm, tutorsPerPage])
 
   const fetchSchedules = useCallback(async () => {
     try {
@@ -894,10 +944,14 @@ useEffect(() => {
   }, [fetchTutors])
 
   useEffect(() => {
-    if (studentList.length > 0 && !newSchedule.studentId) {
-      setNewSchedule((prev) => ({ ...prev, studentId: prev.studentId || studentList[0].id }))
+    fetchScheduleStudents()
+  }, [fetchScheduleStudents])
+
+  useEffect(() => {
+    if (scheduleStudentList.length > 0 && !newSchedule.studentId) {
+      setNewSchedule((prev) => ({ ...prev, studentId: prev.studentId || scheduleStudentList[0].id }))
     }
-  }, [studentList, newSchedule.studentId])
+  }, [scheduleStudentList, newSchedule.studentId])
 
   useEffect(() => {
     if (tutorList.length > 0 && !newSchedule.tutorId) {
@@ -1329,6 +1383,7 @@ useEffect(() => {
 
   const handleTutorSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setTutorSearchTerm(event.target.value)
+    setTutorCurrentPage(1) // Reset to first page when search changes
   }
 
 
@@ -1803,10 +1858,8 @@ useEffect(() => {
     ? studentEditData 
     : baseStudentProfile
 
-  const displayedTutors = useMemo(() => {
-    const keyword = tutorSearchTerm.trim().toLowerCase()
-    return tutorList.filter((tutor) => tutor.name.toLowerCase().includes(keyword))
-  }, [tutorList, tutorSearchTerm])
+  // Since search is server-side, display all tutors from current page
+  const displayedTutors = tutorList
 
   const selectedTutorListItem = tutorList.length > 0 ? tutorList.find((item) => item.id === selectedTutorId) ?? tutorList[0] : null
   const baseTutorProfile =
@@ -2402,7 +2455,9 @@ useEffect(() => {
             <div className="flex items-center justify-between gap-3 flex-wrap border-b border-gray-200 pb-4">
               <div>
               <p className="text-sm font-bold text-gray-600 uppercase tracking-[0.3em]">Danh sách tutor</p>
-                <h3 className="text-lg font-semibold text-gray-900">{displayedTutors.length} tutor đang hiển thị</h3>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Tổng quan · {tutorPagination.totalResults} tutor
+                </h3>
               </div>
               <div className="flex items-center bg-white border border-gray-200 rounded-2xl px-3 py-2 shadow-sm">
                 <Search className="w-4 h-4 text-gray-500 mr-2" />
@@ -2456,8 +2511,61 @@ useEffect(() => {
                   )
                 })}
               </div>
-              {displayedTutors.length === 0 && <div className="py-6 text-center text-sm text-gray-500">Không tìm thấy tutor phù hợp.</div>}
+              {!tutorsLoading && displayedTutors.length === 0 && <div className="py-6 text-center text-sm text-gray-500">Không tìm thấy tutor phù hợp.</div>}
             </div>
+            
+            {/* Pagination Controls */}
+            {!tutorsLoading && tutorPagination.totalPages > 1 && (
+              <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  Trang {tutorPagination.page} / {tutorPagination.totalPages} · Tổng {tutorPagination.totalResults} tutor
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setTutorCurrentPage((prev) => Math.max(1, prev - 1))}
+                    disabled={tutorPagination.page === 1 || tutorsLoading}
+                    className="px-3 py-1.5 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Trước
+                  </button>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, tutorPagination.totalPages) }, (_, i) => {
+                      let pageNum: number
+                      if (tutorPagination.totalPages <= 5) {
+                        pageNum = i + 1
+                      } else if (tutorPagination.page <= 3) {
+                        pageNum = i + 1
+                      } else if (tutorPagination.page >= tutorPagination.totalPages - 2) {
+                        pageNum = tutorPagination.totalPages - 4 + i
+                      } else {
+                        pageNum = tutorPagination.page - 2 + i
+                      }
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setTutorCurrentPage(pageNum)}
+                          disabled={tutorsLoading}
+                          className={`px-3 py-1.5 text-sm font-semibold rounded-lg transition-colors ${
+                            tutorPagination.page === pageNum
+                              ? 'bg-primary-600 text-white'
+                              : 'bg-white text-gray-700 border-2 border-gray-300 hover:bg-gray-50'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                          {pageNum}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <button
+                    onClick={() => setTutorCurrentPage((prev) => Math.min(tutorPagination.totalPages, prev + 1))}
+                    disabled={tutorPagination.page === tutorPagination.totalPages || tutorsLoading}
+                    className="px-3 py-1.5 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Sau
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
@@ -3385,7 +3493,8 @@ useEffect(() => {
                     value={newSchedule.studentId}
                     onChange={(e) => handleScheduleFieldChange('studentId', e.target.value)}
                   >
-                    {studentList.map((student) => (
+                    <option value="">-- Chọn học sinh --</option>
+                    {scheduleStudentList.map((student) => (
                       <option key={student.id} value={student.id}>
                         {student.name}
                       </option>

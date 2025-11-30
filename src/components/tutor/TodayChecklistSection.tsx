@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Upload, Loader2, ChevronDown, ChevronUp, Layers, Clock, Folder, Lightbulb, Target, MessageCircle, PenTool } from 'lucide-react'
+import { Plus, Upload, Loader2, ChevronDown, ChevronUp, Layers, Clock, Folder, Lightbulb, PenTool } from 'lucide-react'
 import type { AssignmentApiItem } from '../../pages/TutorDashboard'
 
 type TodayAssignmentStatus = 'pending' | 'in-progress' | 'completed'

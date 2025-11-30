@@ -104,13 +104,13 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
 
   // Track original values to detect changes
   const originalValuesRef = useRef<Record<string, Partial<HomeworkItem>>>({})
-  const savedItemsRef = useRef<Set<string>>(new Set())
 
   // Initialize original values when items first appear (chỉ lưu lần đầu, không overwrite khi user thay đổi)
   useEffect(() => {
     homeworkItems.forEach((item) => {
       const key = item.id
-      // Chỉ lưu original values nếu chưa có, hoặc nếu item đã được saved (để reset tracking sau khi save)
+      // Chỉ lưu original values nếu chưa có (lần đầu tiên thấy item này)
+      // Sau khi save, original values đã được cập nhật trong handleSave, nên không overwrite ở đây
       if (!originalValuesRef.current[key]) {
         // First time seeing this item, save original values
         originalValuesRef.current[key] = {
@@ -123,32 +123,14 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
           result: item.result,
           note: item.note,
         }
-        savedItemsRef.current.delete(key) // Reset saved flag if item reloaded
-      } else if (savedItemsRef.current.has(key)) {
-        // Item đã được saved, reset original values và clear saved flag
-        originalValuesRef.current[key] = {
-          task: item.task,
-          deadline: item.deadline,
-          assignmentUrl: item.assignmentUrl,
-          studentSolutionFile: item.studentSolutionFile,
-          tutorSolution: item.tutorSolution,
-          difficulty: item.difficulty,
-          result: item.result,
-          note: item.note,
-        }
-        savedItemsRef.current.delete(key)
       }
-      // Nếu đã có original values và chưa saved, không overwrite (để giữ original values)
+      // Nếu đã có original values, không overwrite (để giữ original values cho việc detect changes)
+      // Sau khi save thành công, original values sẽ được cập nhật trong handleSave
     })
   }, [homeworkItems.map((item) => item.id).join(',')])
 
   // Helper to check if an item has changes
   const hasChanges = (homework: HomeworkItem): boolean => {
-    // Nếu đã được saved, không hiển thị nút Lưu
-    if (savedItemsRef.current.has(homework.id)) {
-      return false
-    }
-    
     const original = originalValuesRef.current[homework.id]
     // Nếu chưa có original values, không hiển thị nút Lưu (item mới sẽ có original values sau khi mount)
     if (!original) {
@@ -172,11 +154,7 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
 
   // Handle save and reset tracking
   const handleSave = async (homeworkId: string) => {
-    onSaveHomework(subjectKey, homeworkId)
-    // Mark as saved - will reset when API updates homeworkMap
-    savedItemsRef.current.add(homeworkId)
-    
-    // Update original values to current values
+    // Update original values to current values TRƯỚC khi save
     const current = homeworkItems.find((item) => item.id === homeworkId)
     if (current) {
       originalValuesRef.current[homeworkId] = {
@@ -190,6 +168,9 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
         note: current.note,
       }
     }
+    
+    // Gọi API save (sau khi cập nhật original values, nếu user thay đổi tiếp thì hasChanges sẽ so sánh với original mới)
+    await onSaveHomework(subjectKey, homeworkId)
   }
 
   const handleToggle = () => onToggleSection(sectionKey, !isExpanded)

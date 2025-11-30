@@ -1812,6 +1812,9 @@ const quickViewData = useMemo(() => {
       })
 
       console.log('Homework updated successfully:', homeworkItem.homeworkId)
+      
+      // Reload homework data sau khi save thành công
+      setAssignmentFetchTrigger((prev) => prev + 1)
     } catch (error) {
       console.error('Failed to update homework:', error)
       const message = error instanceof Error ? error.message : 'Không thể cập nhật bài tập về nhà. Vui lòng thử lại.'

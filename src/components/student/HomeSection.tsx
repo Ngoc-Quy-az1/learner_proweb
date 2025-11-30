@@ -114,6 +114,7 @@ export default function HomeSection({
   const [evaluationExpandedState, setEvaluationExpandedState] = useState<Record<string, boolean>>({})
   const [isChecklistCollapsed, setIsChecklistCollapsed] = useState(false)
   const [expandedChecklistItems, setExpandedChecklistItems] = useState<Record<string, boolean>>({})
+  const [isHomeworkCollapsed, setIsHomeworkCollapsed] = useState(false)
   const checklistSectionRef = useRef<HTMLDivElement>(null)
   const rightColumnRef = useRef<HTMLDivElement>(null)
 
@@ -450,10 +451,10 @@ export default function HomeSection({
   return (
     <div className="h-full space-y-4">
       {/* Main Layout - 2 Columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-[420px_minmax(0,1fr)] gap-5 lg:items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[550px_minmax(0,1fr)] gap-5 lg:items-start">
         {/* Left Column - Profile & Stats */}
         <div className="lg:col-auto">
-          <div className="card-no-transition h-full flex flex-col px-2 lg:px-4">
+          <div className="card-no-transition h-full flex flex-col px-2 lg:pl-12 lg:pr-4">
             <div className="flex flex-col items-center text-center pb-6 border-b border-gray-100">
               <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center mb-4 shadow-xl overflow-hidden">
                 {studentAvatarUrl ? (
@@ -473,7 +474,7 @@ export default function HomeSection({
 
             <div className="flex-1 flex flex-col gap-4 py-6">
               {/* Quick Actions (đưa lên trên Tiến độ hôm nay) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 justify-items-center">
                 <button
                   onClick={() => {
                     if (canJoinClass && nearestSchedule?.meetLink) {
@@ -511,8 +512,31 @@ export default function HomeSection({
                     if (scheduleSlots.length > 0 && !selectedScheduleSlotId) {
                       setSelectedScheduleSlotId(scheduleSlots[0].id)
                     }
+                    
                     // Mở phần checklist (đảm bảo không bị collapsed)
                     setIsChecklistCollapsed(false)
+                    
+                    // Mở rộng TẤT CẢ các checklist items
+                    setTimeout(() => {
+                      const allKeys: Record<string, boolean> = {}
+                      
+                      // Lấy tất cả assignment keys từ assignments array
+                      assignments.forEach((assignment) => {
+                        const assignmentKey = assignment.id || (assignment as any)._id || `assignment-${assignment.subject}`
+                        allKeys[assignmentKey] = true
+                      })
+                      
+                      // Lấy tất cả checklist item keys từ scheduleChecklistMap
+                      Object.values(scheduleChecklistMap).forEach((checklistItems) => {
+                        checklistItems.forEach((item) => {
+                          allKeys[item.id] = true
+                        })
+                      })
+                      
+                      // Set tất cả items thành expanded
+                      setExpandedChecklistItems(allKeys)
+                    }, 100)
+                    
                     // Scroll đến phần checklist trong container bên phải
                     setTimeout(() => {
                       if (checklistSectionRef.current && rightColumnRef.current) {
@@ -531,7 +555,7 @@ export default function HomeSection({
                           behavior: 'smooth'
                         })
                       }
-                    }, 200)
+                    }, 300)
                   }}
                   className={`card border-2 border-gray-200 hover:border-primary-400 hover:shadow-xl transition-all cursor-pointer group text-left ${
                     hasOngoingSchedule ? 'shake-soft' : ''
@@ -903,16 +927,16 @@ export default function HomeSection({
                       {/* Checklist hôm nay */}
                       <div ref={checklistSectionRef} className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm">
                         <div className="flex items-center justify-between mb-4">
-                          <h4 className="text-2xl font-bold text-gray-900">Checklist hôm nay</h4>
                           <button
                             type="button"
                             onClick={() => setIsChecklistCollapsed((prev) => !prev)}
-                            className="inline-flex items-center gap-1 text-sm font-semibold text-primary-600 hover:text-primary-700"
+                            className="flex items-center gap-2 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
                           >
+                            <h4>Checklist hôm nay</h4>
                             {isChecklistCollapsed ? (
-                              <ChevronDown className="w-4 h-4" />
+                              <ChevronDown className="w-5 h-5" />
                             ) : (
-                              <ChevronUp className="w-4 h-4" />
+                              <ChevronUp className="w-5 h-5" />
                             )}
                           </button>
                         </div>
@@ -1109,7 +1133,6 @@ export default function HomeSection({
                                 <ChecklistDetailTable
                                                   items={detailItemsForAssignment}
                                   onUpload={() => {}}
-                                  onUploadSolution={() => {}}
                                 />
                                               )
                                             })()}
@@ -1175,7 +1198,6 @@ export default function HomeSection({
                                                 (detailItem) => detailItem.id === item.id
                                               )}
                                               onUpload={() => {}}
-                                              onUploadSolution={() => {}}
                                             />
                         </div>
                                         )}
@@ -1191,8 +1213,21 @@ export default function HomeSection({
 
                       {/* Bài tập hôm nay - Sau checklist */}
                       <div className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm">
-                        <h4 className="text-2xl font-bold text-gray-900 mb-4">Bài tập hôm nay</h4>
-                        {(() => {
+                        <div className="flex items-center justify-between mb-4">
+                          <button
+                            type="button"
+                            onClick={() => setIsHomeworkCollapsed((prev) => !prev)}
+                            className="flex items-center gap-2 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
+                          >
+                            <h4>Bài tập hôm nay</h4>
+                            {isHomeworkCollapsed ? (
+                              <ChevronDown className="w-5 h-5" />
+                            ) : (
+                              <ChevronUp className="w-5 h-5" />
+                            )}
+                          </button>
+                        </div>
+                        {!isHomeworkCollapsed && (() => {
                           // Lấy tất cả homework của hôm nay từ tất cả schedules
                           const allTodayHomework: HomeworkDetailItem[] = []
                           Object.keys(homeworkDetailsMap).forEach((scheduleId) => {

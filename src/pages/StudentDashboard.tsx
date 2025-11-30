@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Layout } from '../components/common'
 import { Sidebar, ScheduleItem, MonthlyCalendar, ChecklistItem, TaskItem } from '../components/dashboard'
-import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, FileText, AlertTriangle, Star, Eye, Download, ExternalLink, Folder, Lightbulb, Upload, Loader2, Layers, PenTool } from 'lucide-react'
+import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, FileText, AlertTriangle, Star, Eye, Download, ExternalLink, Folder, Lightbulb, Upload, Layers, PenTool } from 'lucide-react'
 import { format, isToday } from 'date-fns'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { apiCall, API_BASE_URL } from '../config/api'
 import { getCookie } from '../utils/cookies'
 import { useAuth } from '../contexts/AuthContext'
-import { ChecklistDetailTable, HomeworkDetailTable, MaterialUploadSection, HomeSection, ScheduleSection, type ChecklistDetailItem, type HomeworkDetailItem } from '../components/student'
+import { ChecklistDetailTable, MaterialUploadSection, HomeSection, ScheduleSection, type ChecklistDetailItem, type HomeworkDetailItem } from '../components/student'
 import StudentSubjectReviewSection from '../components/student/StudentSubjectReviewSection'
 import StudentSessionEvaluationSection from '../components/student/StudentSessionEvaluationSection'
 import StudentReportSection from '../components/student/StudentReportSection'
@@ -958,19 +958,6 @@ export default function StudentDashboard() {
     })
   }
 
-  const handleFileUpload = (id: string, file: File) => {
-    setHomeworkDetailItems((prev) => {
-      const updatedEntries: Record<string, HomeworkDetailItem[]> = {}
-      Object.entries(prev).forEach(([sessionId, items]) => {
-        updatedEntries[sessionId] = items.map((item) =>
-          item.id === id ? { ...item, uploadedFileName: file.name } : item
-        )
-      })
-      return updatedEntries
-    })
-    console.log('Upload file for item:', id, file.name)
-  }
-
   const handleUploadHomeworkFile = async (taskId: string, file: File) => {
     try {
       // Upload file lên server
@@ -1091,26 +1078,6 @@ export default function StudentDashboard() {
   const handleDetailFileUpload = (subject: string, id: string, file: File) => {
     updateSubjectDetailItems(subject, (items) =>
       items.map((item) => (item.id === id ? { ...item, uploadedFileName: file.name } : item))
-    )
-  }
-
-  const handleDetailSolutionUpload = (subject: string, id: string, file: File) => {
-    const isImage = file.type.startsWith('image/')
-    const previewUrl = isImage ? URL.createObjectURL(file) : undefined
-    updateSubjectDetailItems(subject, (items) =>
-      items.map((item) => {
-        if (item.id !== id) return item
-        if (item.solutionPreview && item.solutionPreview.startsWith('blob:')) {
-          URL.revokeObjectURL(item.solutionPreview)
-        }
-        return {
-          ...item,
-          solutionType: isImage ? 'image' : 'file',
-          solutionFileName: file.name,
-          solutionPreview: previewUrl,
-          solutionText: isImage ? undefined : item.solutionText,
-        }
-      })
     )
   }
 
@@ -1764,7 +1731,6 @@ useEffect(() => {
                     <ChecklistDetailTable
                       items={getSubjectDetailItems(group.subject)}
                       onUpload={(id, file) => handleDetailFileUpload(group.subject, id, file)}
-                      onUploadSolution={(id, file) => handleDetailSolutionUpload(group.subject, id, file)}
                     />
                   </div>
                 </div>
@@ -2778,7 +2744,6 @@ useEffect(() => {
                                     <ChecklistDetailTable
                                       items={detailItemsForAssignment}
                                       onUpload={() => {}}
-                                      onUploadSolution={() => {}}
                                       onStatusChange={(taskId, result) => {
                                         // Map ChecklistDetailItem['result'] to ChecklistItem['status']
                                         const status: ChecklistItem['status'] = 
@@ -2807,7 +2772,6 @@ useEffect(() => {
                     <ChecklistDetailTable
                       items={activeChecklistItemsDetail}
                       onUpload={() => {}}
-                      onUploadSolution={() => {}}
                       onStatusChange={(taskId, result: ChecklistDetailItem['result']) => {
                         // Map ChecklistDetailItem['result'] to ChecklistItem['status']
                         const status: ChecklistItem['status'] = 

@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { FileText, Download, Upload, Layers, Clock, Folder, Lightbulb } from 'lucide-react'
+import { Upload, Layers, Clock, Folder, Lightbulb } from 'lucide-react'
 
 export interface ChecklistDetailItem {
   id: string
@@ -17,52 +16,20 @@ export interface ChecklistDetailItem {
   assignmentFileName?: string
 }
 
-const checklistResultConfig: Record<
-  ChecklistDetailItem['result'],
-  { label: string; className: string }
-> = {
-  completed: { label: 'Hoàn thành', className: 'bg-green-100 text-green-800' },
-  not_accurate: { label: 'Chưa chính xác', className: 'bg-yellow-100 text-yellow-800' },
-  not_completed: { label: 'Chưa xong', className: 'bg-red-100 text-red-800' },
-}
-
 interface ChecklistDetailTableProps {
   items: ChecklistDetailItem[]
   onUpload: (id: string, file: File) => void
-  onUploadSolution: (id: string, file: File) => void
-  canUploadSolution?: boolean
   onStatusChange?: (id: string, status: ChecklistDetailItem['result']) => void
 }
 
 export default function ChecklistDetailTable({
   items,
   onUpload,
-  onUploadSolution,
-  canUploadSolution = true,
   onStatusChange,
 }: ChecklistDetailTableProps) {
-  const [uploadedFiles, setUploadedFiles] = useState<Record<string, string>>({})
-  const [solutionUploads, setSolutionUploads] = useState<Record<string, string>>({})
-
   const handleFileChange = (id: string, file?: File) => {
     if (!file) return
-    setUploadedFiles(prev => ({ ...prev, [id]: file.name }))
     onUpload(id, file)
-  }
-
-  const handleSolutionChange = (id: string, file?: File) => {
-    if (!file) return
-    setSolutionUploads(prev => ({ ...prev, [id]: file.name }))
-    onUploadSolution(id, file)
-  }
-
-  const renderResultBadge = (result: ChecklistDetailItem['result']) => {
-    const config = checklistResultConfig[result]
-    return (
-      <span className={`px-2 py-0.5 inline-flex text-xs font-semibold rounded-full ${config.className}`}>
-        {config.label}
-      </span>
-    )
   }
 
   return (
