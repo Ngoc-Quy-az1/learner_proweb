@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Upload, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Upload, Loader2, ChevronDown, ChevronUp, Layers, Clock, Folder, Lightbulb, Target, MessageCircle, PenTool } from 'lucide-react'
 import type { AssignmentApiItem } from '../../pages/TutorDashboard'
 
 type TodayAssignmentStatus = 'pending' | 'in-progress' | 'completed'
@@ -94,23 +94,23 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
         type="number"
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value)}
-        className="w-20 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+        className="w-12 px-1 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
         placeholder={placeholder}
       />
       <div className="flex flex-col border-l border-gray-200">
         <button
           type="button"
           onClick={() => onAdjustLocal(1)}
-          className="px-1 py-0.5 hover:bg-gray-100"
+          className="px-0.5 py-0 hover:bg-gray-100"
         >
-          ▲
+          <span className="text-[10px] leading-none">▲</span>
         </button>
         <button
           type="button"
           onClick={() => onAdjustLocal(-1)}
-          className="px-1 py-0.5 hover:bg-gray-100"
+          className="px-0.5 py-0 hover:bg-gray-100"
         >
-          ▼
+          <span className="text-[10px] leading-none">▼</span>
         </button>
       </div>
     </div>
@@ -164,21 +164,22 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                 key={assignmentKey}
                 className="border border-gray-200 rounded-2xl overflow-hidden bg-gray-50"
               >
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between px-5 py-4 gap-3">
-                  <div className="flex-1">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-1">
-                      {assignment.subject || selectedScheduleSubject}
-                    </p>
-                    <h5 className="text-lg font-bold text-gray-900">
+                <div className="flex items-center px-5 py-4 gap-4">
+                  <p className="text-2xl font-bold text-primary-600 uppercase tracking-wide whitespace-nowrap w-48 flex-shrink-0">
+                    {assignment.subject || selectedScheduleSubject}
+                  </p>
+                  <div className="h-12 w-px bg-gray-300 flex-shrink-0"></div>
+                  <div className="flex-1 space-y-1 min-w-0">
+                    <h5 className="text-base font-bold text-gray-900">
                       {assignment.name || 'Checklist'}
                     </h5>
                     {assignment.description && (
-                      <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                      <p className="text-sm text-gray-600 italic line-clamp-1">
                         {assignment.description}
                       </p>
                     )}
                   </div>
-                  <div className="mt-1 md:mt-0 flex items-center justify-end gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     {isExpanded ? (
                       <>
                         <button
@@ -264,19 +265,31 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                     </div>
                     <div className="rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-x-auto scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
                       <table className="w-full text-base border-collapse min-w-[800px]">
-                        <thead className="bg-gray-50 text-gray-700 uppercase text-sm md:text-base tracking-[0.3em] font-semibold">
+                        <thead className="bg-purple-50 text-gray-700 uppercase text-sm md:text-base tracking-[0.3em] font-semibold">
                           <tr>
                             <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
-                              Bài học
+                              <div className="flex items-center justify-center gap-2">
+                                <Layers className="w-5 h-5" />
+                                Bài học
+                              </div>
                             </th>
                             <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
-                              Nhiệm vụ
+                              <div className="flex items-center justify-center gap-2">
+                                <PenTool className="w-5 h-5" />
+                                Nhiệm vụ
+                              </div>
                             </th>
                             <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
-                              Trạng thái
+                              <div className="flex items-center justify-center gap-2">
+                                <Clock className="w-5 h-5" />
+                                Trạng thái
+                              </div>
                             </th>
                             <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
-                              Nhận xét
+                              <div className="flex items-center justify-center gap-2">
+                                <Lightbulb className="w-5 h-5" />
+                                Nhận xét
+                              </div>
                             </th>
                           </tr>
                         </thead>
@@ -290,7 +303,7 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                 ? 'bg-green-100 text-green-700'
                                 : rowStatus === 'in-progress'
                                   ? 'bg-yellow-100 text-yellow-700'
-                                  : 'bg-gray-100 text-gray-600'
+                                  : 'bg-red-100 text-red-700'
                             // Nhận xét: chỉ lấy từ task.note
                             const rowNote = task.note || '—'
                             const stableKey = task.id || `${assignmentKey}-summary-${taskIndex}`
@@ -355,13 +368,13 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                     </select>
                                   ) : (
                                     <span
-                                      className={`px-2 py-1 rounded-full text-xs font-semibold ${rowChip}`}
+                                      className={`px-4 py-1.5 rounded-full text-xs font-semibold ${rowChip}`}
                                     >
                                       {rowStatus === 'completed'
                                         ? 'Đã xong'
                                         : rowStatus === 'in-progress'
                                           ? 'Đang làm'
-                                          : 'Chưa xong'}
+                                          : 'CHƯA XONG'}
                                     </span>
                                   )}
                                 </td>
@@ -396,32 +409,46 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
 
                     {/* Bảng chi tiết */}
                     <div className="rounded-2xl border border-gray-200 overflow-x-auto bg-white shadow-sm scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
-                      <table className="w-full text-base min-w-[1200px]">
+                      <table className="w-full text-base min-w-[900px]">
                         <thead className="bg-gray-50 text-gray-600">
                           <tr>
-                            <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[12%]">
-                              Bài học
+                            <th className="px-4 py-3 text-left font-semibold uppercase text-xs tracking-[0.3em]">
+                              <div className="flex items-center gap-2">
+                                <Layers className="w-4 h-4" />
+                                Bài học
+                              </div>
                             </th>
-                            <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[10%]">
-                              Thời gian (ước/thực)
+                            <th className="px-4 py-3 text-center font-semibold uppercase text-xs tracking-[0.3em]">
+                              <div className="flex items-center justify-center gap-2">
+                                <Clock className="w-4 h-4" />
+                                Thời gian
+                              </div>
                             </th>
-                            <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[10%]">
-                              File bài tập
+                            <th className="px-4 py-3 text-center font-semibold uppercase text-xs tracking-[0.3em]">
+                              <div className="flex items-center justify-center gap-2">
+                                <Folder className="w-4 h-4" />
+                                File bài tập
+                              </div>
                             </th>
-                            <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[10%]">
-                              Bài làm học sinh
+                            <th className="px-4 py-3 text-center font-semibold uppercase text-xs tracking-[0.3em]">
+                              <div className="flex items-center justify-center gap-2">
+                                <Folder className="w-4 h-4" />
+                                Bài làm học sinh
+                              </div>
                             </th>
-                            <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[10%]">
-                              Lời giải
+                            <th className="px-4 py-3 text-center font-semibold uppercase text-xs tracking-[0.3em]">
+                              <div className="flex items-center justify-center gap-2">
+                                <Lightbulb className="w-4 h-4" />
+                                File lời giải
+                              </div>
                             </th>
-                            <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[8%]">
-                              Trạng thái
-                            </th>
-                            <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[20%]">
-                              Nhiệm vụ
-                            </th>
-                            <th className="px-4 py-2 text-left font-semibold uppercase text-xs tracking-[0.3em] w-[20%]">
-                              Nhận xét
+                            <th className="px-4 py-3 text-center font-semibold uppercase text-xs tracking-[0.3em]">
+                              <div className="flex items-center justify-center gap-2">
+                                <div className="w-4 h-4 flex items-center justify-center">
+                                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                </div>
+                                Trạng thái
+                              </div>
                             </th>
                           </tr>
                         </thead>
@@ -429,7 +456,7 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                           {displayTasks.length === 0 ? (
                             <tr>
                               <td
-                                colSpan={8}
+                                colSpan={6}
                                 className="px-4 py-4 text-center text-sm text-gray-500"
                               >
                                 Chưa có nhiệm vụ nào trong checklist này.
@@ -443,7 +470,7 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                   ? 'bg-green-100 text-green-700'
                                   : taskStatus === 'in-progress'
                                     ? 'bg-yellow-100 text-yellow-700'
-                                    : 'bg-gray-100 text-gray-600'
+                                    : 'bg-red-100 text-red-700'
                               const stableKey = task.id || `${assignmentKey}-detail-${taskIndex}`
                               return (
                                 <tr key={stableKey}>
@@ -466,9 +493,9 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                       task.name || '—'
                                     )}
                                   </td>
-                                  <td className="px-4 py-3 text-gray-700">
+                                  <td className="px-4 py-3 text-gray-700 text-center">
                                     {isEditing ? (
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex items-center justify-center gap-1">
                                         {renderTimeInput(
                                           task.estimatedTime,
                                           'Ước',
@@ -487,7 +514,7 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                               delta
                                             )
                                         )}
-                                        <span>/</span>
+                                        <span className="text-xs">/</span>
                                         {renderTimeInput(
                                           task.actualTime,
                                           'Thực',
@@ -508,15 +535,15 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                         )}
                                       </div>
                                     ) : (
-                                      <>
+                                      <span className="whitespace-nowrap">
                                         {task.estimatedTime ? `${task.estimatedTime}'` : '—'} /{' '}
                                         {task.actualTime ? `${task.actualTime}'` : '—'}
-                                      </>
+                                      </span>
                                     )}
                                   </td>
-                                  <td className="px-4 py-3 overflow-hidden">
+                                  <td className="px-4 py-3 text-center">
                                     {isEditing && !isStudentMode ? (
-                                      <div className="flex items-center gap-2 min-w-0">
+                                      <div className="flex items-center justify-center gap-2 min-w-0">
                                         <input
                                           value={task.assignmentUrl || ''}
                                           onChange={(e) =>
@@ -527,7 +554,7 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                               e.target.value
                                             )
                                           }
-                                          className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
+                                          className="w-24 max-w-[140px] border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
                                           placeholder="Link file bài tập"
                                           title={task.assignmentUrl || ''}
                                         />
@@ -572,16 +599,16 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                         href={task.assignmentUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-primary-600 hover:underline truncate block max-w-full text-xs"
+                                        className="inline-block text-primary-600 hover:underline text-xs font-medium"
                                         title={task.assignmentUrl}
                                       >
                                         Xem file
                                       </a>
                                     ) : (
-                                      <span className="text-xs">—</span>
+                                      <span className="text-xs text-gray-400">—</span>
                                     )}
                                   </td>
-                                  <td className="px-4 py-3 overflow-hidden">
+                                  <td className="px-4 py-3 text-center">
                                     {isStudentMode && !task.answerURL ? (
                                       <label
                                         className={`inline-flex items-center justify-center px-3 py-1.5 rounded-lg border border-primary-300 text-primary-600 text-xs ${
@@ -620,7 +647,7 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                         />
                                       </label>
                                     ) : isEditing && !isStudentMode ? (
-                                      <div className="flex items-center gap-2 min-w-0">
+                                      <div className="flex items-center justify-center gap-2 min-w-0">
                                         <input
                                           value={task.answerURL || ''}
                                           onChange={(e) =>
@@ -631,7 +658,7 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                               e.target.value
                                             )
                                           }
-                                          className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
+                                          className="w-24 max-w-[140px] border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
                                           placeholder="Link bài làm"
                                           title={task.answerURL || ''}
                                         />
@@ -676,18 +703,18 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                         href={task.answerURL}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-primary-600 hover:underline truncate block max-w-full text-xs"
+                                        className="inline-block text-primary-600 hover:underline text-xs font-medium"
                                         title={task.answerURL}
                                       >
                                         Bài làm học sinh
                                       </a>
                                     ) : (
-                                      <span className="text-xs">—</span>
+                                      <span className="text-xs text-gray-400">—</span>
                                     )}
                                   </td>
-                                  <td className="px-4 py-3 overflow-hidden">
+                                  <td className="px-4 py-3 text-center">
                                     {isEditing && !isStudentMode ? (
-                                      <div className="flex items-center gap-2 min-w-0">
+                                      <div className="flex items-center justify-center gap-2 min-w-0">
                                         <input
                                           value={task.solutionUrl || ''}
                                           onChange={(e) =>
@@ -698,7 +725,7 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                               e.target.value
                                             )
                                           }
-                                          className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
+                                          className="w-24 max-w-[140px] border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
                                           placeholder="Link lời giải"
                                           title={task.solutionUrl || ''}
                                         />
@@ -743,16 +770,16 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                         href={task.solutionUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-primary-600 hover:underline truncate block max-w-full text-xs"
+                                        className="inline-block text-primary-600 hover:underline text-xs font-medium"
                                         title={task.solutionUrl}
                                       >
                                         File lời giải
                                       </a>
                                     ) : (
-                                      <span className="text-xs">—</span>
+                                      <span className="text-xs text-gray-400">—</span>
                                     )}
                                   </td>
-                                  <td className="px-4 py-3">
+                                  <td className="px-4 py-3 text-center">
                                     {(isEditing || isStudentMode) ? (
                                       <select
                                         value={taskStatus}
@@ -769,65 +796,25 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                             )
                                           }
                                         }}
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                                        className="mx-auto border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
                                       >
                                         <option value="pending">Chưa xong</option>
                                         <option value="in-progress">Đang làm</option>
                                         <option value="completed">Đã xong</option>
                                       </select>
                                     ) : (
-                                      <span
-                                        className={`px-2 py-1 rounded-full text-xs font-semibold ${taskChipClass}`}
-                                      >
-                                        {taskStatus === 'completed'
-                                          ? 'Đã xong'
-                                          : taskStatus === 'in-progress'
-                                            ? 'Đang làm'
-                                            : 'Chưa xong'}
-                                      </span>
+                                      <div className="flex justify-center">
+                                        <span
+                                          className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-block ${taskChipClass}`}
+                                        >
+                                          {taskStatus === 'completed'
+                                            ? 'Đã xong'
+                                            : taskStatus === 'in-progress'
+                                              ? 'Đang làm'
+                                              : 'Chưa xong'}
+                                        </span>
+                                      </div>
                                     )}
-                                  </td>
-                                  <td className="px-4 py-3 text-gray-700 whitespace-normal break-words">
-                                    {isEditing ? (
-                                      <textarea
-                                        value={task.description || ''}
-                                        onChange={(e) =>
-                                          onChangeTaskField(
-                                            assignmentKey,
-                                            taskIndex,
-                                            'description',
-                                            e.target.value
-                                          )
-                                        }
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                                        rows={2}
-                                        placeholder="Nhiệm vụ"
-                                      />
-                                    ) : (
-                                      <span className="block">{task.description || '—'}</span>
-                                    )}
-                                  </td>
-                                  <td className="px-4 py-3 text-gray-600 whitespace-normal break-words">
-                                    <div className="flex items-start gap-2">
-                                      {isEditing ? (
-                                        <textarea
-                                          value={task.note || ''}
-                                          onChange={(e) =>
-                                          onChangeTaskField(
-                                            assignmentKey,
-                                            taskIndex,
-                                            'note',
-                                            e.target.value
-                                          )
-                                        }
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                                        rows={2}
-                                        placeholder="Nhận xét"
-                                      />
-                                      ) : (
-                                        <span className="flex-1 block">{task.note || '—'}</span>
-                                      )}
-                                    </div>
                                   </td>
                                 </tr>
                               )

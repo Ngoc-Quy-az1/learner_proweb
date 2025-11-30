@@ -16,6 +16,9 @@ export interface HomeworkDetailItem {
   solutionPreview?: string
   uploadedFileName?: string
   assignmentFileName?: string
+  assignmentUrl?: string
+  studentSolutionFileUrl?: string
+  deadline?: string
 }
 
 const homeworkResultConfig: Record<

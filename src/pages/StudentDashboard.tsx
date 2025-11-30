@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Layout } from '../components/common'
 import { Sidebar, ScheduleItem, MonthlyCalendar, ChecklistItem, TaskItem } from '../components/dashboard'
-import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, FileText, AlertTriangle, Star, Eye, Download, ExternalLink } from 'lucide-react'
+import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, FileText, AlertTriangle, Star, Eye, Download, ExternalLink, Folder, Lightbulb, Upload, Loader2, Layers, PenTool } from 'lucide-react'
 import { format, isToday } from 'date-fns'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { apiCall } from '../config/api'
+import { apiCall, API_BASE_URL } from '../config/api'
+import { getCookie } from '../utils/cookies'
 import { useAuth } from '../contexts/AuthContext'
 import { ChecklistDetailTable, HomeworkDetailTable, MaterialUploadSection, HomeSection, ScheduleSection, type ChecklistDetailItem, type HomeworkDetailItem } from '../components/student'
 import StudentSubjectReviewSection from '../components/student/StudentSubjectReviewSection'
@@ -54,6 +55,13 @@ interface TutorInfo {
   moreInfo?: string
   currentLevel?: string
   cvUrl?: string
+  experience?: string
+  qualification?: string
+  specialties?: string[]
+  subjects?: string[]
+  totalStudents?: number
+  bio?: string
+  rating?: number
 }
 
 type AssignmentStatus = 'pending' | 'in-progress' | 'completed'
@@ -106,6 +114,7 @@ interface HomeworkTaskApiItem {
   name?: string
   assignmentUrl?: string
   solutionUrl?: string
+  answerURL?: string
   status?: HomeworkTaskStatus
   description?: string
 }
@@ -246,6 +255,16 @@ const normalizeDifficulty = (value?: string): TaskItem['difficulty'] => {
 const mapHomeworkStatusToResult = (status?: HomeworkTaskStatus): HomeworkDetailItem['result'] => {
   if (status === 'graded' || status === 'submitted') {
     return 'completed'
+  }
+  return 'not_completed'
+}
+
+const mapTaskStatusToResult = (status?: string): ChecklistDetailItem['result'] => {
+  if (status === 'completed' || status === 'graded' || status === 'submitted') {
+    return 'completed'
+  }
+  if (status === 'in-progress') {
+    return 'not_accurate'
   }
   return 'not_completed'
 }
@@ -395,6 +414,7 @@ export default function StudentDashboard() {
   const [selectedUploadScheduleId, setSelectedUploadScheduleId] = useState<string | null>(null)
   const [selectedChecklistScheduleId, setSelectedChecklistScheduleId] = useState<string | null>(null)
   const [selectedHomeworkScheduleId, setSelectedHomeworkScheduleId] = useState<string | null>(null)
+  const [expandedChecklistItems, setExpandedChecklistItems] = useState<Record<string, boolean>>({})
 
   const getScheduleStartDateTime = (schedule: ScheduleItem) => {
     const [startRaw] = schedule.time.split(' - ')
@@ -453,8 +473,40 @@ export default function StudentDashboard() {
           const tutorInfoResults = await Promise.all(
             Array.from(tutorIds).map(async (tutorId) => {
               try {
-                const tutorInfo = await apiCall<TutorInfo>(`/users/${tutorId}`)
-                return { tutorId, tutorInfo }
+                // Fetch basic user info
+                const userInfo = await apiCall<any>(`/users/${tutorId}`)
+                // Fetch detailed tutor info (experience, specialties, etc.)
+                let tutorDetailInfo: any = null
+                try {
+                  tutorDetailInfo = await apiCall<any>(`/tutors/${tutorId}/info`)
+                } catch (detailError) {
+                  // Tutor info might not exist, that's okay
+                  console.log(`No detailed tutor info found for ${tutorId}`)
+                }
+                
+                // Merge user info with tutor detail info
+                const mergedInfo: TutorInfo = {
+                  id: tutorId,
+                  name: userInfo.name,
+                  email: userInfo.email,
+                  phone: userInfo.phone,
+                  avatarUrl: userInfo.avatarUrl || userInfo.avatar,
+                  address: userInfo.address,
+                  ...(tutorDetailInfo && {
+                    experience: tutorDetailInfo.experience,
+                    qualification: tutorDetailInfo.qualification,
+                    specialties: Array.isArray(tutorDetailInfo.specialties) ? tutorDetailInfo.specialties : [],
+                    subjects: Array.isArray(tutorDetailInfo.subjects) ? tutorDetailInfo.subjects : [],
+                    totalStudents: typeof tutorDetailInfo.totalStudents === 'number' ? tutorDetailInfo.totalStudents : 0,
+                    bio: tutorDetailInfo.bio,
+                    cvUrl: tutorDetailInfo.cvUrl,
+                    rating: tutorDetailInfo.rating,
+                    moreInfo: tutorDetailInfo.bio || userInfo.moreInfo,
+                    currentLevel: tutorDetailInfo.qualification || userInfo.currentLevel,
+                  }),
+                }
+                
+                return { tutorId, tutorInfo: mergedInfo }
               } catch (error) {
                 console.error(`Failed to fetch tutor info for ${tutorId}:`, error)
                 return null
@@ -465,10 +517,7 @@ export default function StudentDashboard() {
           const nextTutorInfoMap: Record<string, TutorInfo> = {}
           tutorInfoResults.forEach((entry) => {
             if (entry) {
-              nextTutorInfoMap[entry.tutorId] = {
-                ...entry.tutorInfo,
-                id: entry.tutorId,
-              }
+              nextTutorInfoMap[entry.tutorId] = entry.tutorInfo
             }
           })
           setTutorInfoMap(nextTutorInfoMap)
@@ -639,6 +688,9 @@ export default function StudentDashboard() {
           solutionFileName: getFileNameFromUrl(task.solutionUrl),
           solutionUrl: task.solutionUrl,
           assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
+          assignmentUrl: task.assignmentUrl,
+          deadline: homework.deadline,
+          studentSolutionFileUrl: (task as any).answerURL,
         })) || []
 
       const fallbackTask: HomeworkDetailItem[] =
@@ -919,6 +971,123 @@ export default function StudentDashboard() {
     console.log('Upload file for item:', id, file.name)
   }
 
+  const handleUploadHomeworkFile = async (taskId: string, file: File) => {
+    try {
+      // Upload file lên server
+      const formData = new FormData()
+      formData.append('file', file)
+      const accessToken = getCookie('accessToken')
+      const response = await fetch(`${API_BASE_URL}/files/upload`, {
+        method: 'POST',
+        headers: {
+          ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+        },
+        body: formData,
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || 'Không thể tải file. Vui lòng thử lại.')
+      }
+      
+      const data = await response.json()
+      const fileUrl =
+        data?.url ||
+        data?.file?.url ||
+        (Array.isArray(data?.files) ? data.files[0]?.url : null)
+      
+      if (!fileUrl) {
+        throw new Error('Không nhận được link file sau khi tải lên.')
+      }
+
+      // Tìm homework và task tương ứng
+      for (const homework of homeworks) {
+        const tasks = homework.tasks || []
+        const taskIndex = tasks.findIndex((t, idx) => t.id === taskId || `${homework.id}-task-${idx}` === taskId)
+        if (taskIndex >= 0 && tasks[taskIndex]) {
+          const task = tasks[taskIndex]
+          // Cập nhật homework task với answerURL
+          // Chỉ gửi các trường được phép theo validation schema
+          const payload: any = {
+            tasks: tasks.map((t, idx) => {
+              const isTargetTask = (t.id === task.id || `${homework.id}-task-${idx}` === taskId)
+              
+              if (isTargetTask) {
+                // Chỉ gửi các trường được phép, loại bỏ _id, id, và các trường MongoDB khác
+                return {
+                  name: t.name || '',
+                  assignmentUrl: t.assignmentUrl || undefined,
+                  solutionUrl: t.solutionUrl || undefined,
+                  answerURL: fileUrl,
+                  status: t.status || undefined,
+                  description: t.description || undefined,
+                }
+              } else {
+                // Giữ nguyên task khác nhưng cũng loại bỏ _id
+                return {
+                  name: t.name || '',
+                  assignmentUrl: t.assignmentUrl || undefined,
+                  solutionUrl: t.solutionUrl || undefined,
+                  answerURL: t.answerURL || undefined,
+                  status: t.status || undefined,
+                  description: t.description || undefined,
+                }
+              }
+            })
+          }
+          
+          // Loại bỏ các trường undefined để payload gọn hơn
+          payload.tasks = payload.tasks.map((task: any) => {
+            const cleaned: any = {}
+            Object.keys(task).forEach(key => {
+              if (task[key] !== undefined && task[key] !== null && task[key] !== '') {
+                cleaned[key] = task[key]
+              }
+            })
+            return cleaned
+          })
+
+          await apiCall(`/homeworks/${homework.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+          })
+
+          // Cập nhật state
+          setHomeworkDetailItems((prev) => {
+            const updatedEntries: Record<string, HomeworkDetailItem[]> = {}
+            Object.entries(prev).forEach(([sessionId, items]) => {
+              updatedEntries[sessionId] = items.map((item) =>
+                item.id === taskId
+                  ? { ...item, studentSolutionFileUrl: fileUrl, uploadedFileName: file.name }
+                  : item
+              )
+            })
+            return updatedEntries
+          })
+
+          // Reload homeworks để cập nhật dữ liệu - trigger fetch lại
+          setIsHomeworkLoading(true)
+          try {
+            const response = await apiCall<HomeworkPaginatedResponse>(`/homeworks?studentId=${user?.id}&limit=200`)
+            if (response.results) {
+              setHomeworks(response.results)
+            }
+          } catch (error) {
+            console.error('Failed to reload homeworks:', error)
+          } finally {
+            setIsHomeworkLoading(false)
+          }
+          return
+        }
+      }
+    } catch (error) {
+      console.error('Failed to upload homework file:', error)
+      const message = error instanceof Error ? error.message : 'Không thể tải file. Vui lòng thử lại.'
+      alert(message)
+      throw error
+    }
+  }
+
   const handleDetailFileUpload = (subject: string, id: string, file: File) => {
     updateSubjectDetailItems(subject, (items) =>
       items.map((item) => (item.id === id ? { ...item, uploadedFileName: file.name } : item))
@@ -1175,8 +1344,9 @@ useEffect(() => {
     return map
   }, [checklistItemsBySchedule, todaySchedules])
   
-  const completedCount = checklistItems.filter(item => item.status === 'done').length
-  const totalCount = checklistItems.length
+  // Calculate progress based on today's checklist items only
+  const completedCount = todayChecklist.filter(item => item.status === 'done').length
+  const totalCount = todayChecklist.length
   const progressPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
   
   // Group checklist by date
@@ -1232,10 +1402,6 @@ useEffect(() => {
   const subjectStudyHours = Object.entries(subjectStudyHoursMap)
     .map(([subject, hours]) => ({ subject, hours: Number(hours.toFixed(1)) }))
     .sort((a, b) => b.hours - a.hours)
-
-  const attentionSubjects = subjectPerformance
-    .filter((subject) => subject.completionRate < 80)
-    .sort((a, b) => a.completionRate - b.completionRate)
 
   const uploadScheduleOptions = useMemo(() => {
     if (schedules.length === 0) return []
@@ -1447,6 +1613,10 @@ useEffect(() => {
               scheduleReports={scheduleReports}
               assignmentReviews={assignmentReviews}
               assignmentReviewsLoading={assignmentReviewsLoading}
+              onUploadHomeworkFile={handleUploadHomeworkFile}
+              uploadScheduleOptions={uploadScheduleOptions}
+              selectedUploadScheduleId={selectedUploadScheduleId}
+              onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
             />
           )
         case 'schedule':
@@ -1458,6 +1628,7 @@ useEffect(() => {
               onReload={handleReloadSchedules}
               onJoinClass={handleJoinClass}
               onViewChecklist={handleViewChecklist}
+              tutorInfoMap={tutorInfoMap}
             />
           )
         case 'checklist':
@@ -1485,6 +1656,10 @@ useEffect(() => {
               scheduleReports={scheduleReports}
               assignmentReviews={assignmentReviews}
               assignmentReviewsLoading={assignmentReviewsLoading}
+              onUploadHomeworkFile={handleUploadHomeworkFile}
+              uploadScheduleOptions={uploadScheduleOptions}
+              selectedUploadScheduleId={selectedUploadScheduleId}
+              onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
             />
           )
       }
@@ -2268,30 +2443,6 @@ useEffect(() => {
             </ResponsiveContainer>
           )}
         </div>
-
-        <div className="card hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center space-x-2 mb-4">
-            <AlertTriangle className="w-6 h-6 text-red-500" />
-            <h2 className="text-2xl font-bold text-gray-900">Môn cần chú ý</h2>
-          </div>
-          {attentionSubjects.length === 0 ? (
-            <p className="text-sm text-gray-500">Tất cả các môn đều đạt trên 80%.</p>
-          ) : (
-            <div className="space-y-3">
-              {attentionSubjects.slice(0, 4).map((subject) => (
-                <div key={subject.subject} className="border-2 border-red-100 rounded-xl p-3 bg-red-50/60">
-                  <div className="flex items-center justify-between text-sm font-semibold text-gray-900 mb-1">
-                    <span>{subject.subject}</span>
-                    <span>{subject.completionRate}%</span>
-                  </div>
-                  <p className="text-xs text-gray-600">
-                    {subject.completed}/{subject.total} nhiệm vụ đã hoàn thành
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   )
@@ -2442,18 +2593,233 @@ useEffect(() => {
             </p>
           ) : (
             <div className="space-y-4">
-              {/* Bảng tóm tắt + chi tiết */}
-              <div className="space-y-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-1">
-                  Checklist buổi học
-                </p>
-                <ChecklistDetailTable
-                  items={activeChecklistItemsDetail}
-                  onUpload={() => {}}
-                  onUploadSolution={() => {}}
-                  canUploadSolution={false}
-                />
-              </div>
+              {/* Hiển thị assignments theo nhóm giống trang chủ */}
+              {(() => {
+                const relatedAssignments = assignments.filter(
+                  (assignment) => getAssignmentScheduleId(assignment) === activeChecklistScheduleId
+                )
+                
+                if (relatedAssignments.length > 0) {
+                  return (
+                    <div className="space-y-4">
+                      {relatedAssignments.map((assignment, index) => {
+                        const assignmentKey = assignment.id || (assignment as any)._id || `assignment-${index}`
+                        const isExpanded = expandedChecklistItems[assignmentKey] || false
+                        
+                        return (
+                          <div
+                            key={assignmentKey}
+                            className="border border-gray-200 rounded-2xl overflow-hidden bg-gray-50"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setExpandedChecklistItems((prev) => ({
+                                ...prev,
+                                [assignmentKey]: !prev[assignmentKey]
+                              }))}
+                              className="w-full"
+                            >
+                              <div className="flex items-center px-5 py-4 gap-4">
+                                <p className="text-2xl font-bold text-primary-600 uppercase tracking-wide whitespace-nowrap w-48 flex-shrink-0">
+                                  {assignment.subject || activeChecklistSchedule?.subject || 'Chung'}
+                                </p>
+                                <div className="h-12 w-px bg-gray-300 flex-shrink-0"></div>
+                                <div className="flex-1 space-y-1 min-w-0 text-left">
+                                  <h5 className="text-base font-bold text-gray-900">
+                                    {assignment.name || 'Checklist'}
+                                  </h5>
+                                  {assignment.description && (
+                                    <p className="text-sm text-gray-600 italic line-clamp-1">
+                                      {assignment.description}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex-shrink-0">
+                                  {isExpanded ? (
+                                    <ChevronUp className="w-5 h-5 text-gray-500" />
+                                  ) : (
+                                    <ChevronDown className="w-5 h-5 text-gray-500" />
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+                            
+                            {isExpanded && (
+                              <div className="px-5 pb-4 pt-2 border-t border-gray-200 space-y-4">
+                                {/* Bảng tóm tắt */}
+                                <div>
+                                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.35em] mb-3">
+                                    BẢNG TÓM TẮT
+                                  </p>
+                                  <div className="rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-x-auto scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
+                                    <table className="w-full text-base border-collapse min-w-[800px]">
+                                      <thead className="bg-purple-50 text-gray-700 uppercase text-sm md:text-base tracking-[0.3em] font-semibold">
+                                        <tr>
+                                          <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
+                                            <div className="flex items-center justify-center gap-2">
+                                              <Layers className="w-5 h-5" />
+                                              Bài học
+                                            </div>
+                                          </th>
+                                          <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
+                                            <div className="flex items-center justify-center gap-2">
+                                              <PenTool className="w-5 h-5" />
+                                              Nhiệm vụ
+                                            </div>
+                                          </th>
+                                          <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
+                                            <div className="flex items-center justify-center gap-2">
+                                              <Clock className="w-5 h-5" />
+                                              Trạng thái
+                                            </div>
+                                          </th>
+                                          <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
+                                            <div className="flex items-center justify-center gap-2">
+                                              <Lightbulb className="w-5 h-5" />
+                                              Nhận xét
+                                            </div>
+                                          </th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100 bg-white">
+                                        {(assignment.tasks || []).map((task: any, taskIndex: number) => {
+                                          const mapTaskStatusToDisplay = (status?: string) => {
+                                            if (status === 'completed' || status === 'submitted') return 'done'
+                                            if (status === 'in-progress') return 'in_progress'
+                                            return 'pending'
+                                          }
+                                          const taskStatus = mapTaskStatusToDisplay(task.status)
+                                          const rowChip =
+                                            taskStatus === 'done'
+                                              ? 'bg-green-100 text-green-700'
+                                              : taskStatus === 'in_progress'
+                                                ? 'bg-yellow-100 text-yellow-700'
+                                                : 'bg-red-100 text-red-700'
+                                          const rowNote = (task as any).note || assignment.description || '—'
+                                          
+                                          return (
+                                            <tr key={task.id || `${assignmentKey}-task-${taskIndex}`}>
+                                              <td className="px-5 py-4 font-semibold text-gray-900 text-center text-lg">
+                                                {task.name || assignment.name || 'Bài học'}
+                                              </td>
+                                              <td className="px-5 py-4 text-gray-700 text-center text-base">
+                                                {task.description || assignment.description || '—'}
+                                              </td>
+                                              <td className="px-5 py-4 text-center text-base">
+                                                <span
+                                                  className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${rowChip}`}
+                                                >
+                                                  {taskStatus === 'done'
+                                                    ? 'Đã xong'
+                                                    : taskStatus === 'in_progress'
+                                                      ? 'Đang làm'
+                                                      : 'CHƯA XONG'}
+                                                </span>
+                                              </td>
+                                              <td className="px-5 py-4 text-gray-600 text-center text-base">
+                                                <span className="flex-1">{rowNote}</span>
+                                              </td>
+                                            </tr>
+                                          )
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+
+                                {/* Bảng chi tiết */}
+                                {(() => {
+                                  // Map checklist items cho assignment này
+                                  const assignmentTasks = assignment.tasks || []
+                                  const assignmentId = assignment.id || (assignment as any)._id || assignmentKey
+                                  
+                                  const detailItemsForAssignment: ChecklistDetailItem[] = []
+                                  
+                                  if (assignmentTasks.length > 0) {
+                                    assignmentTasks.forEach((task: any, taskIndex: number) => {
+                                      const taskId = task.id || `${assignmentId}-task-${taskIndex}`
+                                      detailItemsForAssignment.push({
+                                        id: taskId,
+                                        lesson: task.name || assignment.name || 'Bài học',
+                                        estimatedTime: task.estimatedTime ?? 0,
+                                        actualTime: task.actualTime ?? 0,
+                                        result: mapTaskStatusToResult(task.status as string | undefined),
+                                        qualityNote: (task as any).note || '',
+                                        solutionType: task.solutionUrl ? 'file' : 'text',
+                                        solutionText: undefined,
+                                        solutionFileName: getFileNameFromUrl(task.solutionUrl),
+                                        solutionUrl: task.solutionUrl,
+                                        solutionPreview: undefined,
+                                        uploadedFileName: undefined,
+                                        assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
+                                      })
+                                    })
+                                  } else {
+                                    // Không có task con
+                                    detailItemsForAssignment.push({
+                                      id: assignmentId,
+                                      lesson: assignment.name || 'Bài học',
+                                      estimatedTime: 0,
+                                      actualTime: 0,
+                                      result: mapTaskStatusToResult(assignment.status as string | undefined),
+                                      qualityNote: '',
+                                      solutionType: 'text',
+                                      solutionText: undefined,
+                                      solutionFileName: undefined,
+                                      solutionPreview: undefined,
+                                      uploadedFileName: undefined,
+                                      assignmentFileName: getFileNameFromUrl(
+                                        assignment.supplementaryMaterials?.[0]?.url as string | undefined
+                                      ),
+                                    })
+                                  }
+                                  
+                                  return (
+                                    <ChecklistDetailTable
+                                      items={detailItemsForAssignment}
+                                      onUpload={() => {}}
+                                      onUploadSolution={() => {}}
+                                      onStatusChange={(taskId, result) => {
+                                        // Map ChecklistDetailItem['result'] to ChecklistItem['status']
+                                        const status: ChecklistItem['status'] = 
+                                          result === 'completed' ? 'done' :
+                                          result === 'not_accurate' ? 'in_progress' :
+                                          'not_done'
+                                        handleStatusChange(taskId, status)
+                                      }}
+                                    />
+                                  )
+                                })()}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                }
+                // Fallback: hiển thị bảng chi tiết từ checklistItemsBySchedule nếu không có assignments
+                return (
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-1">
+                      Checklist buổi học
+                    </p>
+                    <ChecklistDetailTable
+                      items={activeChecklistItemsDetail}
+                      onUpload={() => {}}
+                      onUploadSolution={() => {}}
+                      onStatusChange={(taskId, result: ChecklistDetailItem['result']) => {
+                        // Map ChecklistDetailItem['result'] to ChecklistItem['status']
+                        const status: ChecklistItem['status'] = 
+                          result === 'completed' ? 'done' :
+                          result === 'not_accurate' ? 'in_progress' :
+                          'not_done'
+                        handleStatusChange(taskId, status)
+                      }}
+                    />
+                  </div>
+                )
+              })()}
 
               {/* Đánh giá chung cho từng môn */}
               <StudentSubjectReviewSection
@@ -2551,11 +2917,176 @@ useEffect(() => {
           {homeworkScheduleOptions.length === 0 || !activeHomeworkScheduleId || !activeHomeworkSchedule ? (
             <p className="text-sm text-gray-500 italic">Chưa có bài tập về nhà nào cho học sinh này.</p>
           ) : (
-            <div className="mt-2 pt-1">
-              <HomeworkDetailTable
-                items={activeHomeworkItems}
-                onUpload={(id, file) => handleFileUpload(id, file)}
-              />
+            <div className="mt-2 pt-1 space-y-4">
+              {activeHomeworkItems.map((item) => {
+                const difficultyLabels = {
+                  easy: 'Dễ',
+                  medium: 'Trung bình',
+                  hard: 'Khó',
+                  advanced: 'Nâng cao',
+                }
+                const difficultyColors = {
+                  easy: 'bg-green-100 text-green-700',
+                  medium: 'bg-yellow-100 text-yellow-700',
+                  hard: 'bg-red-100 text-red-700',
+                  advanced: 'bg-purple-100 text-purple-700',
+                }
+                
+                return (
+                  <div
+                    key={item.id}
+                    className="border-l-4 border-primary-500 bg-white rounded-lg shadow-sm overflow-hidden"
+                  >
+                    {/* Header */}
+                    <div className="px-5 py-3 border-b border-gray-200">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <p className="text-xl font-bold text-gray-900">{item.task}</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {/* Status */}
+                          <span
+                            className={`text-sm px-3 py-1 rounded-full font-semibold whitespace-nowrap ${
+                              item.result === 'completed'
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {item.result === 'completed' ? 'Đã hoàn thành' : 'Chưa hoàn thành'}
+                          </span>
+                          {/* Difficulty */}
+                          {item.difficulty && (
+                            <span
+                              className={`text-sm px-3 py-1 rounded-full font-semibold ${difficultyColors[item.difficulty]}`}
+                            >
+                              {difficultyLabels[item.difficulty]}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Body */}
+                    <div className="px-5 py-4">
+                      {/* Phần trên: Deadline, File bài tập, Bài làm HS, Lời giải */}
+                      <div className="space-y-3 pb-4">
+                        {/* Deadline */}
+                        <div className="flex items-center gap-3">
+                          <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+                          <span className="text-base font-medium text-gray-700 whitespace-nowrap">Hạn nộp:</span>
+                          <span className="text-base text-red-600 font-medium">
+                            {item.deadline
+                              ? format(new Date(item.deadline), 'dd/MM/yyyy')
+                              : 'Chưa có'}
+                          </span>
+                        </div>
+
+                        {/* File bài tập */}
+                        {item.assignmentUrl && (
+                          <div className="flex items-center gap-3">
+                            <Folder className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+                            <span className="text-base font-medium text-blue-600 whitespace-nowrap">File Bài Tập:</span>
+                            <a
+                              href={item.assignmentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-base text-blue-600 hover:underline flex-1 truncate"
+                              title={item.assignmentUrl}
+                            >
+                              {item.assignmentFileName || item.assignmentUrl.split('/').pop() || 'Xem file bài tập'}
+                            </a>
+                          </div>
+                        )}
+
+                        {/* Bài làm học sinh - Học sinh có thể upload */}
+                        <div className="flex items-center gap-3">
+                          <FileText className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                          <span className="text-base font-medium text-blue-600 whitespace-nowrap">Bài làm HS:</span>
+                          <div className="flex items-center gap-3 flex-1">
+                            {item.uploadedFileName || item.studentSolutionFileUrl ? (
+                              <a
+                                href={item.studentSolutionFileUrl || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-base text-blue-600 hover:underline flex-1 truncate"
+                                title={item.studentSolutionFileUrl}
+                              >
+                                {item.uploadedFileName || 'Bài làm học sinh'}
+                              </a>
+                            ) : (
+                              <span className="text-base text-gray-400 flex-1">Chưa có bài làm</span>
+                            )}
+                            {handleUploadHomeworkFile && (
+                              <label
+                                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border-2 border-primary-500 ${
+                                  item.uploadedFileName || item.studentSolutionFileUrl
+                                    ? 'bg-primary-50 text-primary-700 hover:bg-primary-100'
+                                    : 'bg-primary-500 text-white hover:bg-primary-600 shadow-md'
+                                } font-semibold text-base flex-shrink-0 transition-colors cursor-pointer`}
+                                title={item.uploadedFileName || item.studentSolutionFileUrl ? "Cập nhật bài làm" : "Upload bài làm"}
+                              >
+                                <Upload className="w-5 h-5" />
+                                <span>{item.uploadedFileName || item.studentSolutionFileUrl ? 'Cập nhật' : 'Upload bài làm'}</span>
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0]
+                                    if (!file || !handleUploadHomeworkFile) return
+                                    try {
+                                      await handleUploadHomeworkFile(item.id, file)
+                                      setScheduleFetchTrigger((prev) => prev + 1)
+                                    } catch (error) {
+                                      console.error('Upload failed:', error)
+                                      alert('Không thể upload file. Vui lòng thử lại.')
+                                    } finally {
+                                      e.target.value = ''
+                                    }
+                                  }}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Lời giải */}
+                        {item.solutionUrl && (
+                          <div className="flex items-center gap-3">
+                            <Lightbulb className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+                            <span className="text-base font-medium text-blue-600 whitespace-nowrap">Lời giải:</span>
+                            <a
+                              href={item.solutionUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-base text-blue-600 hover:underline flex-1 truncate"
+                              title={item.solutionUrl}
+                            >
+                              {item.solutionFileName || item.solutionUrl.split('/').pop() || 'Xem lời giải'}
+                            </a>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Separator */}
+                      {item.comment && (
+                        <div className="border-t border-dashed border-gray-300 my-4"></div>
+                      )}
+
+                      {/* Nhận xét */}
+                      {item.comment && (
+                        <div className="flex items-start gap-3 pt-2">
+                          <div className="w-1 h-6 bg-yellow-400 flex-shrink-0 rounded"></div>
+                          <div className="flex-1">
+                            <span className="text-base font-medium text-gray-700">Nhận xét:</span>
+                            <span className="text-base text-gray-900 ml-2">{item.comment}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

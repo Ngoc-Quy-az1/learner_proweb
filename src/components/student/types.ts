@@ -11,6 +11,13 @@ export interface TutorInfo {
   moreInfo?: string
   currentLevel?: string
   cvUrl?: string
+  experience?: string
+  qualification?: string
+  specialties?: string[]
+  subjects?: string[]
+  totalStudents?: number
+  bio?: string
+  rating?: number
 }
 
 export interface DailyReport {

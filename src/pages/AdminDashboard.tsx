@@ -22,6 +22,8 @@ import {
   Save,
   XCircle,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, addMinutes } from 'date-fns'
 import { vi } from 'date-fns/locale'
@@ -421,6 +423,19 @@ export default function AdminDashboard() {
   const [isStudentEditing, setIsStudentEditing] = useState(false)
   const [studentEditData, setStudentEditData] = useState<StudentProfile | null>(null)
   const [studentsLoading, setStudentsLoading] = useState(true)
+  const [studentCurrentPage, setStudentCurrentPage] = useState(1)
+  const studentsPerPage = 10
+  const [studentPagination, setStudentPagination] = useState<{
+    page: number
+    limit: number
+    totalPages: number
+    totalResults: number
+  }>({
+    page: 1,
+    limit: 10,
+    totalPages: 1,
+    totalResults: 0,
+  })
   const initialStudentArrayDrafts: Record<EditableArrayField, string> = {
     strengths: '',
     improvements: '',
@@ -568,13 +583,23 @@ useEffect(() => {
     try {
       setStudentsLoading(true)
 
-      // Fetch all users with role=student
+      // Fetch users with role=student with pagination
       const params = new URLSearchParams()
       params.append('role', 'student')
-      params.append('limit', '100') // Get all students
+      params.append('page', studentCurrentPage.toString())
+      params.append('limit', studentsPerPage.toString())
+      
+      // Add search term if exists (server-side search)
+      if (studentSearchTerm.trim()) {
+        params.append('name', studentSearchTerm.trim())
+      }
 
       const usersResponse = await apiCall<{
         results: User[]
+        page: number
+        limit: number
+        totalPages: number
+        totalResults: number
       }>(`/users?${params.toString()}`)
 
       const students: StudentListItem[] = []
@@ -675,19 +700,36 @@ useEffect(() => {
 
       setStudentList(students)
       setStudentProfiles(profiles)
+      
+      // Update pagination state
+      setStudentPagination({
+        page: usersResponse.page || studentCurrentPage,
+        limit: usersResponse.limit || studentsPerPage,
+        totalPages: usersResponse.totalPages || 1,
+        totalResults: usersResponse.totalResults || 0,
+      })
 
       // Set first student as selected if available
       if (students.length > 0) {
         setSelectedStudentId((prev) => prev || students[0].id)
+      } else {
+        // If no students on current page, clear selection
+        setSelectedStudentId(null)
       }
     } catch (error) {
       console.error('Error fetching students:', error)
       setStudentList([])
       setStudentProfiles({})
+      setStudentPagination({
+        page: 1,
+        limit: studentsPerPage,
+        totalPages: 1,
+        totalResults: 0,
+      })
     } finally {
       setStudentsLoading(false)
     }
-  }, [])
+  }, [studentCurrentPage, studentSearchTerm, studentsPerPage])
 
   const fetchTutors = useCallback(async () => {
     try {
@@ -1105,6 +1147,12 @@ useEffect(() => {
 
   const handleStudentSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setStudentSearchTerm(event.target.value)
+    // Reset to page 1 when search changes
+    setStudentCurrentPage(1)
+  }
+  
+  const handleStudentPageChange = (page: number) => {
+    setStudentCurrentPage(page)
   }
 
   const startStudentEditing = () => {
@@ -1740,10 +1788,8 @@ useEffect(() => {
   }
 
 
-  const displayedStudents = useMemo(() => {
-    const keyword = studentSearchTerm.trim().toLowerCase()
-    return studentList.filter((student) => student.name.toLowerCase().includes(keyword))
-  }, [studentList, studentSearchTerm])
+  // Since search is server-side, display all students from current page
+  const displayedStudents = studentList
 
   const selectedListItem = selectedStudentId 
     ? studentList.find((item) => item.id === selectedStudentId) ?? studentList[0]
@@ -1860,7 +1906,9 @@ useEffect(() => {
           <div className="flex items-center justify-between gap-3 flex-wrap border-b border-gray-200 pb-4">
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Danh sách học sinh</p>
-              <h3 className="text-lg font-semibold text-gray-900">Tổng quan lớp học · {studentList.length} học sinh</h3>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Tổng quan lớp học · {studentPagination.totalResults} học sinh
+              </h3>
             </div>
             <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-3 py-1 text-xs text-gray-600 font-semibold">
               <div className="w-2 h-2 rounded-full bg-primary-500" /> Đang hoạt động
@@ -1916,7 +1964,55 @@ useEffect(() => {
             {!studentsLoading && displayedStudents.length === 0 && <div className="py-6 text-center text-sm text-gray-500">Không tìm thấy học sinh phù hợp.</div>}
           </div>
 
-          <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500 font-semibold">Danh sách hiển thị toàn bộ học sinh</div>
+          {/* Pagination Controls */}
+          {!studentsLoading && studentPagination.totalPages > 1 && (
+            <div className="mt-4 pt-4 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-xs text-gray-600 font-semibold">
+                {studentPagination.totalResults === 0 ? (
+                  'Không có học sinh'
+                ) : (
+                  `Hiển thị ${(studentPagination.page - 1) * studentPagination.limit + 1}-${Math.min(
+                    studentPagination.page * studentPagination.limit,
+                    studentPagination.totalResults
+                  )} trong tổng ${studentPagination.totalResults} học sinh`
+                )}
+              </p>
+              <div className="flex items-center space-x-2">
+                <button
+                  disabled={studentPagination.page === 1 || studentsLoading}
+                  onClick={() => handleStudentPageChange(Math.max(1, studentPagination.page - 1))}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors flex items-center gap-1"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Trước
+                </button>
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: studentPagination.totalPages }, (_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleStudentPageChange(idx + 1)}
+                      disabled={studentsLoading}
+                      className={`w-8 h-8 rounded-lg text-sm font-semibold ${
+                        studentPagination.page === idx + 1
+                          ? 'bg-primary-500 text-white'
+                          : 'border border-gray-200 text-gray-600 hover:border-primary-200'
+                      } disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
+                    >
+                      {idx + 1}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  disabled={studentPagination.page === studentPagination.totalPages || studentsLoading}
+                  onClick={() => handleStudentPageChange(Math.min(studentPagination.totalPages, studentPagination.page + 1))}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors flex items-center gap-1"
+                >
+                  Sau
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">

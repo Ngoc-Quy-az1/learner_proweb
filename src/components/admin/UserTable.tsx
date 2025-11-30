@@ -40,8 +40,8 @@ export default function UserTable({
         <table className="w-full">
           <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Email</th>
               <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Tên người dùng</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Email</th>
               <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Mật khẩu</th>
               <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Vai trò</th>
               <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Ngày tham gia</th>
@@ -66,18 +66,6 @@ export default function UserTable({
                 const isEditing = editUserId === user.id
                 return (
                   <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                      {isEditing ? (
-                        <input
-                          className="w-full min-w-[180px] h-9 px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                          value={editData.email ?? ''}
-                          onChange={(e) => onUpdateField('email', e.target.value)}
-                          placeholder="Nhập email"
-                        />
-                      ) : (
-                        user.email
-                      )}
-                    </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
                       {isEditing ? (
                         <input
@@ -88,6 +76,18 @@ export default function UserTable({
                         />
                       ) : (
                         user.name
+                      )}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                      {isEditing ? (
+                        <input
+                          className="w-full min-w-[180px] h-9 px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          value={editData.email ?? ''}
+                          onChange={(e) => onUpdateField('email', e.target.value)}
+                          placeholder="Nhập email"
+                        />
+                      ) : (
+                        user.email
                       )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm">

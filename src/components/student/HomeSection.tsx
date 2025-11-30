@@ -11,7 +11,18 @@ import {
   ChevronUp,
   Clock,
   Copy,
-  ExternalLink,
+  Layers,
+  PenTool,
+  Lightbulb,
+  Upload,
+  AlertTriangle,
+  Folder,
+  FileText,
+  Loader2,
+  Users,
+  Mail,
+  Phone,
+  FileText as FileTextIcon,
 } from 'lucide-react'
 import MaterialUploadSection from './MaterialUploadSection'
 import {
@@ -19,10 +30,9 @@ import {
   StudentSessionEvaluationSection,
   StudentReportSection,
   ChecklistDetailTable,
-  HomeworkDetailTable,
 } from './index'
-import type { AssignmentApiItem } from '../../pages/TutorDashboard'
 import type { ScheduleItem } from '../dashboard'
+import type { AssignmentApiItem } from '../../pages/TutorDashboard'
 import type { TutorInfo, ChecklistWithDate } from './types'
 import type { HomeworkDetailItem } from './HomeworkDetailTable'
 import type { ChecklistDetailItem } from './ChecklistDetailTable'
@@ -48,6 +58,10 @@ interface HomeSectionProps {
   scheduleReports?: Record<string, { id: string; subjectCode: string; startTime: string; tutor: string; reportURL: string } | null>
   assignmentReviews?: Record<string, { reviewId?: string; taskId: string; result: number; comment: string }>
   assignmentReviewsLoading?: boolean
+  onUploadHomeworkFile?: (homeworkId: string, file: File) => Promise<void>
+  uploadScheduleOptions?: ScheduleItem[]
+  selectedUploadScheduleId?: string | null
+  onUploadScheduleChange?: (scheduleId: string) => void
 }
 
 type ScheduleSlotGroup = {
@@ -85,6 +99,10 @@ export default function HomeSection({
   scheduleReports = {},
   assignmentReviews = {},
   assignmentReviewsLoading = false,
+  onUploadHomeworkFile,
+  uploadScheduleOptions = [],
+  selectedUploadScheduleId = null,
+  onUploadScheduleChange,
 }: HomeSectionProps) {
   const [selectedTutorSchedule, setSelectedTutorSchedule] = useState<string | null>(null)
   const [selectedScheduleSlotId, setSelectedScheduleSlotId] = useState<string | null>(null)
@@ -92,9 +110,10 @@ export default function HomeSection({
   const scheduleSlotsScrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
-  const [showChecklistDetail, setShowChecklistDetail] = useState(false)
-  const [showHomeworkDetail, setShowHomeworkDetail] = useState(false)
+  const [homeworkUploading, setHomeworkUploading] = useState<string | null>(null)
   const [evaluationExpandedState, setEvaluationExpandedState] = useState<Record<string, boolean>>({})
+  const [isChecklistCollapsed, setIsChecklistCollapsed] = useState(false)
+  const [expandedChecklistItems, setExpandedChecklistItems] = useState<Record<string, boolean>>({})
   const checklistSectionRef = useRef<HTMLDivElement>(null)
   const rightColumnRef = useRef<HTMLDivElement>(null)
 
@@ -225,9 +244,9 @@ export default function HomeSection({
   }, [todaySchedules, getScheduleStatus, currentTime])
 
   useEffect(() => {
-    // Khi chọn slot khác thì thu gọn chi tiết checklist / bài tập
-    setShowChecklistDetail(false)
-    setShowHomeworkDetail(false)
+    // Khi chọn slot khác thì thu gọn chi tiết checklist / bài tập và reset expanded items
+    setIsChecklistCollapsed(false)
+    setExpandedChecklistItems({})
   }, [selectedScheduleSlotId])
 
   const getFileNameFromUrl = (url?: string | null) => {
@@ -492,8 +511,8 @@ export default function HomeSection({
                     if (scheduleSlots.length > 0 && !selectedScheduleSlotId) {
                       setSelectedScheduleSlotId(scheduleSlots[0].id)
                     }
-                    // Mở chi tiết checklist
-                    setShowChecklistDetail(true)
+                    // Mở phần checklist (đảm bảo không bị collapsed)
+                    setIsChecklistCollapsed(false)
                     // Scroll đến phần checklist trong container bên phải
                     setTimeout(() => {
                       if (checklistSectionRef.current && rightColumnRef.current) {
@@ -748,12 +767,28 @@ export default function HomeSection({
                       <div className="rounded-2xl border-2 border-primary-100 bg-white p-6 space-y-4 shadow-sm">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                           <div>
+                            {displayTutorName ? (
+                              <button
+                                onClick={() => {
+                                  if (activeSchedule.tutorId) {
+                                    setSelectedTutorSchedule(activeSchedule.id)
+                                  }
+                                }}
+                                className="text-left hover:opacity-80 transition-opacity"
+                                disabled={!activeSchedule.tutorId}
+                              >
+                                <h3 className="text-2xl font-bold text-gray-900 hover:text-primary-600 transition-colors">
+                                  {displayTutorName}
+                                </h3>
+                              </button>
+                            ) : (
                             <h3 className="text-2xl font-bold text-gray-900">
                               {activeSchedule.subject || 'Chung'}
                             </h3>
-                            {displayTutorName && (
+                            )}
+                            {activeSchedule.subject && (
                               <p className="text-base text-gray-600 mt-1">
-                                Tutor: <span className="font-semibold text-gray-900">{displayTutorName}</span>
+                                Môn: <span className="font-semibold text-gray-900">{activeSchedule.subject}</span>
                               </p>
                             )}
                           </div>
@@ -848,16 +883,22 @@ export default function HomeSection({
                       </div>
 
                       {/* Tải tài liệu cho Tutor */}
+                      {uploadScheduleOptions && uploadScheduleOptions.length > 0 && (
                       <MaterialUploadSection
-                        scheduleOptions={[{
-                          id: activeSchedule.id,
-                          subject: activeSchedule.subject || 'Chung',
-                          date: activeSchedule.date,
-                        }]}
-                        selectedScheduleId={activeSchedule.id}
-                        onScheduleChange={() => {}}
+                          scheduleOptions={uploadScheduleOptions.map(s => ({
+                            id: s.id,
+                            subject: getSubjectLabel?.((s as any).subjectCode) || s.subject || 'Chung',
+                            date: s.date,
+                          }))}
+                          selectedScheduleId={selectedUploadScheduleId || activeSchedule?.id || null}
+                          onScheduleChange={(scheduleId) => {
+                            if (onUploadScheduleChange) {
+                              onUploadScheduleChange(scheduleId)
+                            }
+                          }}
                         onUploadSuccess={onUploadSuccess}
                       />
+                      )}
 
                       {/* Checklist hôm nay */}
                       <div ref={checklistSectionRef} className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm">
@@ -865,76 +906,246 @@ export default function HomeSection({
                           <h4 className="text-2xl font-bold text-gray-900">Checklist hôm nay</h4>
                           <button
                             type="button"
-                            onClick={() => setShowChecklistDetail((prev) => !prev)}
+                            onClick={() => setIsChecklistCollapsed((prev) => !prev)}
                             className="inline-flex items-center gap-1 text-sm font-semibold text-primary-600 hover:text-primary-700"
                           >
-                            <span>{showChecklistDetail ? 'Thu gọn' : 'Chi tiết'}</span>
-                            {showChecklistDetail ? (
-                              <ChevronUp className="w-4 h-4" />
-                            ) : (
+                            {isChecklistCollapsed ? (
                               <ChevronDown className="w-4 h-4" />
+                            ) : (
+                              <ChevronUp className="w-4 h-4" />
                             )}
                           </button>
                         </div>
-                        {scheduleChecklistMap[activeSchedule.id]?.length ? (
-                          <>
-                            <div className="space-y-3">
-                              {scheduleChecklistMap[activeSchedule.id].map((item) => (
-                                <div
-                                  key={item.id}
-                                  className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3"
-                                >
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-semibold text-gray-900 truncate">{item.lesson}</p>
-                                    <p className="text-xs text-gray-600 truncate">{item.task}</p>
-                                  </div>
-                                  <span
-                                    className={`text-xs font-bold px-3 py-1 rounded-full ${
-                                      item.status === 'done'
-                                        ? 'bg-green-100 text-green-700'
-                                        : item.status === 'in_progress'
-                                          ? 'bg-yellow-100 text-yellow-700'
-                                          : 'bg-gray-200 text-gray-700'
-                                    }`}
-                                  >
-                                    {item.status === 'done'
-                                      ? 'Đã xong'
-                                      : item.status === 'in_progress'
-                                        ? 'Đang làm'
-                                        : 'Chưa xong'}
-                                  </span>
+                        {!isChecklistCollapsed && (() => {
+                          // Nhóm checklist theo assignments nếu có
+                          const relatedAssignments = assignments.filter(
+                            (assignment) => resolveAssignmentScheduleId(assignment) === activeSchedule.id
+                          )
+                          
+                          const hasChecklist = relatedAssignments.length > 0 || scheduleChecklistMap[activeSchedule.id]?.length
+                          
+                          if (!hasChecklist) {
+                            return <p className="text-sm text-gray-500 italic">Chưa có checklist nào cho buổi này.</p>
+                          }
+                          
+                          return (
+                            <>
+                              {/* Nếu có assignments, hiển thị theo layout mới giống tutor */}
+                              {relatedAssignments.length > 0 ? (
+                                <div className="space-y-4">
+                                  {relatedAssignments.map((assignment) => {
+                                    const assignmentKey = assignment.id || (assignment as any)._id || `assignment-${assignment.subject}`
+                                    const isExpanded = expandedChecklistItems[assignmentKey] || false
+                                    
+                                    return (
+                                      <div
+                                        key={assignmentKey}
+                                        className="border border-gray-200 rounded-2xl overflow-hidden bg-gray-50"
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() => setExpandedChecklistItems((prev) => ({
+                                            ...prev,
+                                            [assignmentKey]: !prev[assignmentKey]
+                                          }))}
+                                          className="w-full"
+                                        >
+                                          <div className="flex items-center px-5 py-4 gap-4">
+                                            <p className="text-2xl font-bold text-primary-600 uppercase tracking-wide whitespace-nowrap w-48 flex-shrink-0">
+                                              {assignment.subject || activeSchedule.subject || 'Chung'}
+                                            </p>
+                                            <div className="h-12 w-px bg-gray-300 flex-shrink-0"></div>
+                                            <div className="flex-1 space-y-1 min-w-0 text-left">
+                                              <h5 className="text-base font-bold text-gray-900">
+                                                {assignment.name || 'Checklist'}
+                                              </h5>
+                                              {assignment.description && (
+                                                <p className="text-sm text-gray-600 italic line-clamp-1">
+                                                  {assignment.description}
+                                                </p>
+                                              )}
                                 </div>
-                              ))}
+                                            <div className="flex-shrink-0">
+                                              {isExpanded ? (
+                                                <ChevronUp className="w-5 h-5 text-gray-500" />
+                                              ) : (
+                                                <ChevronDown className="w-5 h-5 text-gray-500" />
+                                              )}
                             </div>
-                            {showChecklistDetail && (
-                              <div className="mt-4 pt-4 border-t border-gray-200 space-y-6">
-                                {/* Bảng tóm tắt giống tutor */}
+                                          </div>
+                                        </button>
+                                        
+                                        {isExpanded && (
+                                          <div className="px-5 pb-4 pt-2 border-t border-gray-200 space-y-4">
+                                            {/* Bảng tóm tắt */}
                                 <div>
                                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.35em] mb-3">
                                     BẢNG TÓM TẮT
                                   </p>
-                                  <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-gray-50">
-                                    <table className="min-w-full text-xs sm:text-sm">
-                                      <thead className="bg-white">
-                                        <tr className="text-[11px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                                          <th className="px-3 py-2 text-left">Bài học</th>
-                                          <th className="px-3 py-2 text-left">Nhiệm vụ</th>
-                                          <th className="px-3 py-2 text-center whitespace-nowrap">Trạng thái</th>
-                                          <th className="px-3 py-2 text-left">Nhận xét</th>
+                                              <div className="rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-x-auto scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
+                                                <table className="w-full text-base border-collapse min-w-[800px]">
+                                                  <thead className="bg-purple-50 text-gray-700 uppercase text-sm md:text-base tracking-[0.3em] font-semibold">
+                                                    <tr>
+                                                      <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                          <Layers className="w-5 h-5" />
+                                                          Bài học
+                                                        </div>
+                                                      </th>
+                                                      <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                          <PenTool className="w-5 h-5" />
+                                                          Nhiệm vụ
+                                                        </div>
+                                                      </th>
+                                                      <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                          <Clock className="w-5 h-5" />
+                                                          Trạng thái
+                                                        </div>
+                                                      </th>
+                                                      <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                          <Lightbulb className="w-5 h-5" />
+                                                          Nhận xét
+                                                        </div>
+                                                      </th>
                                         </tr>
                                       </thead>
-                                      <tbody>
-                                        {(scheduleChecklistMap[activeSchedule.id] || []).map((item) => (
-                                          <tr key={item.id} className="border-t border-gray-200 bg-white">
-                                            <td className="px-3 py-2 text-sm font-semibold text-gray-900">
-                                              {item.lesson}
+                                                  <tbody className="divide-y divide-gray-100 bg-white">
+                                                    {(assignment.tasks || []).map((task: any, taskIndex: number) => {
+                                                      const mapTaskStatusToDisplay = (status?: string) => {
+                                                        if (status === 'completed' || status === 'submitted') return 'done'
+                                                        if (status === 'in-progress') return 'in_progress'
+                                                        return 'pending'
+                                                      }
+                                                      const taskStatus = mapTaskStatusToDisplay(task.status)
+                                                      const rowChip =
+                                                        taskStatus === 'done'
+                                                          ? 'bg-green-100 text-green-700'
+                                                          : taskStatus === 'in_progress'
+                                                            ? 'bg-yellow-100 text-yellow-700'
+                                                            : 'bg-red-100 text-red-700'
+                                                      const rowNote = (task as any).note || assignment.description || '—'
+                                                      
+                                                      return (
+                                                        <tr key={task.id || `${assignmentKey}-task-${taskIndex}`}>
+                                                          <td className="px-5 py-4 font-semibold text-gray-900 text-center text-lg">
+                                                            {task.name || assignment.name || 'Bài học'}
                                             </td>
-                                            <td className="px-3 py-2 text-sm text-gray-700">
-                                              {item.task}
+                                                          <td className="px-5 py-4 text-gray-700 text-center text-base">
+                                                            {task.description || assignment.description || '—'}
                                             </td>
-                                            <td className="px-3 py-2 text-center">
+                                                          <td className="px-5 py-4 text-center text-base">
                                               <span
-                                                className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-[11px] font-bold ${
+                                                              className={`px-4 py-1.5 rounded-full text-xs font-semibold ${rowChip}`}
+                                                            >
+                                                              {taskStatus === 'done'
+                                                  ? 'Đã xong'
+                                                                : taskStatus === 'in_progress'
+                                                    ? 'Đang làm'
+                                                                  : 'CHƯA XONG'}
+                                              </span>
+                                            </td>
+                                                          <td className="px-5 py-4 text-gray-600 text-center text-base">
+                                                            <span className="flex-1">{rowNote}</span>
+                                            </td>
+                                          </tr>
+                                                      )
+                                                    })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+
+                                            {/* Bảng chi tiết */}
+                                            {(() => {
+                                              // Map checklist items cho assignment này
+                                              const assignmentTasks = assignment.tasks || []
+                                              const assignmentId = assignment.id || (assignment as any)._id || assignmentKey
+                                              
+                                              const detailItemsForAssignment: ChecklistDetailItem[] = []
+                                              
+                                              if (assignmentTasks.length > 0) {
+                                                assignmentTasks.forEach((task: any, taskIndex: number) => {
+                                                  const taskId = task.id || `${assignmentId}-task-${taskIndex}`
+                                                  detailItemsForAssignment.push({
+                                                    id: taskId,
+                                                    lesson: task.name || assignment.name || 'Bài học',
+                                                    estimatedTime: task.estimatedTime ?? 0,
+                                                    actualTime: task.actualTime ?? 0,
+                                                    result: mapTaskStatusToResult(task.status as string | undefined),
+                                                    qualityNote: (task as any).note || '',
+                                                    solutionType: task.solutionUrl ? 'file' : 'text',
+                                                    solutionText: undefined,
+                                                    solutionFileName: getFileNameFromUrl(task.solutionUrl),
+                                                    solutionUrl: task.solutionUrl,
+                                                    solutionPreview: undefined,
+                                                    uploadedFileName: undefined,
+                                                    assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
+                                                  })
+                                                })
+                                              } else {
+                                                // Không có task con
+                                                detailItemsForAssignment.push({
+                                                  id: assignmentId,
+                                                  lesson: assignment.name || 'Bài học',
+                                                  estimatedTime: 0,
+                                                  actualTime: 0,
+                                                  result: mapTaskStatusToResult(assignment.status as string | undefined),
+                                                  qualityNote: '',
+                                                  solutionType: 'text',
+                                                  solutionText: undefined,
+                                                  solutionFileName: undefined,
+                                                  solutionPreview: undefined,
+                                                  uploadedFileName: undefined,
+                                                  assignmentFileName: getFileNameFromUrl(
+                                                    assignment.supplementaryMaterials?.[0]?.url as string | undefined
+                                                  ),
+                                                })
+                                              }
+                                              
+                                              return (
+                                <ChecklistDetailTable
+                                                  items={detailItemsForAssignment}
+                                  onUpload={() => {}}
+                                  onUploadSolution={() => {}}
+                                />
+                                              )
+                                            })()}
+                              </div>
+                        )}
+                      </div>
+                                    )
+                                  })}
+                                </div>
+                              ) : (
+                                // Fallback: hiển thị danh sách đơn giản từ scheduleChecklistMap
+                                <div className="space-y-3">
+                                  {scheduleChecklistMap[activeSchedule.id].map((item) => {
+                                    const isExpanded = expandedChecklistItems[item.id] || false
+                                    
+                                    return (
+                                      <div
+                                        key={item.id}
+                                        className="border border-gray-200 rounded-2xl overflow-hidden bg-gray-50"
+                                      >
+                          <button
+                            type="button"
+                                          onClick={() => setExpandedChecklistItems((prev) => ({
+                                            ...prev,
+                                            [item.id]: !prev[item.id]
+                                          }))}
+                                          className="w-full"
+                                        >
+                                          <div className="flex items-center justify-between px-4 py-3">
+                                            <div className="flex-1 min-w-0 text-left">
+                                              <p className="text-sm font-semibold text-gray-900 truncate">{item.lesson}</p>
+                                              <p className="text-xs text-gray-600 truncate">{item.task}</p>
+                                            </div>
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                              <span
+                                                className={`text-xs font-bold px-3 py-1 rounded-full ${
                                                   item.status === 'done'
                                                     ? 'bg-green-100 text-green-700'
                                                     : item.status === 'in_progress'
@@ -948,82 +1159,287 @@ export default function HomeSection({
                                                     ? 'Đang làm'
                                                     : 'Chưa xong'}
                                               </span>
-                                            </td>
-                                            <td className="px-3 py-2 text-sm text-gray-700">
-                                              {item.note || '—'}
-                                            </td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
+                                              {isExpanded ? (
+                                                <ChevronUp className="w-5 h-5 text-gray-500" />
+                                              ) : (
+                                                <ChevronDown className="w-5 h-5 text-gray-500" />
+                                              )}
+                                            </div>
+                                          </div>
+                          </button>
+                                        
+                                        {isExpanded && (
+                                          <div className="px-4 pb-4 pt-2 border-t border-gray-200">
+                                            <ChecklistDetailTable
+                                              items={mapChecklistToDetailItems(activeSchedule.id).filter(
+                                                (detailItem) => detailItem.id === item.id
+                                              )}
+                                              onUpload={() => {}}
+                                              onUploadSolution={() => {}}
+                                            />
+                        </div>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
                                 </div>
-
-                                {/* Bảng chi tiết giống tutor */}
-                                <ChecklistDetailTable
-                                  items={mapChecklistToDetailItems(activeSchedule.id)}
-                                  onUpload={() => {}}
-                                  onUploadSolution={() => {}}
-                                />
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <p className="text-sm text-gray-500 italic">Chưa có checklist nào cho buổi này.</p>
-                        )}
+                              )}
+                            </>
+                          )
+                        })()}
                       </div>
 
-                      {/* Bài tập về nhà */}
+                      {/* Bài tập hôm nay - Sau checklist */}
                       <div className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className="text-2xl font-bold text-gray-900">Bài tập hôm nay</h4>
-                          <button
-                            type="button"
-                            onClick={() => setShowHomeworkDetail((prev) => !prev)}
-                            className="inline-flex items-center gap-1 text-sm font-semibold text-primary-600 hover:text-primary-700"
-                          >
-                            <span>{showHomeworkDetail ? 'Thu gọn' : 'Chi tiết'}</span>
-                            {showHomeworkDetail ? (
-                              <ChevronUp className="w-4 h-4" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
-                        {homeworkDetailsMap[activeSchedule.id]?.length ? (
-                          <>
-                            <div className="space-y-3">
-                              {homeworkDetailsMap[activeSchedule.id].map((item) => (
+                        <h4 className="text-2xl font-bold text-gray-900 mb-4">Bài tập hôm nay</h4>
+                        {(() => {
+                          // Lấy tất cả homework của hôm nay từ tất cả schedules
+                          const allTodayHomework: HomeworkDetailItem[] = []
+                          Object.keys(homeworkDetailsMap).forEach((scheduleId) => {
+                            const items = homeworkDetailsMap[scheduleId] || []
+                            allTodayHomework.push(...items)
+                          })
+                          
+                          if (allTodayHomework.length > 0) {
+                            return (
+                              <div className="space-y-4">
+                                {allTodayHomework.map((item) => {
+                                  const difficultyLabels = {
+                                    easy: 'Dễ',
+                                    medium: 'Trung bình',
+                                    hard: 'Khó',
+                                    advanced: 'Nâng cao',
+                                  }
+                                  const difficultyColors = {
+                                    easy: 'bg-green-100 text-green-700',
+                                    medium: 'bg-yellow-100 text-yellow-700',
+                                    hard: 'bg-red-100 text-red-700',
+                                    advanced: 'bg-purple-100 text-purple-700',
+                                  }
+                                  
+                                  return (
                                 <div
                                   key={item.id}
-                                  className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 flex flex-col gap-1"
-                                >
-                                  <p className="text-sm font-semibold text-gray-900">{item.task}</p>
-                                  {item.comment && <p className="text-xs text-gray-600">{item.comment}</p>}
+                                      className="border-l-4 border-primary-500 bg-white rounded-lg shadow-sm overflow-hidden"
+                                    >
+                                      {/* Header */}
+                                      <div className="px-5 py-3 border-b border-gray-200">
+                                        <div className="flex items-start justify-between mb-2">
+                                          <div className="flex-1">
+                                            <p className="text-xl font-bold text-gray-900">{item.task}</p>
+                                          </div>
+                                          <div className="flex items-center gap-2 flex-shrink-0">
+                                            {/* Status */}
                                   <span
-                                    className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                                              className={`text-sm px-3 py-1 rounded-full font-semibold whitespace-nowrap ${
                                       item.result === 'completed'
                                         ? 'bg-green-100 text-green-700'
-                                        : 'bg-gray-200 text-gray-700'
+                                                  : 'bg-gray-100 text-gray-700'
                                     }`}
                                   >
-                                    {item.result === 'completed' ? 'Hoàn thành' : 'Chưa hoàn thành'}
+                                              {item.result === 'completed' ? 'Đã hoàn thành' : 'Chưa hoàn thành'}
                                   </span>
+                                            {/* Difficulty */}
+                                            {item.difficulty && (
+                                              <span
+                                                className={`text-sm px-3 py-1 rounded-full font-semibold ${difficultyColors[item.difficulty]}`}
+                                              >
+                                                {difficultyLabels[item.difficulty]}
+                                              </span>
+                                            )}
                                 </div>
-                              ))}
                             </div>
-                            {showHomeworkDetail && (
-                              <div className="mt-4 pt-4 border-t border-gray-200">
-                                <HomeworkDetailTable
-                                  items={homeworkDetailsMap[activeSchedule.id] || []}
-                                  onUpload={() => {}}
-                                />
+                                      </div>
+
+                                      {/* Body */}
+                                      <div className="px-5 py-4">
+                                        {/* Phần trên: Deadline, File bài tập, Bài làm HS, Lời giải */}
+                                        <div className="space-y-3 pb-4">
+                                          {/* Deadline */}
+                                          <div className="flex items-center gap-3">
+                                            <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+                                            <span className="text-base font-medium text-gray-700 whitespace-nowrap">Hạn nộp:</span>
+                                            <span className="text-base text-red-600 font-medium">
+                                              {item.deadline
+                                                ? format(new Date(item.deadline), 'dd/MM/yyyy')
+                                                : 'Chưa có'}
+                                            </span>
+                                          </div>
+
+                                          {/* File bài tập */}
+                                          {item.assignmentUrl && (
+                                            <div className="flex items-center gap-3">
+                                              <Folder className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+                                              <span className="text-base font-medium text-blue-600 whitespace-nowrap">File Bài Tập:</span>
+                                              <a
+                                                href={item.assignmentUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-base text-blue-600 hover:underline flex-1 truncate"
+                                                title={item.assignmentUrl}
+                                              >
+                                                {item.assignmentFileName || item.assignmentUrl.split('/').pop() || 'Xem file bài tập'}
+                                              </a>
                               </div>
                             )}
+
+                                          {/* Bài làm học sinh - Học sinh có thể upload */}
+                                          <div className="flex items-center gap-3">
+                                            <FileText className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                                            <span className="text-base font-medium text-blue-600 whitespace-nowrap">Bài làm HS:</span>
+                                            <div className="flex items-center gap-3 flex-1">
+                                              {item.uploadedFileName || item.studentSolutionFileUrl ? (
+                                                <a
+                                                  href={item.studentSolutionFileUrl || '#'}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="text-base text-blue-600 hover:underline flex-1 truncate"
+                                                  title={item.studentSolutionFileUrl}
+                                                >
+                                                  {item.uploadedFileName || 'Bài làm học sinh'}
+                                                </a>
+                                              ) : (
+                                                <span className="text-base text-gray-400 flex-1">Chưa có bài làm</span>
+                                              )}
+                                              {/* Nút upload - Luôn hiển thị */}
+                                              <label
+                                                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border-2 border-primary-500 ${
+                                                  item.uploadedFileName || item.studentSolutionFileUrl
+                                                    ? 'bg-primary-50 text-primary-700 hover:bg-primary-100'
+                                                    : 'bg-primary-500 text-white hover:bg-primary-600 shadow-md'
+                                                } font-semibold text-base flex-shrink-0 transition-colors ${
+                                                  homeworkUploading === item.id
+                                                    ? 'cursor-wait opacity-60'
+                                                    : 'cursor-pointer'
+                                                }`}
+                                                title={item.uploadedFileName || item.studentSolutionFileUrl ? "Cập nhật bài làm" : "Upload bài làm"}
+                                              >
+                                                {homeworkUploading === item.id ? (
+                                                  <>
+                                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                                    <span>Đang tải...</span>
                           </>
                         ) : (
-                          <p className="text-sm text-gray-500 italic">Chưa có bài tập nào cho buổi này.</p>
-                        )}
+                                                  <>
+                                                    <Upload className="w-5 h-5" />
+                                                    <span>{item.uploadedFileName || item.studentSolutionFileUrl ? 'Cập nhật' : 'Upload bài làm'}</span>
+                                                  </>
+                                                )}
+                                                <input
+                                                  type="file"
+                                                  className="hidden"
+                                                  accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                  onChange={async (e) => {
+                                                    const file = e.target.files?.[0]
+                                                    if (!file) return
+                                                    if (!onUploadHomeworkFile) {
+                                                      alert('Chức năng upload chưa sẵn sàng. Vui lòng thử lại sau.')
+                                                      e.target.value = ''
+                                                      return
+                                                    }
+                                                    setHomeworkUploading(item.id)
+                                                    try {
+                                                      await onUploadHomeworkFile(item.id, file)
+                                                      onUploadSuccess()
+                                                    } catch (error) {
+                                                      console.error('Upload failed:', error)
+                                                      alert('Không thể upload file. Vui lòng thử lại.')
+                                                    } finally {
+                                                      setHomeworkUploading(null)
+                                                      e.target.value = ''
+                                                    }
+                                                  }}
+                                                  disabled={homeworkUploading === item.id}
+                                                />
+                                              </label>
+                                            </div>
+                                          </div>
+
+                                          {/* Lời giải */}
+                                          {item.solutionUrl && (
+                                            <div className="flex items-center gap-3">
+                                              <Lightbulb className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+                                              <span className="text-base font-medium text-blue-600 whitespace-nowrap">Lời giải:</span>
+                                              <a
+                                                href={item.solutionUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-base text-blue-600 hover:underline flex-1 truncate"
+                                                title={item.solutionUrl}
+                                              >
+                                                {item.solutionFileName || item.solutionUrl.split('/').pop() || 'Xem lời giải'}
+                                              </a>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Separator */}
+                                        {item.comment && (
+                                          <div className="border-t border-dashed border-gray-300 my-4"></div>
+                                        )}
+
+                                        {/* Nhận xét */}
+                                        {item.comment && (
+                                          <div className="flex items-start gap-3 pt-2">
+                                            <div className="w-1 h-6 bg-yellow-400 flex-shrink-0 rounded"></div>
+                                            <div className="flex-1">
+                                              <span className="text-base font-medium text-gray-700">Nhận xét:</span>
+                                              <span className="text-base text-gray-900 ml-2">{item.comment}</span>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )
+                          }
+                          
+                          // Khi chưa có bài tập, hiển thị khung upload
+                          return (
+                            <div className="border-l-4 border-primary-500 bg-white rounded-lg shadow-sm overflow-hidden p-6">
+                              <div className="flex flex-col items-center justify-center py-8">
+                                <FileText className="w-16 h-16 text-gray-300 mb-4" />
+                                <p className="text-base font-semibold text-gray-600 mb-4">Chưa có bài tập nào hôm nay</p>
+                                <label
+                                  className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border-2 border-primary-500 bg-primary-500 text-white font-semibold text-base hover:bg-primary-600 transition-colors cursor-pointer shadow-md"
+                                  title="Upload bài làm"
+                                >
+                                  <Upload className="w-5 h-5" />
+                                  <span>Upload bài làm</span>
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0]
+                                      if (!file) return
+                                      if (!onUploadHomeworkFile) {
+                                        alert('Chức năng upload chưa sẵn sàng. Vui lòng thử lại sau.')
+                                        e.target.value = ''
+                                        return
+                                      }
+                                      const tempId = `temp-${Date.now()}`
+                                      setHomeworkUploading(tempId)
+                                      try {
+                                        await onUploadHomeworkFile(tempId, file)
+                                        onUploadSuccess()
+                                      } catch (error) {
+                                        console.error('Upload failed:', error)
+                                        alert('Không thể upload file. Vui lòng thử lại.')
+                                      } finally {
+                                        setHomeworkUploading(null)
+                                        e.target.value = ''
+                                      }
+                                    }}
+                                    disabled={!!homeworkUploading}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          )
+                        })()}
                       </div>
 
                       {/* Đánh giá chung cho từng môn */}
@@ -1116,6 +1532,7 @@ export default function HomeSection({
 
                 {tutorProfile ? (
                   <>
+                    {/* Main Profile Card */}
                     <div className="flex flex-col lg:flex-row items-start gap-6 border border-gray-100 rounded-3xl bg-gray-50 p-6">
                       <div className="w-28 h-28 rounded-3xl overflow-hidden border-2 border-primary-100 shadow-lg flex-shrink-0 bg-gradient-to-br from-primary-500 to-primary-600 text-white text-4xl font-bold flex items-center justify-center">
                         {tutorProfile.avatarUrl ? (
@@ -1124,57 +1541,125 @@ export default function HomeSection({
                           tutorInitial
                         )}
                       </div>
-                      <div className="flex-1 space-y-4">
+                      <div className="flex-1 space-y-2">
+                        <p className="text-sm font-semibold text-gray-500 uppercase tracking-[0.2em]">TUTOR</p>
                         <h3 className="text-4xl font-extrabold text-gray-900">{displayTutorName}</h3>
-                        <p className="text-lg text-gray-500">{tutorProfile.currentLevel || 'Tutor LearnerPro'}</p>
-                        {schedule.note && (
-                          <p className="text-base text-gray-600">
-                            <span className="font-semibold text-gray-800">Ghi chú buổi học:</span> {schedule.note}
-                          </p>
-                        )}
+                        <p className="text-lg text-gray-500">{tutorProfile.qualification || tutorProfile.currentLevel || 'Tutor LearnerPro'}</p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                    {/* Kinh nghiệm và Liên hệ */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Kinh nghiệm */}
                       <div className="p-5 border rounded-2xl bg-white shadow-sm">
-                        <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Email</p>
-                        <p className="text-lg font-semibold text-gray-900">{tutorProfile.email || 'Chưa cập nhật'}</p>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">KINH NGHIỆM</p>
+                        <p className="text-base font-semibold text-gray-900">{tutorProfile.experience || 'Chưa cập nhật'}</p>
                       </div>
+                      
+                      {/* Liên hệ */}
                       <div className="p-5 border rounded-2xl bg-white shadow-sm">
-                        <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Số điện thoại</p>
-                        <p className="text-lg font-semibold text-gray-900">{tutorProfile.phone || 'Chưa cập nhật'}</p>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">LIÊN HỆ</p>
+                        <div className="space-y-1">
+                          {tutorProfile.email && (
+                            <div className="flex items-center gap-2">
+                              <Mail className="w-4 h-4 text-gray-400" />
+                              <p className="text-base font-semibold text-gray-900">{tutorProfile.email}</p>
                       </div>
+                          )}
+                          {tutorProfile.phone && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="w-4 h-4 text-gray-400" />
+                              <p className="text-base font-semibold text-gray-900">{tutorProfile.phone}</p>
+                            </div>
+                          )}
+                          {!tutorProfile.email && !tutorProfile.phone && (
+                            <p className="text-base font-semibold text-gray-900">Chưa cập nhật</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Môn phụ trách, Chuyên môn, Tổng học viên */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Môn phụ trách */}
                       <div className="p-5 border rounded-2xl bg-white shadow-sm">
-                        <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Địa chỉ</p>
-                        <p className="text-lg font-semibold text-gray-900">{tutorProfile.address || 'Chưa cập nhật'}</p>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-3">MÔN PHỤ TRÁCH</p>
+                        <div className="flex flex-wrap gap-2">
+                          {tutorProfile.subjects && tutorProfile.subjects.length > 0 ? (
+                            tutorProfile.subjects.map((subject, idx) => (
+                              <span
+                                key={idx}
+                                className="px-3 py-1.5 rounded-full text-xs font-semibold text-white bg-purple-500"
+                              >
+                                {subject}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-base font-semibold text-gray-900">{schedule.subject || 'Chưa cập nhật'}</span>
+                          )}
                       </div>
+                      </div>
+                      
+                      {/* Chuyên môn */}
                       <div className="p-5 border rounded-2xl bg-white shadow-sm">
-                        <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Môn phụ trách</p>
-                        <p className="text-lg font-semibold text-gray-900">{schedule.subject || 'Đang cập nhật'}</p>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-3">CHUYÊN MÔN</p>
+                        <div className="flex flex-wrap gap-2">
+                          {tutorProfile.specialties && tutorProfile.specialties.length > 0 ? (
+                            tutorProfile.specialties.map((specialty, idx) => (
+                              <span
+                                key={idx}
+                                className="px-3 py-1.5 rounded-full text-xs font-semibold text-white bg-yellow-500"
+                              >
+                                {specialty}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-base font-semibold text-gray-900">
+                              {tutorProfile.qualification || 'Chưa cập nhật'}
+                            </span>
+                          )}
                       </div>
-                      <div className="p-5 border rounded-2xl bg-white shadow-sm md:col-span-2">
-                        <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">CV / Hồ sơ</p>
+                      </div>
+                      
+                      {/* Tổng học viên */}
+                      <div className="p-5 border rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-3">TỔNG HỌC VIÊN</p>
+                        <div className="flex items-center gap-2">
+                          <Users className="w-5 h-5 text-primary-600" />
+                          <p className="text-base font-semibold text-gray-900">
+                            {typeof tutorProfile.totalStudents === 'number' ? tutorProfile.totalStudents : 0} học viên đã dạy
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Hồ sơ & CV và Giới thiệu */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Hồ sơ & CV */}
+                      <div className="p-5 border rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-3">HỒ SƠ & CV</p>
                         {tutorProfile.cvUrl ? (
                           <a
                             href={tutorProfile.cvUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center text-lg font-semibold text-primary-600 hover:text-primary-700"
+                            className="inline-flex items-center gap-2 text-base font-semibold text-primary-600 hover:text-primary-700"
                           >
-                            Xem CV
-                            <ExternalLink className="w-4 h-4 ml-2" />
+                            <FileTextIcon className="w-5 h-5" />
+                            <span>Xem CV</span>
                           </a>
                         ) : (
-                          <p className="text-lg font-semibold text-gray-900">Tutor chưa cập nhật CV</p>
+                          <p className="text-base font-semibold text-gray-900">Chưa cập nhật</p>
                         )}
-                      </div>
                     </div>
 
-                    <div className="p-5 border border-gray-100 rounded-3xl bg-gray-50">
-                      <p className="text-sm font-semibold text-gray-500 uppercase tracking-[0.3em] mb-3">Giới thiệu</p>
-                      <p className="text-lg text-gray-700 leading-relaxed">
-                        {tutorProfile.moreInfo || 'Tutor vẫn chưa cập nhật phần giới thiệu chi tiết.'}
+                      {/* Giới thiệu */}
+                      <div className="p-5 border rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-3">GIỚI THIỆU</p>
+                        <p className="text-base text-gray-700 leading-relaxed">
+                          {tutorProfile.bio || tutorProfile.moreInfo || 'Thông tin đang được bổ sung.'}
                       </p>
+                    </div>
                     </div>
                   </>
                 ) : (

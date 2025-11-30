@@ -3,10 +3,23 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSam
 import { ChevronLeft, ChevronRight, Filter, Play, Copy, Check } from 'lucide-react'
 import { ScheduleItem } from './ScheduleWidget'
 
+interface TutorInfo {
+  id: string
+  name?: string
+  email?: string
+  phone?: string
+  address?: string
+  avatarUrl?: string
+  cvUrl?: string
+  moreInfo?: string
+  currentLevel?: string
+}
+
 interface MonthlyCalendarProps {
   schedules: ScheduleItem[]
   onJoinClass?: (scheduleId: string) => void
   onViewChecklist?: (scheduleId: string) => void
+  tutorInfoMap?: Record<string, TutorInfo>
 }
 
 const SCHEDULES_PER_DAY = 4
@@ -37,7 +50,7 @@ const CopyLinkButton = ({ link }: { link: string }) => {
   )
 }
 
-export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalendarProps) {
+export default function MonthlyCalendar({ schedules, onJoinClass, tutorInfoMap = {} }: MonthlyCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date())
   const [schedulePages, setSchedulePages] = useState<Record<string, number>>({})
@@ -281,11 +294,18 @@ export default function MonthlyCalendar({ schedules, onJoinClass }: MonthlyCalen
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-3">
-                            {schedule.tutor && (
-                              <div className="text-2xl md:text-3xl font-bold text-gray-900 text-right">
-                                {schedule.tutor}
-                              </div>
-                            )}
+                            {(() => {
+                              // Ưu tiên lấy tên tutor từ tutorInfoMap nếu có tutorId
+                              let displayTutorName = schedule.tutor
+                              if (schedule.tutorId && tutorInfoMap[schedule.tutorId]) {
+                                displayTutorName = tutorInfoMap[schedule.tutorId].name || schedule.tutor
+                              }
+                              return displayTutorName ? (
+                                <div className="text-2xl md:text-3xl font-bold text-gray-900 text-right">
+                                  {displayTutorName}
+                                </div>
+                              ) : null
+                            })()}
                             {schedule.meetLink && onJoinClass && statusInfo.status !== 'completed' && (
                               <>
                                 <button

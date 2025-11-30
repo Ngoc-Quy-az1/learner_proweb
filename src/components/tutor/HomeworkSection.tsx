@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import { format } from 'date-fns'
-import { Plus, ChevronUp, ChevronDown, FileText, Download, Upload, Loader2 } from 'lucide-react'
+import { Plus, ChevronUp, ChevronDown, Upload, Loader2 } from 'lucide-react'
 
 export interface HomeworkItem {
   id: string
@@ -102,6 +102,96 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
       ? subjectItems.filter((item) => item.scheduleId === scheduleId)
       : subjectItems
 
+  // Track original values to detect changes
+  const originalValuesRef = useRef<Record<string, Partial<HomeworkItem>>>({})
+  const savedItemsRef = useRef<Set<string>>(new Set())
+
+  // Initialize original values when items first appear (chỉ lưu lần đầu, không overwrite khi user thay đổi)
+  useEffect(() => {
+    homeworkItems.forEach((item) => {
+      const key = item.id
+      // Chỉ lưu original values nếu chưa có, hoặc nếu item đã được saved (để reset tracking sau khi save)
+      if (!originalValuesRef.current[key]) {
+        // First time seeing this item, save original values
+        originalValuesRef.current[key] = {
+          task: item.task,
+          deadline: item.deadline,
+          assignmentUrl: item.assignmentUrl,
+          studentSolutionFile: item.studentSolutionFile,
+          tutorSolution: item.tutorSolution,
+          difficulty: item.difficulty,
+          result: item.result,
+          note: item.note,
+        }
+        savedItemsRef.current.delete(key) // Reset saved flag if item reloaded
+      } else if (savedItemsRef.current.has(key)) {
+        // Item đã được saved, reset original values và clear saved flag
+        originalValuesRef.current[key] = {
+          task: item.task,
+          deadline: item.deadline,
+          assignmentUrl: item.assignmentUrl,
+          studentSolutionFile: item.studentSolutionFile,
+          tutorSolution: item.tutorSolution,
+          difficulty: item.difficulty,
+          result: item.result,
+          note: item.note,
+        }
+        savedItemsRef.current.delete(key)
+      }
+      // Nếu đã có original values và chưa saved, không overwrite (để giữ original values)
+    })
+  }, [homeworkItems.map((item) => item.id).join(',')])
+
+  // Helper to check if an item has changes
+  const hasChanges = (homework: HomeworkItem): boolean => {
+    // Nếu đã được saved, không hiển thị nút Lưu
+    if (savedItemsRef.current.has(homework.id)) {
+      return false
+    }
+    
+    const original = originalValuesRef.current[homework.id]
+    // Nếu chưa có original values, không hiển thị nút Lưu (item mới sẽ có original values sau khi mount)
+    if (!original) {
+      return false
+    }
+    
+    // So sánh từng field để phát hiện thay đổi
+    const changed = (
+      homework.task !== original.task ||
+      homework.deadline !== original.deadline ||
+      homework.assignmentUrl !== original.assignmentUrl ||
+      homework.studentSolutionFile !== original.studentSolutionFile ||
+      homework.tutorSolution !== original.tutorSolution ||
+      homework.difficulty !== original.difficulty ||
+      homework.result !== original.result ||
+      homework.note !== original.note
+    )
+    
+    return changed
+  }
+
+  // Handle save and reset tracking
+  const handleSave = async (homeworkId: string) => {
+    onSaveHomework(subjectKey, homeworkId)
+    // Mark as saved - will reset when API updates homeworkMap
+    savedItemsRef.current.add(homeworkId)
+    
+    // Update original values to current values
+    const current = homeworkItems.find((item) => item.id === homeworkId)
+    if (current) {
+      originalValuesRef.current[homeworkId] = {
+        task: current.task,
+        deadline: current.deadline,
+        assignmentUrl: current.assignmentUrl,
+        studentSolutionFile: current.studentSolutionFile,
+        tutorSolution: current.tutorSolution,
+        difficulty: current.difficulty,
+        result: current.result,
+        note: current.note,
+      }
+    }
+  }
+
   const handleToggle = () => onToggleSection(sectionKey, !isExpanded)
   const handleAddHomework = () => {
     if (onAddHomework) {
@@ -141,296 +231,204 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
               <p className="text-sm text-gray-500">Chưa có bài tập về nhà</p>
             </div>
           ) : (
-            <div className="w-full overflow-x-auto scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
-              <table className="min-w-[1200px] w-full text-sm border-collapse table-fixed">
-                <colgroup>
-                  <col style={{ width: '15%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '20%' }} />
-                  <col style={{ width: '18%' }} />
-                  <col style={{ width: '18%' }} />
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '10%' }} />
-                </colgroup>
-                <thead className="bg-gray-50 text-gray-600">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-semibold uppercase text-xs tracking-[0.3em] border-b-2 border-gray-200">
-                      Bài tập
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold uppercase text-xs tracking-[0.3em] border-b-2 border-gray-200">
-                      Deadline
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold uppercase text-xs tracking-[0.3em] border-b-2 border-gray-200">
-                      Bài tập
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold uppercase text-xs tracking-[0.3em] border-b-2 border-gray-200">
-                      Bài làm học sinh
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold uppercase text-xs tracking-[0.3em] border-b-2 border-gray-200">
-                      Lời giải
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold uppercase text-xs tracking-[0.3em] border-b-2 border-gray-200">
-                      Mức độ
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold uppercase text-xs tracking-[0.3em] border-b-2 border-gray-200">
-                      Nhận xét
-                    </th>
-                    <th className="px-4 py-3 text-center font-semibold uppercase text-xs tracking-[0.3em] border-b-2 border-gray-200">
-                      Thao tác
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                  {homeworkItems.map((homework) => (
-                    <tr key={homework.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        {canEdit ? (
+            <div className="space-y-4">
+              {homeworkItems.map((homework) => {
+                const difficultyLabels = {
+                  easy: 'Dễ',
+                  medium: 'Trung bình',
+                  hard: 'Khó',
+                }
+                const difficultyColors = {
+                  easy: 'bg-green-100 text-green-700',
+                  medium: 'bg-yellow-100 text-yellow-700',
+                  hard: 'bg-red-100 text-red-700',
+                }
+                const formattedDeadline = homework.deadline
+                  ? format(new Date(homework.deadline), 'MM/dd/yyyy')
+                  : 'mm/dd/yyyy'
+                
+                return (
+                  <div
+                    key={homework.id}
+                    className="border-l-4 border-primary-500 bg-white rounded-lg shadow-sm overflow-hidden"
+                  >
+                    {/* Header */}
+                    <div className="px-5 py-3 border-b border-gray-200">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
                           <input
                             type="text"
                             value={homework.task}
                             onChange={(e) =>
                               onChangeField(subjectKey, homework.id, 'task', e.target.value)
                             }
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-semibold text-gray-900"
+                            className="w-full text-lg font-bold text-gray-900 bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-primary-200 p-0 rounded"
                             placeholder="Nhập tên bài tập"
                           />
-                        ) : (
-                          <span className="font-semibold text-gray-900">{homework.task}</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {canEdit ? (
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {/* Status - 3 trạng thái: Chưa làm, Đang làm, Đã hoàn thành */}
+                          {canEdit ? (
+                            <select
+                              value={homework.result || 'not_done'}
+                              onChange={(e) =>
+                                onChangeField(
+                                  subjectKey,
+                                  homework.id,
+                                  'result',
+                                  e.target.value as HomeworkItem['result']
+                                )
+                              }
+                              className={`text-xs px-3 py-1 rounded-full font-semibold whitespace-nowrap border-none focus:outline-none focus:ring-0 ${
+                                homework.result === 'completed'
+                                  ? 'bg-green-100 text-green-700'
+                                  : homework.result === 'in_progress'
+                                    ? 'bg-yellow-100 text-yellow-700'
+                                    : 'bg-gray-100 text-gray-700'
+                              }`}
+                            >
+                              <option value="not_done" className="bg-gray-100 text-gray-700">Chưa làm</option>
+                              <option value="in_progress" className="bg-yellow-100 text-yellow-700">Đang làm</option>
+                              <option value="completed" className="bg-green-100 text-green-700">Đã hoàn thành</option>
+                            </select>
+                          ) : (
+                            <span
+                              className={`text-xs px-3 py-1 rounded-full font-semibold whitespace-nowrap ${
+                                homework.result === 'completed'
+                                  ? 'bg-green-100 text-green-700'
+                                  : homework.result === 'in_progress'
+                                    ? 'bg-yellow-100 text-yellow-700'
+                                    : 'bg-gray-100 text-gray-700'
+                              }`}
+                            >
+                              {homework.result === 'completed'
+                                ? 'Đã hoàn thành'
+                                : homework.result === 'in_progress'
+                                  ? 'Đang làm'
+                                  : 'Chưa làm'}
+                            </span>
+                          )}
+                          {/* Difficulty */}
+                          {canEdit ? (
+                            <select
+                              value={homework.difficulty}
+                              onChange={(e) =>
+                                onChangeField(
+                                  subjectKey,
+                                  homework.id,
+                                  'difficulty',
+                                  e.target.value as HomeworkItem['difficulty']
+                                )
+                              }
+                              className="text-xs px-3 py-1 rounded-full font-semibold bg-yellow-100 text-yellow-700 border-none focus:outline-none focus:ring-0"
+                            >
+                              <option value="easy" className="bg-green-100 text-green-700">Dễ</option>
+                              <option value="medium" className="bg-yellow-100 text-yellow-700">Trung bình</option>
+                              <option value="hard" className="bg-red-100 text-red-700">Khó</option>
+                            </select>
+                          ) : (
+                            <span
+                              className={`text-xs px-3 py-1 rounded-full font-semibold ${difficultyColors[homework.difficulty]}`}
+                            >
+                              {difficultyLabels[homework.difficulty]}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-base text-gray-600">
+                        Hạn nộp: {canEdit ? (
                           <input
-                            type="datetime-local"
-                            value={homework.deadline || ''}
-                            onChange={(e) =>
-                              onChangeField(subjectKey, homework.id, 'deadline', e.target.value)
-                            }
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                            type="date"
+                            value={homework.deadline ? format(new Date(homework.deadline), 'yyyy-MM-dd') : ''}
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                const date = new Date(e.target.value)
+                                date.setHours(23, 59, 59)
+                                onChangeField(subjectKey, homework.id, 'deadline', date.toISOString())
+                              }
+                            }}
+                            className="text-base text-gray-600 border-none bg-transparent focus:outline-none focus:ring-0 p-0"
                           />
                         ) : (
-                          <span className="text-sm text-gray-700">
-                            {homework.deadline
-                              ? format(new Date(homework.deadline), 'dd/MM/yyyy HH:mm')
-                              : '—'}
-                          </span>
+                          formattedDeadline
                         )}
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        {homework.assignmentUrl ? (
-                          <div className="flex items-start gap-2 min-w-0">
-                            <FileText className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
-                            <div className="flex-1 min-w-0">
-                              <a
-                                href={homework.assignmentUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary-600 hover:underline text-xs break-all block"
-                                title={homework.assignmentUrl}
-                              >
-                                {homework.assignmentUrl}
-                              </a>
-                            </div>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              <Download className="w-4 h-4 text-gray-500 hover:text-primary-600 cursor-pointer" />
-                              {canEdit && !isStudentMode && onUploadFile && (
-                                <label
-                                  className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 ${
-                                    taskFileUploadingKey === `${homework.id}-assignmentUrl`
-                                      ? 'cursor-wait opacity-60'
-                                      : 'cursor-pointer hover:bg-primary-50'
-                                  }`}
-                                  title={
-                                    taskFileUploadingKey === `${homework.id}-assignmentUrl`
-                                      ? 'Đang upload...'
-                                      : 'Upload file bài tập'
-                                  }
-                                >
-                                  {taskFileUploadingKey === `${homework.id}-assignmentUrl` ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <Upload className="w-3.5 h-3.5" />
-                                  )}
-                                  <input
-                                    type="file"
-                                    className="hidden"
-                                    accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                    onChange={(e) => {
-                                      onUploadFile(homework.id, 'assignmentUrl', e.target.files)
-                                      e.target.value = ''
-                                    }}
-                                  />
-                                </label>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          canEdit &&
-                          !isStudentMode &&
-                          onUploadFile && (
-                            <div className="flex items-center justify-start">
-                              <label
-                                className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 ${
-                                  taskFileUploadingKey === `${homework.id}-assignmentUrl`
-                                    ? 'cursor-wait opacity-60'
-                                    : 'cursor-pointer hover:bg-primary-50'
-                                }`}
-                                title={
-                                  taskFileUploadingKey === `${homework.id}-assignmentUrl`
-                                    ? 'Đang upload...'
-                                    : 'Upload file bài tập'
-                                }
-                              >
-                                {taskFileUploadingKey === `${homework.id}-assignmentUrl` ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  <Upload className="w-3.5 h-3.5" />
-                                )}
-                                <input
-                                  type="file"
-                                  className="hidden"
-                                  accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                  onChange={(e) => {
-                                    onUploadFile(homework.id, 'assignmentUrl', e.target.files)
-                                    e.target.value = ''
-                                  }}
-                                />
-                              </label>
-                            </div>
-                          )
-                        )}
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        {homework.studentSolutionFile ? (
-                          <div className="flex items-start gap-2 min-w-0">
-                            <FileText className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
-                            <div className="flex-1 min-w-0">
-                              <a
-                                href={homework.studentSolutionFile}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary-600 hover:underline text-xs break-all block"
-                                title={homework.studentSolutionFile}
-                              >
-                                {homework.studentSolutionFile}
-                              </a>
-                            </div>
-                            <Download className="w-4 h-4 text-gray-500 hover:text-primary-600 cursor-pointer flex-shrink-0" />
-                            {isStudentMode && onUploadFile && (
-                              <label
-                                className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
-                                  taskFileUploadingKey === `${homework.id}-studentSolutionFile`
-                                    ? 'cursor-wait opacity-60'
-                                    : 'cursor-pointer hover:bg-primary-50'
-                                }`}
-                                title={
-                                  taskFileUploadingKey === `${homework.id}-studentSolutionFile`
-                                    ? 'Đang upload...'
-                                    : 'Upload lại bài làm'
-                                }
-                              >
-                                {taskFileUploadingKey === `${homework.id}-studentSolutionFile` ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  <Upload className="w-3.5 h-3.5" />
-                                )}
-                                <input
-                                  type="file"
-                                  className="hidden"
-                                  accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                  onChange={(e) => {
-                                    onUploadFile(homework.id, 'studentSolutionFile', e.target.files)
-                                    e.target.value = ''
-                                  }}
-                                />
-                              </label>
-                            )}
-                          </div>
-                        ) : (
-                          <>
-                            {isStudentMode && onUploadFile ? (
-                              <label
-                                className={`inline-flex items-center justify-center px-3 py-2 rounded-lg border border-primary-300 text-primary-600 text-xs ${
-                                  taskFileUploadingKey === `${homework.id}-studentSolutionFile`
-                                    ? 'cursor-wait opacity-60'
-                                    : 'cursor-pointer hover:bg-primary-50'
-                                }`}
-                                title={
-                                  taskFileUploadingKey === `${homework.id}-studentSolutionFile`
-                                    ? 'Đang upload...'
-                                    : 'Upload bài làm'
-                                }
-                              >
-                                {taskFileUploadingKey === `${homework.id}-studentSolutionFile` ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                                ) : (
-                                  <Upload className="w-3.5 h-3.5 mr-1" />
-                                )}
-                                Upload bài làm
-                                <input
-                                  type="file"
-                                  className="hidden"
-                                  accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                  onChange={(e) => {
-                                    onUploadFile(homework.id, 'studentSolutionFile', e.target.files)
-                                    e.target.value = ''
-                                  }}
-                                />
-                              </label>
+                      </p>
+                    </div>
+
+                    {/* Body */}
+                    <div className="px-5 py-4 space-y-4">
+                      {/* Upload Bài tập */}
+                      {canEdit && !isStudentMode && onUploadFile && (
+                        <div className="flex items-center gap-3">
+                          {homework.assignmentUrl ? (
+                            <a
+                              href={homework.assignmentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-primary-600 hover:underline flex-1 truncate"
+                              title={homework.assignmentUrl}
+                            >
+                              {homework.assignmentUrl}
+                            </a>
+                          ) : (
+                            <span className="text-sm text-gray-400 flex-1">Chưa có file bài tập</span>
+                          )}
+                          <label
+                            className={`inline-flex items-center justify-center w-8 h-8 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
+                              taskFileUploadingKey === `${homework.id}-assignmentUrl`
+                                ? 'cursor-wait opacity-60'
+                                : 'cursor-pointer hover:bg-primary-50'
+                            }`}
+                            title={
+                              taskFileUploadingKey === `${homework.id}-assignmentUrl`
+                                ? 'Đang upload...'
+                                : 'Upload file bài tập'
+                            }
+                          >
+                            {taskFileUploadingKey === `${homework.id}-assignmentUrl` ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
-                              <span className="text-xs text-gray-400">—</span>
+                              <Upload className="w-4 h-4" />
                             )}
-                          </>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        {homework.tutorSolution ? (
-                          <div className="flex items-start gap-2 min-w-0">
-                            <div className="flex-1 min-w-0">
-                              <a
-                                href={homework.tutorSolution}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary-600 hover:underline text-xs break-all block"
-                                title={homework.tutorSolution}
-                              >
-                                {homework.tutorSolution}
-                              </a>
-                            </div>
-                            {canEdit && !isStudentMode && onUploadFile && (
-                              <label
-                                className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
-                                  taskFileUploadingKey === `${homework.id}-tutorSolution`
-                                    ? 'cursor-wait opacity-60'
-                                    : 'cursor-pointer hover:bg-primary-50'
-                                }`}
-                                title={
-                                  taskFileUploadingKey === `${homework.id}-tutorSolution`
-                                    ? 'Đang upload...'
-                                    : 'Upload lời giải'
-                                }
-                              >
-                                {taskFileUploadingKey === `${homework.id}-tutorSolution` ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  <Upload className="w-3.5 h-3.5" />
-                                )}
-                                <input
-                                  type="file"
-                                  className="hidden"
-                                  accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                  onChange={(e) => {
-                                    onUploadFile(homework.id, 'tutorSolution', e.target.files)
-                                    e.target.value = ''
-                                  }}
-                                />
-                              </label>
-                            )}
-                          </div>
-                        ) : (
-                          canEdit && (
-                            <div className="flex items-center gap-2">
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                              onChange={(e) => {
+                                onUploadFile(homework.id, 'assignmentUrl', e.target.files)
+                                e.target.value = ''
+                              }}
+                            />
+                          </label>
+                        </div>
+                      )}
+
+                      {/* Bài làm học sinh - Tutor chỉ xem và tải, không upload */}
+                      <div className="flex items-center gap-3">
+                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Bài làm HS:</label>
+                        <div className="flex items-center gap-2 flex-1">
+                          {homework.studentSolutionFile ? (
+                            <a
+                              href={homework.studentSolutionFile}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-primary-600 hover:underline flex-1 truncate"
+                              title={homework.studentSolutionFile}
+                            >
+                              {homework.studentSolutionFile}
+                            </a>
+                          ) : (
+                            <span className="text-sm text-gray-400 flex-1">Chưa có bài làm</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Link Lời giải */}
+                      <div className="flex items-center gap-3">
+                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Lời giải:   </label>
+                        <div className="flex items-center gap-2 flex-1">
+                          {canEdit ? (
+                            <>
                               <input
                                 type="text"
                                 value={homework.tutorSolution || ''}
@@ -447,11 +445,7 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                                       ? 'cursor-wait opacity-60'
                                       : 'cursor-pointer hover:bg-primary-50'
                                   }`}
-                                  title={
-                                    taskFileUploadingKey === `${homework.id}-tutorSolution`
-                                      ? 'Đang upload...'
-                                      : 'Upload lời giải'
-                                  }
+                                  title="Upload lời giải"
                                 >
                                   {taskFileUploadingKey === `${homework.id}-tutorSolution` ? (
                                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -469,47 +463,16 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                                   />
                                 </label>
                               )}
-                            </div>
-                          )
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {canEdit ? (
-                          <select
-                            value={homework.difficulty}
-                            onChange={(e) =>
-                              onChangeField(
-                                subjectKey,
-                                homework.id,
-                                'difficulty',
-                                e.target.value as HomeworkItem['difficulty']
-                              )
-                            }
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
-                          >
-                            <option value="easy">Dễ</option>
-                            <option value="medium">Trung bình</option>
-                            <option value="hard">Khó</option>
-                          </select>
-                        ) : (
-                          <span
-                            className={`text-xs px-2 py-1 rounded-full font-semibold ${
-                              homework.difficulty === 'easy'
-                                ? 'bg-green-100 text-green-700'
-                                : homework.difficulty === 'medium'
-                                  ? 'bg-yellow-100 text-yellow-700'
-                                  : 'bg-red-100 text-red-700'
-                            }`}
-                          >
-                            {homework.difficulty === 'easy'
-                              ? 'Dễ'
-                              : homework.difficulty === 'medium'
-                                ? 'Trung bình'
-                                : 'Khó'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
+                            </>
+                          ) : (
+                            <span className="text-sm text-gray-700 flex-1">{homework.tutorSolution || '—'}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Nhận xét */}
+                      <div className="flex items-center gap-3">
+                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Nhận xét:</label>
                         {canEdit ? (
                           <input
                             type="text"
@@ -517,35 +480,37 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                             onChange={(e) =>
                               onChangeField(subjectKey, homework.id, 'note', e.target.value)
                             }
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                            className="flex-1 text-sm text-gray-700 px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
                             placeholder="Nhận xét"
                           />
                         ) : (
-                          <span className="text-sm text-gray-700">{homework.note || '—'}</span>
+                          <span className="text-sm text-gray-700 flex-1">{homework.note || '—'}</span>
                         )}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {canEdit && (
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => onSaveHomework(subjectKey, homework.id)}
-                              className="text-xs px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-semibold transition"
-                            >
-                              Lưu
-                            </button>
-                            <button
-                              onClick={() => onDeleteHomework(subjectKey, homework.id)}
-                              className="text-xs font-semibold text-red-500 hover:text-red-600 transition"
-                            >
-                              Xoá
-                            </button>
-                          </div>
+                      </div>
+                    </div>
+
+                    {/* Footer - Action Buttons - Chỉ hiển thị nút Lưu khi có thay đổi */}
+                    {canEdit && (
+                      <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-end gap-3">
+                        {hasChanges(homework) && (
+                          <button
+                            onClick={() => handleSave(homework.id)}
+                            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-semibold text-sm transition"
+                          >
+                            Lưu
+                          </button>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        <button
+                          onClick={() => onDeleteHomework(subjectKey, homework.id)}
+                          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-semibold text-sm transition"
+                        >
+                          Xoá
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </>

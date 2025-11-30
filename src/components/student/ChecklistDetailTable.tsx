@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileText, Download, Upload } from 'lucide-react'
+import { FileText, Download, Upload, Layers, Clock, Folder, Lightbulb } from 'lucide-react'
 
 export interface ChecklistDetailItem {
   id: string
@@ -31,6 +31,7 @@ interface ChecklistDetailTableProps {
   onUpload: (id: string, file: File) => void
   onUploadSolution: (id: string, file: File) => void
   canUploadSolution?: boolean
+  onStatusChange?: (id: string, status: ChecklistDetailItem['result']) => void
 }
 
 export default function ChecklistDetailTable({
@@ -38,6 +39,7 @@ export default function ChecklistDetailTable({
   onUpload,
   onUploadSolution,
   canUploadSolution = true,
+  onStatusChange,
 }: ChecklistDetailTableProps) {
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, string>>({})
   const [solutionUploads, setSolutionUploads] = useState<Record<string, string>>({})
@@ -64,138 +66,176 @@ export default function ChecklistDetailTable({
   }
 
   return (
-    <div className="overflow-x-auto -mx-4 sm:mx-0">
+    <div className="rounded-2xl border border-gray-200 overflow-x-auto bg-white shadow-sm scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
       {items.length === 0 ? (
-        <p className="text-sm text-gray-500 italic">Không có chi tiết bài tập được đánh giá.</p>
+        <div className="px-4 py-8 text-center">
+          <p className="text-sm text-gray-500 italic">Không có chi tiết bài tập được đánh giá.</p>
+        </div>
       ) : (
-        <div className="inline-block min-w-full align-middle">
-          <table className="min-w-full divide-y divide-gray-200 text-xs sm:text-sm">
-            <thead className="bg-blue-50">
-              <tr className="text-xs uppercase tracking-wider text-gray-500">
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Bài tập</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Thời gian ước lượng</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">File bài tập</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Thời gian thực tế</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Upload bài làm</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Lời giải</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Kết quả</th>
-                <th className="px-2 sm:px-3 py-2 text-left font-semibold whitespace-nowrap">Nhận xét</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {items.map(item => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-2 sm:px-3 py-2 font-semibold text-gray-900 min-w-[120px]">{item.lesson}</td>
-                  <td className="px-2 sm:px-3 py-2 text-gray-600 whitespace-nowrap">{item.estimatedTime} phút</td>
-                  <td className="px-2 sm:px-3 py-2 min-w-[140px]">
-                    {item.assignmentFileName ? (
-                      <div className="flex items-center gap-1 sm:gap-2 text-blue-600">
-                        <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                        <span className="text-xs font-semibold truncate max-w-[100px] sm:max-w-[120px]">{item.assignmentFileName}</span>
-                        <Download className="w-3 h-3 cursor-pointer hover:text-blue-700 flex-shrink-0" />
-                      </div>
+        <table className="w-full text-base min-w-[900px]">
+          <thead className="bg-gray-50 text-gray-600">
+            <tr>
+              <th className="px-4 py-3 text-left font-semibold uppercase text-xs tracking-[0.3em]">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4" />
+                  Bài học
+                </div>
+              </th>
+              <th className="px-4 py-3 text-center font-semibold uppercase text-xs tracking-[0.3em]">
+                <div className="flex items-center justify-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  Thời gian
+                </div>
+              </th>
+              <th className="px-4 py-3 text-center font-semibold uppercase text-xs tracking-[0.3em]">
+                <div className="flex items-center justify-center gap-2">
+                  <Folder className="w-4 h-4" />
+                  File bài tập
+                </div>
+              </th>
+              <th className="px-4 py-3 text-center font-semibold uppercase text-xs tracking-[0.3em]">
+                <div className="flex items-center justify-center gap-2">
+                  <Folder className="w-4 h-4" />
+                  Bài làm học sinh
+                </div>
+              </th>
+              <th className="px-4 py-3 text-center font-semibold uppercase text-xs tracking-[0.3em]">
+                <div className="flex items-center justify-center gap-2">
+                  <Lightbulb className="w-4 h-4" />
+                  File lời giải
+                </div>
+              </th>
+              <th className="px-4 py-3 text-center font-semibold uppercase text-xs tracking-[0.3em]">
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 flex items-center justify-center">
+                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  </div>
+                  Trạng thái
+                </div>
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 bg-white">
+            {items.map(item => {
+              const taskChipClass =
+                item.result === 'completed'
+                  ? 'bg-green-100 text-green-700'
+                  : item.result === 'not_accurate'
+                    ? 'bg-yellow-100 text-yellow-700'
+                    : 'bg-red-100 text-red-700'
+              
+              return (
+                <tr key={item.id}>
+                  <td className="px-4 py-3 font-semibold text-gray-900">
+                    {item.lesson || '—'}
+                  </td>
+                  <td className="px-4 py-3 text-gray-700 text-center">
+                    <span className="whitespace-nowrap">
+                      {item.estimatedTime ? `${item.estimatedTime}'` : '—'} /{' '}
+                      {item.actualTime ? `${item.actualTime}'` : '—'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {item.assignmentFileName || (item as any).assignmentUrl ? (
+                      <a
+                        href={(item as any).assignmentUrl || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block text-primary-600 hover:underline text-xs font-medium"
+                        title={(item as any).assignmentUrl || item.assignmentFileName}
+                      >
+                        Xem file
+                      </a>
                     ) : (
                       <span className="text-xs text-gray-400">—</span>
                     )}
                   </td>
-                  <td className="px-2 sm:px-3 py-2 text-gray-900 font-medium whitespace-nowrap">{item.actualTime} phút</td>
-                  <td className="px-2 sm:px-3 py-2 min-w-[140px]">
-                    {item.uploadedFileName ? (
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2">
-                        <div className="flex items-center gap-1 sm:gap-2 text-green-600">
-                          <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                          <span className="text-xs font-semibold truncate max-w-[100px] sm:max-w-[120px]">{item.uploadedFileName}</span>
-                          <Download className="w-3 h-3 cursor-pointer hover:text-green-700 flex-shrink-0" />
-                        </div>
-                        <label className="inline-flex items-center gap-1 text-primary-600 cursor-pointer hover:text-primary-700 text-xs font-semibold">
+                  <td className="px-4 py-3 text-center">
+                    {item.uploadedFileName || (item as any).uploadedFileUrl ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <a
+                          href={(item as any).uploadedFileUrl || '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-block text-primary-600 hover:underline text-xs font-medium"
+                          title={(item as any).uploadedFileUrl || item.uploadedFileName}
+                        >
+                          Bài làm học sinh
+                        </a>
+                        <label
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 cursor-pointer hover:bg-primary-50"
+                          title="Cập nhật bài làm"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
                           <input
                             type="file"
                             className="hidden"
                             onChange={(e) => handleFileChange(item.id, e.target.files?.[0])}
-                            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                            accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                           />
-                          <Upload className="w-3 h-3 flex-shrink-0" />
-                          <span className="whitespace-nowrap">Cập nhật</span>
                         </label>
                       </div>
                     ) : (
-                      <label className="inline-flex items-center gap-1 sm:gap-2 text-primary-600 cursor-pointer hover:text-primary-700 text-xs font-semibold">
+                      <label
+                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg border border-primary-300 text-primary-600 text-xs cursor-pointer hover:bg-primary-50"
+                        title="Upload bài làm"
+                      >
+                        <Upload className="w-3.5 h-3.5 mr-1" />
+                        Upload bài làm
                         <input
                           type="file"
                           className="hidden"
                           onChange={(e) => handleFileChange(item.id, e.target.files?.[0])}
-                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                          accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                         />
-                        <Upload className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                        <span className="truncate max-w-[100px] sm:max-w-none">{uploadedFiles[item.id] || 'Tải bài làm'}</span>
                       </label>
                     )}
                   </td>
-                  <td className="px-2 sm:px-3 py-2 text-gray-600 space-y-1 sm:space-y-2 min-w-[150px]">
-                    {item.solutionText && (
-                      <p className="text-xs sm:text-sm text-gray-700 leading-snug">{item.solutionText}</p>
-                    )}
+                  <td className="px-4 py-3 text-center">
                     {item.solutionUrl ? (
-                      <div className="flex items-center gap-1 sm:gap-2 text-primary-600">
-                        <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                        <a
-                          href={item.solutionUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-semibold hover:underline truncate max-w-[120px] sm:max-w-none"
-                          title={item.solutionUrl}
-                        >
-                          {item.solutionFileName || 'Xem lời giải'}
-                        </a>
-                        <Download className="w-3 h-3 sm:w-4 sm:h-4 cursor-pointer hover:text-primary-700 flex-shrink-0" 
-                          onClick={(e) => {
-                            e.preventDefault()
-                            const link = document.createElement('a')
-                            link.href = item.solutionUrl!
-                            link.download = item.solutionFileName || 'solution'
-                            link.target = '_blank'
-                            document.body.appendChild(link)
-                            link.click()
-                            document.body.removeChild(link)
-                          }}
-                        />
-                      </div>
-                    ) : item.solutionFileName && (
-                      <div className="text-xs font-semibold text-gray-700 flex items-center gap-1 sm:gap-2">
-                        <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                        <span className="truncate max-w-[120px] sm:max-w-none">{item.solutionFileName}</span>
-                      </div>
-                    )}
-                    {item.solutionType === 'image' && item.solutionPreview && (
-                      <img
-                        src={item.solutionPreview}
-                        alt="Solution preview"
-                        className="w-20 h-12 sm:w-24 sm:h-16 object-cover rounded-lg border"
-                      />
-                    )}
-                    {canUploadSolution && (
-                      <label className="inline-flex items-center gap-1 sm:gap-2 text-primary-600 cursor-pointer hover:text-primary-700 text-xs font-semibold">
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                          onChange={(e) => handleSolutionChange(item.id, e.target.files?.[0])}
-                        />
-                        <Upload className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                        <span className="whitespace-nowrap">{solutionUploads[item.id] || item.solutionFileName ? 'Cập nhật lời giải' : 'Thêm lời giải'}</span>
-                      </label>
-                    )}
-                    {!canUploadSolution && !item.solutionUrl && !item.solutionFileName && !item.solutionText && (
-                      <span className="text-xs text-gray-400 italic">Chưa có lời giải</span>
+                      <a
+                        href={item.solutionUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block text-primary-600 hover:underline text-xs font-medium"
+                        title={item.solutionUrl}
+                      >
+                        File lời giải
+                      </a>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
                     )}
                   </td>
-                  <td className="px-2 sm:px-3 py-2 whitespace-nowrap">{renderResultBadge(item.result)}</td>
-                  <td className="px-2 sm:px-3 py-2 text-gray-500 min-w-[100px]">{item.qualityNote}</td>
+                  <td className="px-4 py-3 text-center">
+                    {onStatusChange ? (
+                      <select
+                        value={item.result}
+                        onChange={(e) => onStatusChange(item.id, e.target.value as ChecklistDetailItem['result'])}
+                        className={`mx-auto border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white ${taskChipClass}`}
+                      >
+                        <option value="not_completed" className="bg-red-100 text-red-700">Chưa xong</option>
+                        <option value="not_accurate" className="bg-yellow-100 text-yellow-700">Đang làm</option>
+                        <option value="completed" className="bg-green-100 text-green-700">Đã xong</option>
+                      </select>
+                    ) : (
+                      <div className="flex justify-center">
+                        <span
+                          className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-block ${taskChipClass}`}
+                        >
+                          {item.result === 'completed'
+                            ? 'Đã xong'
+                            : item.result === 'not_accurate'
+                              ? 'Đang làm'
+                              : 'Chưa xong'}
+                        </span>
+                      </div>
+                    )}
+                  </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              )
+            })}
+          </tbody>
+        </table>
       )}
     </div>
   )

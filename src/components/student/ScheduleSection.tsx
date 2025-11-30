@@ -1,6 +1,18 @@
 import { MonthlyCalendar } from '../dashboard'
 import type { ScheduleItem } from '../dashboard'
 
+interface TutorInfo {
+  id: string
+  name?: string
+  email?: string
+  phone?: string
+  address?: string
+  avatarUrl?: string
+  cvUrl?: string
+  moreInfo?: string
+  currentLevel?: string
+}
+
 interface ScheduleSectionProps {
   schedules: ScheduleItem[]
   isLoading: boolean
@@ -8,6 +20,7 @@ interface ScheduleSectionProps {
   onReload: () => void
   onJoinClass: (scheduleId: string) => void
   onViewChecklist: (scheduleId: string) => void
+  tutorInfoMap?: Record<string, TutorInfo>
 }
 
 export default function ScheduleSection({
@@ -17,6 +30,7 @@ export default function ScheduleSection({
   onReload,
   onJoinClass,
   onViewChecklist,
+  tutorInfoMap = {},
 }: ScheduleSectionProps) {
   return (
     <div className="h-full overflow-hidden">
@@ -41,6 +55,7 @@ export default function ScheduleSection({
               schedules={schedules}
               onJoinClass={onJoinClass}
               onViewChecklist={onViewChecklist}
+              tutorInfoMap={tutorInfoMap}
             />
             {schedules.length === 0 && !isLoading && (
               <div className="p-4 text-center text-sm text-gray-500 border-t border-gray-100">
