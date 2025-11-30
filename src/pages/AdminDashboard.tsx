@@ -3005,8 +3005,11 @@ useEffect(() => {
                   </tr>
                 ) : (
                   sessionsForSelectedDate.map((session) => {
-                    const student = studentList.find((s) => s.id === session.studentId)
-                    const tutor = tutorList.find((t) => t.id === session.tutorId)
+                    // Tìm từ danh sách đầy đủ trước, nếu không có thì tìm từ danh sách phân trang
+                    const student = editScheduleStudentList.find((s) => s.id === session.studentId) 
+                      || studentList.find((s) => s.id === session.studentId)
+                    const tutor = editScheduleTutorList.find((t) => t.id === session.tutorId)
+                      || tutorList.find((t) => t.id === session.tutorId)
                     const isEditing = editingScheduleId === session.id
                     return (
                       <tr key={session.id} className="hover:bg-gray-50 transition-colors">
