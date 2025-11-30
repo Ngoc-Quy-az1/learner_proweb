@@ -451,10 +451,10 @@ export default function HomeSection({
   return (
     <div className="h-full space-y-4">
       {/* Main Layout - 2 Columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-[550px_minmax(0,1fr)] gap-5 lg:items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[420px_minmax(0,1fr)] gap-5 lg:items-start">
         {/* Left Column - Profile & Stats */}
-        <div className="lg:col-auto">
-          <div className="card-no-transition h-full flex flex-col px-2 lg:pl-12 lg:pr-4">
+        <div className="lg:col-auto lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-2 scrollbar-thin scrollbar-thumb-primary-300 scrollbar-track-gray-100">
+          <div className="card-no-transition h-full flex flex-col px-2 lg:pl-4 lg:pr-6">
             <div className="flex flex-col items-center text-center pb-6 border-b border-gray-100">
               <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center mb-4 shadow-xl overflow-hidden">
                 {studentAvatarUrl ? (
@@ -474,7 +474,7 @@ export default function HomeSection({
 
             <div className="flex-1 flex flex-col gap-4 py-6">
               {/* Quick Actions (đưa lên trên Tiến độ hôm nay) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 justify-items-center">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <button
                   onClick={() => {
                     if (canJoinClass && nearestSchedule?.meetLink) {
@@ -482,7 +482,7 @@ export default function HomeSection({
                     }
                   }}
                   disabled={!canJoinClass || !nearestSchedule?.meetLink}
-                  className={`card border-2 transition-all group text-left ${
+                  className={`card border-2 transition-all group text-left w-full ${
                     canJoinClass && nearestSchedule?.meetLink
                       ? `border-gray-200 hover:border-primary-400 hover:shadow-xl cursor-pointer ${
                           hasOngoingSchedule ? 'shake-soft' : ''
@@ -491,7 +491,7 @@ export default function HomeSection({
                   }`}
                   title={joinClassMessage || 'Vào lớp học'}
                 >
-                  <div className="flex flex-col items-center justify-center py-5 text-center">
+                  <div className="flex flex-col items-center justify-center py-5 text-center min-h-[120px]">
                     <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-3 transition-transform shadow-lg ${
                       canJoinClass && nearestSchedule?.meetLink
                         ? 'bg-gradient-to-br from-primary-500 to-primary-600 group-hover:scale-110'
@@ -500,9 +500,11 @@ export default function HomeSection({
                       <Play className="w-7 h-7 text-white" />
                     </div>
                     <h3 className="text-sm font-bold text-gray-900">Vào lớp học</h3>
-                    {joinClassMessage && (
-                      <p className="text-xs text-gray-500 mt-1">{joinClassMessage}</p>
-                    )}
+                    <div className="h-4 mt-1">
+                      {joinClassMessage && (
+                        <p className="text-xs text-gray-500">{joinClassMessage}</p>
+                      )}
+                    </div>
                   </div>
                 </button>
 
@@ -557,15 +559,16 @@ export default function HomeSection({
                       }
                     }, 300)
                   }}
-                  className={`card border-2 border-gray-200 hover:border-primary-400 hover:shadow-xl transition-all cursor-pointer group text-left ${
+                  className={`card border-2 border-gray-200 hover:border-primary-400 hover:shadow-xl transition-all cursor-pointer group text-left w-full ${
                     hasOngoingSchedule ? 'shake-soft' : ''
                   }`}
                 >
-                  <div className="flex flex-col items-center justify-center py-5 text-center">
+                  <div className="flex flex-col items-center justify-center py-5 text-center min-h-[120px]">
                     <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
                       <Target className="w-7 h-7 text-white" />
                     </div>
                     <h3 className="text-sm font-bold text-gray-900">Xem checklist</h3>
+                    <div className="h-4 mt-1"></div>
                   </div>
                 </button>
               </div>
