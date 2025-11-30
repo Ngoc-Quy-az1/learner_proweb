@@ -419,6 +419,8 @@ export default function AdminDashboard() {
   const [studentList, setStudentList] = useState<StudentListItem[]>([])
   const [studentProfiles, setStudentProfiles] = useState<Record<string, StudentProfile>>({})
   const [scheduleStudentList, setScheduleStudentList] = useState<Array<{ id: string; name: string }>>([])
+  const [editScheduleStudentList, setEditScheduleStudentList] = useState<Array<{ id: string; name: string }>>([])
+  const [editScheduleTutorList, setEditScheduleTutorList] = useState<Array<{ id: string; name: string }>>([])
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [studentSearchTerm, setStudentSearchTerm] = useState('')
   const [isStudentEditing, setIsStudentEditing] = useState(false)
@@ -756,6 +758,28 @@ useEffect(() => {
     }
   }, [])
 
+  // Fetch student names for schedule editing using /users/names API
+  const fetchEditScheduleStudents = useCallback(async () => {
+    try {
+      const response = await apiCall<Array<{ id: string; name: string }>>('/users/names?role=student')
+      setEditScheduleStudentList(response || [])
+    } catch (error) {
+      console.error('Error fetching edit schedule students:', error)
+      setEditScheduleStudentList([])
+    }
+  }, [])
+
+  // Fetch tutor names for schedule editing using /users/names API
+  const fetchEditScheduleTutors = useCallback(async () => {
+    try {
+      const response = await apiCall<Array<{ id: string; name: string }>>('/users/names?role=tutor')
+      setEditScheduleTutorList(response || [])
+    } catch (error) {
+      console.error('Error fetching edit schedule tutors:', error)
+      setEditScheduleTutorList([])
+    }
+  }, [])
+
   const fetchTutors = useCallback(async () => {
     try {
       setTutorsLoading(true)
@@ -946,6 +970,14 @@ useEffect(() => {
   useEffect(() => {
     fetchScheduleStudents()
   }, [fetchScheduleStudents])
+
+  useEffect(() => {
+    fetchEditScheduleStudents()
+  }, [fetchEditScheduleStudents])
+
+  useEffect(() => {
+    fetchEditScheduleTutors()
+  }, [fetchEditScheduleTutors])
 
   useEffect(() => {
     if (scheduleStudentList.length > 0 && !newSchedule.studentId) {
@@ -3019,7 +3051,8 @@ useEffect(() => {
                               value={editScheduleData.studentId}
                               onChange={(e) => handleEditScheduleFieldChange('studentId', e.target.value)}
                             >
-                              {studentList.map((s) => (
+                              <option value="">-- Chọn học sinh --</option>
+                              {editScheduleStudentList.map((s) => (
                                 <option key={s.id} value={s.id}>
                                   {s.name}
                                 </option>
@@ -3036,7 +3069,8 @@ useEffect(() => {
                               value={editScheduleData.tutorId}
                               onChange={(e) => handleEditScheduleFieldChange('tutorId', e.target.value)}
                             >
-                              {tutorList.map((t) => (
+                              <option value="">-- Chọn tutor --</option>
+                              {editScheduleTutorList.map((t) => (
                                 <option key={t.id} value={t.id}>
                                   {t.name}
                                 </option>
