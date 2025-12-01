@@ -576,9 +576,9 @@ export default function HomeSection({
                     </div>
                     <h3 className="text-sm font-bold text-gray-900">Vào lớp học</h3>
                     <div className="h-4 mt-1">
-                      {joinClassMessage && (
+                    {joinClassMessage && (
                         <p className="text-xs text-gray-500">{joinClassMessage}</p>
-                      )}
+                    )}
                     </div>
                   </div>
                 </button>
@@ -894,56 +894,56 @@ export default function HomeSection({
                               </p>
                             )}
                           </div>
-                          {activeSchedule.meetLink && (() => {
-                            // Kiểm tra trạng thái cho schedule này
-                            const scheduleTimeMatch = activeSchedule.time.match(/(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})/)
-                            let canJoinThisSchedule = false
-                            let messageForThisSchedule = ''
-                            
-                            if (scheduleTimeMatch) {
-                              const startHour = parseInt(scheduleTimeMatch[1], 10)
-                              const startMinute = parseInt(scheduleTimeMatch[2], 10)
-                              const scheduleStartTime = new Date(activeSchedule.date)
-                              scheduleStartTime.setHours(startHour, startMinute, 0, 0)
+                            {activeSchedule.meetLink && (() => {
+                              // Kiểm tra trạng thái cho schedule này
+                              const scheduleTimeMatch = activeSchedule.time.match(/(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})/)
+                              let canJoinThisSchedule = false
+                              let messageForThisSchedule = ''
                               
-                              const now = new Date()
-                              const minutesUntilStart = (scheduleStartTime.getTime() - now.getTime()) / (1000 * 60)
-                              
-                              const endHour = parseInt(scheduleTimeMatch[3], 10)
-                              const endMinute = parseInt(scheduleTimeMatch[4], 10)
-                              const scheduleEndTime = new Date(activeSchedule.date)
-                              scheduleEndTime.setHours(endHour, endMinute, 0, 0)
-                              const minutesUntilEnd = (scheduleEndTime.getTime() - now.getTime()) / (1000 * 60)
-                              
-                              if (minutesUntilEnd < 0) {
-                                messageForThisSchedule = 'Buổi học đã kết thúc'
-                              } else if (minutesUntilStart > 15) {
-                                messageForThisSchedule = 'Buổi học chưa bắt đầu'
-                              } else {
-                                canJoinThisSchedule = true
+                              if (scheduleTimeMatch) {
+                                const startHour = parseInt(scheduleTimeMatch[1], 10)
+                                const startMinute = parseInt(scheduleTimeMatch[2], 10)
+                                const scheduleStartTime = new Date(activeSchedule.date)
+                                scheduleStartTime.setHours(startHour, startMinute, 0, 0)
+                                
+                                const now = new Date()
+                                const minutesUntilStart = (scheduleStartTime.getTime() - now.getTime()) / (1000 * 60)
+                                
+                                const endHour = parseInt(scheduleTimeMatch[3], 10)
+                                const endMinute = parseInt(scheduleTimeMatch[4], 10)
+                                const scheduleEndTime = new Date(activeSchedule.date)
+                                scheduleEndTime.setHours(endHour, endMinute, 0, 0)
+                                const minutesUntilEnd = (scheduleEndTime.getTime() - now.getTime()) / (1000 * 60)
+                                
+                                if (minutesUntilEnd < 0) {
+                                  messageForThisSchedule = 'Buổi học đã kết thúc'
+                                } else if (minutesUntilStart > 15) {
+                                  messageForThisSchedule = 'Buổi học chưa bắt đầu'
+                                } else {
+                                  canJoinThisSchedule = true
+                                }
                               }
-                            }
-                            
-                            return (
+                              
+                              return (
                               <div className="flex flex-col items-start lg:items-end gap-1 flex-shrink-0">
-                                <button
-                                  onClick={() => canJoinThisSchedule && onJoinClass(activeSchedule.id)}
-                                  disabled={!canJoinThisSchedule}
-                                  className={`px-6 sm:px-8 py-2.5 sm:py-3 text-sm sm:text-base font-bold shadow-xl whitespace-nowrap transition-all ${
-                                    canJoinThisSchedule
-                                      ? 'btn-primary hover:shadow-2xl cursor-pointer'
-                                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                  }`}
-                                  title={messageForThisSchedule || 'Vào lớp'}
-                                >
-                                  Vào lớp
-                                </button>
-                                {messageForThisSchedule && (
-                                  <p className="text-xs text-gray-500">{messageForThisSchedule}</p>
-                                )}
-                              </div>
-                            )
-                          })()}
+                                  <button
+                                    onClick={() => canJoinThisSchedule && onJoinClass(activeSchedule.id)}
+                                    disabled={!canJoinThisSchedule}
+                                  className={`w-full px-6 sm:px-8 py-2.5 sm:py-3 text-sm sm:text-base font-bold shadow-xl transition-all ${
+                                      canJoinThisSchedule
+                                        ? 'btn-primary hover:shadow-2xl cursor-pointer'
+                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                    }`}
+                                    title={messageForThisSchedule || 'Vào lớp'}
+                                  >
+                                    Vào lớp
+                                  </button>
+                                  {messageForThisSchedule && (
+                                    <p className="text-xs text-gray-500">{messageForThisSchedule}</p>
+                                  )}
+                                </div>
+                              )
+                            })()}
                         </div>
 
                         <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4">
@@ -1001,18 +1001,18 @@ export default function HomeSection({
                       )}
 
                       {/* Checklist hôm nay */}
-                      <div ref={checklistSectionRef} className="rounded-2xl border-2 border-primary-50 bg-white p-4 sm:p-6 shadow-sm">
+                      <div ref={checklistSectionRef} className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm">
                         <div className="flex items-center justify-between mb-4">
                           <button
                             type="button"
                             onClick={() => setIsChecklistCollapsed((prev) => !prev)}
-                            className="flex items-center gap-2 text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
+                            className="flex items-center justify-between w-full text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
                           >
-                            <h4>Checklist hôm nay</h4>
+                            <h4 className="text-left">Checklist hôm nay</h4>
                             {isChecklistCollapsed ? (
-                              <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5" />
+                              <ChevronDown className="w-5 h-5 flex-shrink-0 ml-2" />
                             ) : (
-                              <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5" />
+                              <ChevronUp className="w-5 h-5 flex-shrink-0 ml-2" />
                             )}
                           </button>
                         </div>
@@ -1070,7 +1070,7 @@ export default function HomeSection({
                                                   {assignment.description}
                                                 </p>
                                               )}
-                                </div>
+                                  </div>
                                             <div className="flex-shrink-0">
                                               {isExpanded ? (
                                                 <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
@@ -1088,36 +1088,106 @@ export default function HomeSection({
                                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.35em] mb-3">
                                     BẢNG TÓM TẮT
                                   </p>
-                                              <div className="rounded-xl sm:rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-x-auto scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
-                                                <table className="w-full text-sm sm:text-base border-collapse min-w-[600px] sm:min-w-[800px]">
-                                                  <thead className="bg-purple-50 text-gray-700 uppercase text-xs sm:text-sm md:text-base tracking-[0.2em] sm:tracking-[0.3em] font-semibold">
+                                              
+                                              {/* Mobile Card Layout */}
+                                              <div className="block md:hidden space-y-3">
+                                                {(assignment.tasks || []).map((task: any, taskIndex: number) => {
+                                                  const mapTaskStatusToDisplay = (status?: string) => {
+                                                    if (status === 'completed' || status === 'submitted') return 'done'
+                                                    if (status === 'in-progress') return 'in_progress'
+                                                    return 'pending'
+                                                  }
+                                                  const taskStatus = mapTaskStatusToDisplay(task.status)
+                                                  const rowChip =
+                                                    taskStatus === 'done'
+                                        ? 'bg-green-100 text-green-700'
+                                                      : taskStatus === 'in_progress'
+                                          ? 'bg-yellow-100 text-yellow-700'
+                                                        : 'bg-red-100 text-red-700'
+                                                  const rowNote = (task as any).note || assignment.description || '—'
+                                                  
+                                                  return (
+                                                    <div
+                                                      key={task.id || `${assignmentKey}-task-${taskIndex}`}
+                                                      className="rounded-xl border-2 border-gray-200 bg-white p-4 space-y-3 shadow-sm"
+                                                    >
+                                                      <div className="flex items-center gap-2">
+                                                        <Layers className="w-4 h-4 text-primary-600 flex-shrink-0" />
+                                                        <div className="flex-1 min-w-0">
+                                                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">Bài học</p>
+                                                          <p className="text-sm font-bold text-gray-900 break-words mt-1">
+                                                            {task.name || assignment.name || 'Bài học'}
+                                                          </p>
+                                                        </div>
+                                                      </div>
+                                                      
+                                                      <div className="flex items-start gap-2">
+                                                        <PenTool className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
+                                                        <div className="flex-1 min-w-0">
+                                                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">Yêu cầu chi tiết</p>
+                                                          <p className="text-sm text-gray-700 break-words mt-1">
+                                                            {task.description || assignment.description || '—'}
+                                                          </p>
+                                                        </div>
+                                                      </div>
+                                                      
+                                                      <div className="flex items-center gap-2">
+                                                        <Clock className="w-4 h-4 text-primary-600 flex-shrink-0" />
+                                                        <div className="flex-1">
+                                                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">Trạng thái</p>
+                                                          <span
+                                                            className={`inline-block px-3 py-1.5 rounded-full text-xs font-semibold ${rowChip}`}
+                                                          >
+                                                            {taskStatus === 'done'
+                                      ? 'Đã xong'
+                                                              : taskStatus === 'in_progress'
+                                        ? 'Đang làm'
+                                                                : 'CHƯA XONG'}
+                                  </span>
+                                </div>
+                            </div>
+                                                      
+                                                      {rowNote && rowNote !== '—' && (
+                                                        <div className="flex items-start gap-2 pt-2 border-t border-gray-100">
+                                                          <Lightbulb className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+                                                          <div className="flex-1 min-w-0">
+                                                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">Nhận xét</p>
+                                                            <p className="text-sm text-gray-600 break-words mt-1">{rowNote}</p>
+                                                          </div>
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  )
+                                                })}
+                                              </div>
+
+                                              {/* Desktop Table Layout */}
+                                              <div className="hidden md:block rounded-xl lg:rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-x-auto scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
+                                                <table className="w-full text-base border-collapse min-w-[800px]">
+                                                  <thead className="bg-purple-50 text-gray-700 uppercase text-sm md:text-base tracking-[0.3em] font-semibold">
                                                     <tr>
-                                                      <th className="px-3 sm:px-5 py-2 sm:py-3 text-center font-semibold border-b-2 border-gray-200">
-                                                        <div className="flex items-center justify-center gap-1 sm:gap-2">
-                                                          <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
-                                                          <span className="hidden sm:inline">Bài học</span>
-                                                          <span className="sm:hidden">Bài</span>
+                                                      <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                          <Layers className="w-5 h-5" />
+                                                          Bài học
                                                         </div>
                                                       </th>
-                                                      <th className="px-3 sm:px-5 py-2 sm:py-3 text-center font-semibold border-b-2 border-gray-200">
-                                                        <div className="flex items-center justify-center gap-1 sm:gap-2">
-                                                          <PenTool className="w-4 h-4 sm:w-5 sm:h-5" />
-                                                          <span className="hidden sm:inline">Yêu cầu chi tiết</span>
-                                                          <span className="sm:hidden">Yêu cầu</span>
+                                                      <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                          <PenTool className="w-5 h-5" />
+                                                          Yêu cầu chi tiết
                                                         </div>
                                                       </th>
-                                                      <th className="px-3 sm:px-5 py-2 sm:py-3 text-center font-semibold border-b-2 border-gray-200">
-                                                        <div className="flex items-center justify-center gap-1 sm:gap-2">
-                                                          <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
-                                                          <span className="hidden sm:inline">Trạng thái</span>
-                                                          <span className="sm:hidden">TT</span>
+                                                      <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                          <Clock className="w-5 h-5" />
+                                                          Trạng thái
                                                         </div>
                                                       </th>
-                                                      <th className="px-3 sm:px-5 py-2 sm:py-3 text-center font-semibold border-b-2 border-gray-200">
-                                                        <div className="flex items-center justify-center gap-1 sm:gap-2">
-                                                          <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5" />
-                                                          <span className="hidden sm:inline">Nhận xét</span>
-                                                          <span className="sm:hidden">NX</span>
+                                                      <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                          <Lightbulb className="w-5 h-5" />
+                                                          Nhận xét
                                                         </div>
                                                       </th>
                                         </tr>
@@ -1140,15 +1210,15 @@ export default function HomeSection({
                                                       
                                                       return (
                                                         <tr key={task.id || `${assignmentKey}-task-${taskIndex}`}>
-                                                          <td className="px-3 sm:px-5 py-3 sm:py-4 font-semibold text-gray-900 text-center text-sm sm:text-base lg:text-lg break-words">
+                                                          <td className="px-5 py-4 font-semibold text-gray-900 text-center text-lg break-words">
                                                             {task.name || assignment.name || 'Bài học'}
                                             </td>
-                                                          <td className="px-3 sm:px-5 py-3 sm:py-4 text-gray-700 text-center text-xs sm:text-sm lg:text-base break-words">
+                                                          <td className="px-5 py-4 text-gray-700 text-center text-base break-words">
                                                             {task.description || assignment.description || '—'}
                                             </td>
-                                                          <td className="px-3 sm:px-5 py-3 sm:py-4 text-center text-xs sm:text-sm lg:text-base">
+                                                          <td className="px-5 py-4 text-center text-base">
                                               <span
-                                                              className={`px-2 sm:px-3 lg:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${rowChip}`}
+                                                              className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${rowChip}`}
                                                             >
                                                               {taskStatus === 'done'
                                                   ? 'Đã xong'
@@ -1157,7 +1227,7 @@ export default function HomeSection({
                                                                   : 'CHƯA XONG'}
                                               </span>
                                             </td>
-                                                          <td className="px-3 sm:px-5 py-3 sm:py-4 text-gray-600 text-center text-xs sm:text-sm lg:text-base break-words">
+                                                          <td className="px-5 py-4 text-gray-600 text-center text-base break-words">
                                                             <span className="flex-1">{rowNote}</span>
                                             </td>
                                           </tr>
@@ -1278,13 +1348,13 @@ export default function HomeSection({
                                               ) : (
                                                 <ChevronDown className="w-5 h-5 text-gray-500" />
                                               )}
-                                            </div>
-                                          </div>
+                                  </div>
+                                </div>
                           </button>
-                                        
+
                                         {isExpanded && (
                                           <div className="px-4 pb-4 pt-2 border-t border-gray-200">
-                                            <ChecklistDetailTable
+                                <ChecklistDetailTable
                                               items={mapChecklistToDetailItems(activeSchedule.id).filter(
                                                 (detailItem) => detailItem.id === item.id
                                               )}
@@ -1293,9 +1363,9 @@ export default function HomeSection({
                                                   console.error('Upload checklist file error:', error)
                                                 })
                                               } : () => {}}
-                                            />
-                        </div>
-                                        )}
+                                />
+                              </div>
+                            )}
                                       </div>
                                     )
                                   })}
@@ -1312,13 +1382,13 @@ export default function HomeSection({
                           <button
                             type="button"
                             onClick={() => setIsHomeworkCollapsed((prev) => !prev)}
-                            className="flex items-center gap-2 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
+                            className="flex items-center justify-between w-full text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
                           >
-                            <h4>Bài tập hôm nay</h4>
+                            <h4 className="text-left">Bài tập hôm nay</h4>
                             {isHomeworkCollapsed ? (
-                              <ChevronDown className="w-5 h-5" />
+                              <ChevronDown className="w-5 h-5 flex-shrink-0 ml-2" />
                             ) : (
-                              <ChevronUp className="w-5 h-5" />
+                              <ChevronUp className="w-5 h-5 flex-shrink-0 ml-2" />
                             )}
                           </button>
                         </div>
@@ -1350,18 +1420,18 @@ export default function HomeSection({
                                   return (
                                 <div
                                   key={item.id}
-                                      className="border-l-4 border-primary-500 bg-white rounded-lg shadow-sm overflow-hidden"
+                                      className="border-l-4 border-primary-500 bg-white rounded-lg sm:rounded-xl shadow-sm overflow-hidden"
                                     >
                                       {/* Header */}
-                                      <div className="px-5 py-3 border-b border-gray-200">
-                                        <div className="flex items-start justify-between mb-2">
-                                          <div className="flex-1">
-                                            <p className="text-xl font-bold text-gray-900">{item.task}</p>
+                                      <div className="px-4 sm:px-5 py-3 border-b border-gray-200">
+                                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-0 mb-2">
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-lg sm:text-xl font-bold text-gray-900 break-words">{item.task}</p>
                                           </div>
-                                          <div className="flex items-center gap-2 flex-shrink-0">
+                                          <div className="flex items-center gap-2 flex-wrap">
                                             {/* Status */}
                                   <span
-                                              className={`text-sm px-3 py-1 rounded-full font-semibold whitespace-nowrap ${
+                                              className={`text-xs sm:text-sm px-2 sm:px-3 py-1 rounded-full font-semibold whitespace-nowrap ${
                                       item.result === 'completed'
                                         ? 'bg-green-100 text-green-700'
                                                   : 'bg-gray-100 text-gray-700'
@@ -1372,7 +1442,7 @@ export default function HomeSection({
                                             {/* Difficulty */}
                                             {item.difficulty && (
                                               <span
-                                                className={`text-sm px-3 py-1 rounded-full font-semibold ${difficultyColors[item.difficulty]}`}
+                                                className={`text-xs sm:text-sm px-2 sm:px-3 py-1 rounded-full font-semibold whitespace-nowrap ${difficultyColors[item.difficulty]}`}
                                               >
                                                 {difficultyLabels[item.difficulty]}
                                               </span>
@@ -1382,62 +1452,89 @@ export default function HomeSection({
                                       </div>
 
                                       {/* Body */}
-                                      <div className="px-5 py-4">
-                                        {/* Phần trên: Deadline, File bài tập, Bài làm HS, Lời giải */}
-                                        <div className="space-y-3 pb-4">
+                                      <div className="px-4 sm:px-5 py-3 sm:py-4">
+                                        {/* Grid layout cho thông tin chính */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pb-3 sm:pb-4">
                                           {/* Deadline */}
-                                          <div className="flex items-center gap-3">
-                                            <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-                                            <span className="text-base font-medium text-gray-700 whitespace-nowrap">Hạn nộp:</span>
-                                            <span className="text-base text-red-600 font-medium">
-                                              {item.deadline
-                                                ? format(new Date(item.deadline), 'dd/MM/yyyy')
-                                                : 'Chưa có'}
-                                            </span>
+                                          <div className="flex items-center gap-2 sm:gap-3">
+                                            <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0" />
+                                            <div className="flex-1 min-w-0">
+                                              <span className="text-xs sm:text-sm font-medium text-gray-500">Hạn nộp:</span>
+                                              <span className="text-sm sm:text-base text-red-600 font-medium ml-2">
+                                                {item.deadline
+                                                  ? format(new Date(item.deadline), 'dd/MM/yyyy')
+                                                  : 'Chưa có'}
+                                              </span>
+                                            </div>
                                           </div>
 
                                           {/* File bài tập */}
                                           {item.assignmentUrl && (
-                                            <div className="flex items-center gap-3">
-                                              <Folder className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-                                              <span className="text-base font-medium text-blue-600 whitespace-nowrap">File Bài Tập:</span>
-                                              <a
-                                                href={item.assignmentUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-base text-blue-600 hover:underline flex-1 truncate"
-                                                title={item.assignmentUrl}
-                                              >
-                                                {item.assignmentFileName || item.assignmentUrl.split('/').pop() || 'Xem file bài tập'}
-                                              </a>
+                                            <div className="flex items-start gap-2 sm:gap-3">
+                                              <Folder className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                                              <div className="flex-1 min-w-0">
+                                                <span className="text-xs sm:text-sm font-medium text-gray-500">File Bài Tập:</span>
+                                                <a
+                                                  href={item.assignmentUrl}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="text-sm sm:text-base text-blue-600 hover:underline break-all block mt-0.5"
+                                                  title={item.assignmentUrl}
+                                                >
+                                                  {item.assignmentFileName || item.assignmentUrl.split('/').pop() || 'Xem file bài tập'}
+                                                </a>
+                                              </div>
                               </div>
                             )}
 
-                                          {/* Bài làm học sinh - Học sinh có thể upload */}
-                                          <div className="flex items-center gap-3">
-                                            <FileText className="w-5 h-5 text-gray-500 flex-shrink-0" />
-                                            <span className="text-base font-medium text-blue-600 whitespace-nowrap">Bài làm HS:</span>
-                                            <div className="flex items-center gap-3 flex-1">
+                                          {/* Lời giải */}
+                                          {item.solutionUrl && (
+                                            <div className={`flex items-start gap-2 sm:gap-3 ${!item.assignmentUrl ? 'sm:col-span-2' : ''}`}>
+                                              <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                                              <div className="flex-1 min-w-0">
+                                                <span className="text-xs sm:text-sm font-medium text-gray-500">Lời giải:</span>
+                                                <a
+                                                  href={item.solutionUrl}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="text-sm sm:text-base text-blue-600 hover:underline break-all block mt-0.5"
+                                                  title={item.solutionUrl}
+                                                >
+                                                  {item.solutionFileName || item.solutionUrl.split('/').pop() || 'Xem lời giải'}
+                                                </a>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Bài làm học sinh - Full width section */}
+                                        <div className="pt-2 sm:pt-3 border-t border-gray-100">
+                                          <div className="flex flex-col gap-2 sm:gap-3">
+                                            <div className="flex items-center gap-2 sm:gap-3">
+                                              <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
+                                              <span className="text-xs sm:text-sm font-medium text-gray-500">Bài làm HS:</span>
+                                            </div>
+                                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 pl-6 sm:pl-8">
                                               {item.uploadedFileName || item.studentSolutionFileUrl ? (
                                                 <a
                                                   href={item.studentSolutionFileUrl || '#'}
                                                   target="_blank"
                                                   rel="noopener noreferrer"
-                                                  className="text-base text-blue-600 hover:underline flex-1 truncate"
+                                                  className="text-sm sm:text-base text-blue-600 hover:underline break-all flex-1 min-w-0"
                                                   title={item.studentSolutionFileUrl}
                                                 >
                                                   {item.uploadedFileName || 'Bài làm học sinh'}
                                                 </a>
                                               ) : (
-                                                <span className="text-base text-gray-400 flex-1">Chưa có bài làm</span>
+                                                <span className="text-sm sm:text-base text-gray-400 flex-1">Chưa có bài làm</span>
                                               )}
-                                              {/* Nút upload - Luôn hiển thị */}
+                                              {/* Nút upload */}
                                               <label
-                                                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border-2 border-primary-500 ${
+                                                className={`inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg border-2 border-primary-500 ${
                                                   item.uploadedFileName || item.studentSolutionFileUrl
                                                     ? 'bg-primary-50 text-primary-700 hover:bg-primary-100'
                                                     : 'bg-primary-500 text-white hover:bg-primary-600 shadow-md'
-                                                } font-semibold text-base flex-shrink-0 transition-colors ${
+                                                } font-semibold text-sm sm:text-base transition-colors ${
                                                   homeworkUploading === item.id
                                                     ? 'cursor-wait opacity-60'
                                                     : 'cursor-pointer'
@@ -1446,13 +1543,13 @@ export default function HomeSection({
                                               >
                                                 {homeworkUploading === item.id ? (
                                                   <>
-                                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                                    <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
                                                     <span>Đang tải...</span>
                           </>
                         ) : (
                                                   <>
-                                                    <Upload className="w-5 h-5" />
-                                                    <span>{item.uploadedFileName || item.studentSolutionFileUrl ? 'Cập nhật' : 'Upload bài làm'}</span>
+                                                    <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                    <span className="whitespace-nowrap">{item.uploadedFileName || item.studentSolutionFileUrl ? 'Cập nhật' : 'Upload bài làm'}</span>
                                                   </>
                                                 )}
                                                 <input
@@ -1484,39 +1581,20 @@ export default function HomeSection({
                                               </label>
                                             </div>
                                           </div>
-
-                                          {/* Lời giải */}
-                                          {item.solutionUrl && (
-                                            <div className="flex items-center gap-3">
-                                              <Lightbulb className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-                                              <span className="text-base font-medium text-blue-600 whitespace-nowrap">Lời giải:</span>
-                                              <a
-                                                href={item.solutionUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-base text-blue-600 hover:underline flex-1 truncate"
-                                                title={item.solutionUrl}
-                                              >
-                                                {item.solutionFileName || item.solutionUrl.split('/').pop() || 'Xem lời giải'}
-                                              </a>
-                                            </div>
-                                          )}
                                         </div>
-
-                                        {/* Separator */}
-                                        {item.comment && (
-                                          <div className="border-t border-dashed border-gray-300 my-4"></div>
-                                        )}
 
                                         {/* Nhận xét */}
                                         {item.comment && (
-                                          <div className="flex items-start gap-3 pt-2">
-                                            <div className="w-1 h-6 bg-yellow-400 flex-shrink-0 rounded"></div>
-                                            <div className="flex-1">
-                                              <span className="text-base font-medium text-gray-700">Nhận xét:</span>
-                                              <span className="text-base text-gray-900 ml-2">{item.comment}</span>
+                                          <>
+                                            <div className="border-t border-dashed border-gray-300 my-3 sm:my-4"></div>
+                                            <div className="flex items-start gap-2 sm:gap-3">
+                                              <div className="w-1 h-6 bg-yellow-400 flex-shrink-0 rounded mt-0.5"></div>
+                                              <div className="flex-1 min-w-0">
+                                                <span className="text-sm sm:text-base font-medium text-gray-700">Nhận xét:</span>
+                                                <span className="text-sm sm:text-base text-gray-900 ml-2 break-words block sm:inline">{item.comment}</span>
+                                              </div>
                                             </div>
-                                          </div>
+                                          </>
                                         )}
                                       </div>
                                     </div>
@@ -1727,7 +1805,7 @@ export default function HomeSection({
                           ) : (
                             <span className="text-sm sm:text-base font-semibold text-gray-900">{schedule.subject || 'Chưa cập nhật'}</span>
                           )}
-                        </div>
+                      </div>
                       </div>
                       
                       {/* Chuyên môn */}
@@ -1748,7 +1826,7 @@ export default function HomeSection({
                               {tutorProfile.qualification || 'Chưa cập nhật'}
                             </span>
                           )}
-                        </div>
+                      </div>
                       </div>
                       
                       {/* Tổng học viên */}
@@ -1781,7 +1859,7 @@ export default function HomeSection({
                         ) : (
                           <p className="text-sm sm:text-base font-semibold text-gray-900">Chưa cập nhật</p>
                         )}
-                      </div>
+                    </div>
 
                       {/* Giới thiệu */}
                       <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">

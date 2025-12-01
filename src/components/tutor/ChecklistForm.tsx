@@ -308,20 +308,23 @@ export default function ChecklistForm({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Môn học</label>
-              <select
-                value={formData.lesson}
-                onChange={(e) => onFormChange({ ...formData, lesson: e.target.value })}
-                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
-              >
-                <option value="">-- Chọn môn học --</option>
-                {availableSubjects.map((subject) => (
-                  <option key={subject} value={subject}>
-                    {subject}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <input
+                  type="text"
+                  list="subjects-list"
+                  value={formData.lesson}
+                  onChange={(e) => onFormChange({ ...formData, lesson: e.target.value })}
+                  placeholder="Chọn hoặc nhập môn học"
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                />
+                <datalist id="subjects-list">
+                  {availableSubjects.map((subject) => (
+                    <option key={subject} value={subject} />
+                  ))}
+                </datalist>
+              </div>
               {selectedStudentGrade && (
-                <p className="text-xs text-gray-500 mt-1">Môn học phù hợp với {selectedStudentGrade}</p>
+                <p className="text-xs text-gray-500 mt-1">Môn học phù hợp với {selectedStudentGrade} (hoặc nhập môn học khác)</p>
               )}
             </div>
             <div>
@@ -356,7 +359,7 @@ export default function ChecklistForm({
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Tên checklist</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Tên bài học</label>
             <input
               type="text"
               value={formData.name}
@@ -367,7 +370,7 @@ export default function ChecklistForm({
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Nội dung/Mô tả checklist</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Tất cả nhiệm vụ và bài tập cần hoàn thành</label>
             <textarea
               value={formData.description}
               onChange={(e) => onFormChange({ ...formData, description: e.target.value })}
@@ -459,7 +462,7 @@ export default function ChecklistForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Ghi chú (note)</label>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Nhận xét</label>
                     <textarea
                       value={exercise.note}
                       onChange={(e) => handleExerciseChange(idx, 'note', e.target.value)}

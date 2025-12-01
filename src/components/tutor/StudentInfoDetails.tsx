@@ -133,13 +133,13 @@ export default function StudentInfoDetails({
 
   return (
     <div className="flex-1 overflow-y-auto pr-1 space-y-4">
-      <div className="w-full rounded-2xl border border-gray-100 bg-gray-50/70 p-4 flex flex-col gap-3 md:flex-row md:items-center md:gap-4 shadow-inner">
-        <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-white shadow-md flex-shrink-0 bg-white">
+      <div className="w-full rounded-2xl border border-gray-100 bg-gray-50/70 p-4 flex flex-col gap-4 md:flex-row md:items-center md:gap-4 shadow-inner">
+        <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl overflow-hidden border-2 border-white shadow-md flex-shrink-0 bg-white mx-auto md:mx-0">
           {student.avatarUrl ? (
             <img src={student.avatarUrl} alt={student.name} className="w-full h-full object-cover" loading="lazy" />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-primary-100">
-              <UserCircle className="w-10 h-10 text-primary-500" />
+              <UserCircle className="w-12 h-12 md:w-14 md:h-14 text-primary-500" />
             </div>
           )}
         </div>

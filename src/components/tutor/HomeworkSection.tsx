@@ -181,15 +181,15 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
   }
 
   return (
-    <div className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm">
-      <div className="flex items-center justify-between mb-4">
+    <div className="rounded-2xl border-2 border-primary-50 bg-white p-4 sm:p-6 shadow-sm">
+      <div className="flex items-center justify-between mb-4 gap-2">
         <button
           type="button"
           onClick={handleToggle}
-          className="flex items-center gap-2 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
+          className="flex items-center justify-between flex-1 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors min-w-0"
         >
-          <h4 className="text-inherit font-inherit">Bài tập về nhà</h4>
-          {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          <h4 className="text-left">Bài tập về nhà</h4>
+          {isExpanded ? <ChevronUp className="w-5 h-5 flex-shrink-0 ml-2" /> : <ChevronDown className="w-5 h-5 flex-shrink-0 ml-2" />}
         </button>
 
         {canEdit && isExpanded && (
@@ -197,10 +197,10 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
             type="button"
             onClick={handleAddHomework}
             disabled={!scheduleId}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-semibold text-primary-600 bg-primary-50 hover:bg-primary-100 disabled:opacity-50 transition"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold text-primary-600 bg-primary-50 hover:bg-primary-100 disabled:opacity-50 transition flex-shrink-0"
           >
-            <Plus className="w-4 h-4" />
-            Thêm bài tập
+            <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Thêm bài tập</span>
           </button>
         )}
       </div>
@@ -234,20 +234,20 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                     className="border-l-4 border-primary-500 bg-white rounded-lg shadow-sm overflow-hidden"
                   >
                     {/* Header */}
-                    <div className="px-5 py-3 border-b border-gray-200">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
+                    <div className="px-4 sm:px-5 py-3 border-b border-gray-200">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-2">
+                        <div className="flex-1 min-w-0">
                           <input
                             type="text"
                             value={homework.task}
                             onChange={(e) =>
                               onChangeField(subjectKey, homework.id, 'task', e.target.value)
                             }
-                            className="w-full text-lg font-bold text-gray-900 bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-primary-200 p-0 rounded"
+                            className="w-full text-base sm:text-lg font-bold text-gray-900 bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-primary-200 p-0 rounded"
                             placeholder="Nhập tên bài tập"
                           />
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                           {/* Status - 3 trạng thái: Chưa làm, Đang làm, Đã hoàn thành */}
                           {canEdit ? (
                             <select
@@ -260,7 +260,7 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                                   e.target.value as HomeworkItem['result']
                                 )
                               }
-                              className={`text-xs px-3 py-1 rounded-full font-semibold whitespace-nowrap border-none focus:outline-none focus:ring-0 ${
+                              className={`text-xs px-2 sm:px-3 py-1.5 sm:py-1 rounded-full font-semibold whitespace-nowrap border-none focus:outline-none focus:ring-0 w-full sm:w-auto ${
                                 homework.result === 'completed'
                                   ? 'bg-green-100 text-green-700'
                                   : homework.result === 'in_progress'
@@ -274,7 +274,7 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                             </select>
                           ) : (
                             <span
-                              className={`text-xs px-3 py-1 rounded-full font-semibold whitespace-nowrap ${
+                              className={`text-xs px-2 sm:px-3 py-1.5 sm:py-1 rounded-full font-semibold whitespace-nowrap ${
                                 homework.result === 'completed'
                                   ? 'bg-green-100 text-green-700'
                                   : homework.result === 'in_progress'
@@ -301,7 +301,7 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                                   e.target.value as HomeworkItem['difficulty']
                                 )
                               }
-                              className="text-xs px-3 py-1 rounded-full font-semibold bg-yellow-100 text-yellow-700 border-none focus:outline-none focus:ring-0"
+                              className="text-xs px-2 sm:px-3 py-1.5 sm:py-1 rounded-full font-semibold bg-yellow-100 text-yellow-700 border-none focus:outline-none focus:ring-0 w-full sm:w-auto"
                             >
                               <option value="easy" className="bg-green-100 text-green-700">Dễ</option>
                               <option value="medium" className="bg-yellow-100 text-yellow-700">Trung bình</option>
@@ -309,14 +309,14 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                             </select>
                           ) : (
                             <span
-                              className={`text-xs px-3 py-1 rounded-full font-semibold ${difficultyColors[homework.difficulty]}`}
+                              className={`text-xs px-2 sm:px-3 py-1.5 sm:py-1 rounded-full font-semibold ${difficultyColors[homework.difficulty]}`}
                             >
                               {difficultyLabels[homework.difficulty]}
                             </span>
                           )}
                         </div>
                       </div>
-                      <p className="text-base text-gray-600">
+                      <p className="text-sm sm:text-base text-gray-600">
                         Hạn nộp: {canEdit ? (
                           <input
                             type="date"
@@ -328,7 +328,7 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                                 onChangeField(subjectKey, homework.id, 'deadline', date.toISOString())
                               }
                             }}
-                            className="text-base text-gray-600 border-none bg-transparent focus:outline-none focus:ring-0 p-0"
+                            className="text-sm sm:text-base text-gray-600 border-none bg-transparent focus:outline-none focus:ring-0 p-0"
                           />
                         ) : (
                           formattedDeadline
@@ -337,22 +337,22 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                     </div>
 
                     {/* Body */}
-                    <div className="px-5 py-4 space-y-4">
+                    <div className="px-4 sm:px-5 py-4 space-y-4">
                       {/* Upload Bài tập */}
                       {canEdit && !isStudentMode && onUploadFile && (
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                           {homework.assignmentUrl ? (
                             <a
                               href={homework.assignmentUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-sm text-primary-600 hover:underline flex-1 truncate"
+                              className="text-xs sm:text-sm text-primary-600 hover:underline flex-1 truncate break-all"
                               title={homework.assignmentUrl}
                             >
                               {homework.assignmentUrl}
                             </a>
                           ) : (
-                            <span className="text-sm text-gray-400 flex-1">Chưa có file bài tập</span>
+                            <span className="text-xs sm:text-sm text-gray-400 flex-1">Chưa có file bài tập</span>
                           )}
                           <label
                             className={`inline-flex items-center justify-center w-8 h-8 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
@@ -385,29 +385,29 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                       )}
 
                       {/* Bài làm học sinh - Tutor chỉ xem và tải, không upload */}
-                      <div className="flex items-center gap-3">
-                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Bài làm HS:</label>
-                        <div className="flex items-center gap-2 flex-1">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                        <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap flex-shrink-0">Bài làm HS:</label>
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
                           {homework.studentSolutionFile ? (
                             <a
                               href={homework.studentSolutionFile}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-sm text-primary-600 hover:underline flex-1 truncate"
+                              className="text-xs sm:text-sm text-primary-600 hover:underline flex-1 truncate break-all"
                               title={homework.studentSolutionFile}
                             >
                               {homework.studentSolutionFile}
                             </a>
                           ) : (
-                            <span className="text-sm text-gray-400 flex-1">Chưa có bài làm</span>
+                            <span className="text-xs sm:text-sm text-gray-400 flex-1">Chưa có bài làm</span>
                           )}
                         </div>
                       </div>
 
                       {/* Link Lời giải */}
-                      <div className="flex items-center gap-3">
-                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Lời giải:   </label>
-                        <div className="flex items-center gap-2 flex-1">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                        <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap flex-shrink-0">Lời giải:</label>
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
                           {canEdit ? (
                             <>
                               <input
@@ -416,7 +416,7 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                                 onChange={(e) =>
                                   onChangeField(subjectKey, homework.id, 'tutorSolution', e.target.value)
                                 }
-                                className="flex-1 text-sm text-gray-700 px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                                className="flex-1 text-xs sm:text-sm text-gray-700 px-2 sm:px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
                                 placeholder="Dán link lời giải"
                               />
                               {onUploadFile && (
@@ -446,14 +446,14 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                               )}
                             </>
                           ) : (
-                            <span className="text-sm text-gray-700 flex-1">{homework.tutorSolution || '—'}</span>
+                            <span className="text-xs sm:text-sm text-gray-700 flex-1 break-all">{homework.tutorSolution || '—'}</span>
                           )}
                         </div>
                       </div>
 
                       {/* Nhận xét */}
-                      <div className="flex items-center gap-3">
-                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Nhận xét:</label>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                        <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap flex-shrink-0">Nhận xét:</label>
                         {canEdit ? (
                           <input
                             type="text"
@@ -461,29 +461,29 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                             onChange={(e) =>
                               onChangeField(subjectKey, homework.id, 'note', e.target.value)
                             }
-                            className="flex-1 text-sm text-gray-700 px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                            className="flex-1 text-xs sm:text-sm text-gray-700 px-2 sm:px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
                             placeholder="Nhận xét"
                           />
                         ) : (
-                          <span className="text-sm text-gray-700 flex-1">{homework.note || '—'}</span>
+                          <span className="text-xs sm:text-sm text-gray-700 flex-1 break-words">{homework.note || '—'}</span>
                         )}
                       </div>
                     </div>
 
                     {/* Footer - Action Buttons - Chỉ hiển thị nút Lưu khi có thay đổi */}
                     {canEdit && (
-                      <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-end gap-3">
+                      <div className="px-4 sm:px-5 py-3 border-t border-gray-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
                         {hasChanges(homework) && (
                           <button
                             onClick={() => handleSave(homework.id)}
-                            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-semibold text-sm transition"
+                            className="w-full sm:w-auto px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-semibold text-xs sm:text-sm transition"
                           >
                             Lưu
                           </button>
                         )}
                         <button
                           onClick={() => onDeleteHomework(subjectKey, homework.id)}
-                          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-semibold text-sm transition"
+                          className="w-full sm:w-auto px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-semibold text-xs sm:text-sm transition"
                         >
                           Xoá
                         </button>

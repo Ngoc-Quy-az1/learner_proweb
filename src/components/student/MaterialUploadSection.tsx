@@ -457,10 +457,10 @@ export default function MaterialUploadSection({
     : null
 
   return (
-    <div className="card hover:shadow-xl transition-shadow duration-300">
+    <div className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm">
       <div className="flex items-center space-x-3 mb-6">
-        <Upload className="w-6 h-6 text-primary-600" />
-        <h2 className="text-2xl font-bold text-gray-900">Tải tài liệu cho Tutor</h2>
+        <Upload className="w-6 h-6 text-primary-600 flex-shrink-0" />
+        <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Tải tài liệu cho Tutor</h2>
       </div>
       {scheduleOptions.length === 0 ? (
         <p className="text-base text-gray-500 py-4">Hiện chưa có buổi học nào để gửi tài liệu thêm cho Tutor.</p>

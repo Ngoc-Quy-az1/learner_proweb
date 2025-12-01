@@ -32,18 +32,18 @@ const StudentSubjectReviewSection: React.FC<StudentSubjectReviewSectionProps> = 
           <button
             type="button"
             onClick={() => setIsExpanded((prev) => !prev)}
-            className="flex items-center gap-2 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
+            className="flex items-center justify-between w-full text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
           >
-            <h4>{title}</h4>
+            <h4 className="text-left">{title}</h4>
             {isExpanded ? (
-              <ChevronUp className="w-5 h-5" />
+              <ChevronUp className="w-5 h-5 flex-shrink-0 ml-2" />
             ) : (
-              <ChevronDown className="w-5 h-5" />
+              <ChevronDown className="w-5 h-5 flex-shrink-0 ml-2" />
             )}
           </button>
         )}
         {loading && (
-          <span className="text-sm text-gray-500">Đang tải...</span>
+          <span className="text-sm text-gray-500 ml-2 flex-shrink-0">Đang tải...</span>
         )}
       </div>
       {isExpanded &&

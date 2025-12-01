@@ -2635,6 +2635,78 @@ useEffect(() => {
     </div>
   )
 
+  // Helper function to extract subject from checklist name or description
+  const extractSubjectFromText = (text?: string): string | null => {
+    if (!text) return null
+    const textLower = text.toLowerCase().trim()
+    
+    // Common subject keywords - order matters, check longer phrases first - return full names
+    const subjectKeywords: Record<string, string> = {
+      'giáo dục quốc phòng an ninh': 'Giáo dục quốc phòng an ninh',
+      'quốc phòng an ninh': 'Quốc phòng an ninh',
+      'quoc phong an ninh': 'Giáo dục quốc phòng an ninh',
+      'giáo dục công dân': 'Giáo dục công dân',
+      'giao duc cong dan': 'Giáo dục công dân',
+      'công dân': 'Giáo dục công dân',
+      'công nghệ': 'Công nghệ',
+      'cong nghe': 'Công nghệ',
+      'tin học': 'Tin học',
+      'tin hoc': 'Tin học',
+      'tiếng anh': 'Tiếng Anh',
+      'tieng anh': 'Tiếng Anh',
+      'ngữ văn': 'Ngữ văn',
+      'ngu van': 'Ngữ văn',
+      'vật lý': 'Vật lý',
+      'vat ly': 'Vật lý',
+      'hóa học': 'Hóa học',
+      'hoa hoc': 'Hóa học',
+      'sinh học': 'Sinh học',
+      'sinh hoc': 'Sinh học',
+      'lịch sử': 'Lịch sử',
+      'lich su': 'Lịch sử',
+      'địa lý': 'Địa lý',
+      'dia ly': 'Địa lý',
+      'thể dục': 'Thể dục',
+      'the duc': 'Thể dục',
+      'âm nhạc': 'Âm nhạc',
+      'am nhac': 'Âm nhạc',
+      'mỹ thuật': 'Mỹ thuật',
+      'my thuat': 'Mỹ thuật',
+      'toán': 'Toán',
+      'toan': 'Toán',
+      'ly': 'Vật lý',
+      'lý': 'Vật lý',
+      'hoá': 'Hóa học',
+      'hóa': 'Hóa học',
+      'hoa': 'Hóa học',
+      'sinh': 'Sinh học',
+      'văn': 'Ngữ văn',
+      'van': 'Ngữ văn',
+      'anh': 'Tiếng Anh',
+      'sử': 'Lịch sử',
+      'su': 'Lịch sử',
+      'địa': 'Địa lý',
+      'dia': 'Địa lý',
+      'gdcd': 'Giáo dục công dân',
+      'tin': 'Tin học',
+    }
+    
+    // Check for subject keywords in text (longer phrases first)
+    for (const [keyword, subject] of Object.entries(subjectKeywords)) {
+      if (textLower.includes(keyword)) {
+        return subject
+      }
+    }
+    
+    return null
+  }
+
+  // Helper to format subject label - keep original name
+  const formatSubjectLabel = (subject: string | null | undefined): string => {
+    if (!subject) return 'Chung'
+    return subject.toUpperCase()
+  }
+
   const renderChecklistSection = () => {
     const activeChecklistSchedule =
       checklistScheduleOptions.find((opt) => opt.id === selectedChecklistScheduleId)?.schedule ||
@@ -2706,9 +2778,9 @@ useEffect(() => {
               <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Checklist theo buổi học</h2>
             </div>
             {checklistScheduleOptions.length > 0 && (
-              <div className="flex items-center gap-3 flex-wrap">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                 {/* Dropdown chọn ngày */}
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                   <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">Chọn ngày:</label>
                   <select
                     value={selectedChecklistDate || ''}
@@ -2726,7 +2798,7 @@ useEffect(() => {
                         }
                       }
                     }}
-                    className="px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className="flex-1 px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   >
                     {uniqueDates.map((dateKey) => (
                       <option key={dateKey} value={dateKey}>
@@ -2737,12 +2809,12 @@ useEffect(() => {
                 </div>
                 {/* Dropdown chọn buổi học trong ngày */}
                 {selectedChecklistDate && schedulesForSelectedDate.length > 0 && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">Chọn buổi học:</label>
                     <select
                       value={activeChecklistScheduleId || ''}
                       onChange={(e) => setSelectedChecklistScheduleId(e.target.value || null)}
-                      className="px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      className="flex-1 px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     >
                       {schedulesForSelectedDate.map(({ id, schedule }) => (
                         <option key={id} value={id}>
@@ -2789,8 +2861,14 @@ useEffect(() => {
                               className="w-full"
                             >
                               <div className="flex items-center px-5 py-4 gap-4">
-                                <p className="text-2xl font-bold text-primary-600 uppercase tracking-wide whitespace-nowrap w-48 flex-shrink-0">
-                                  {assignment.subject || activeChecklistSchedule?.subject || 'Chung'}
+                                <p className="text-lg font-bold text-primary-600 uppercase tracking-wide min-w-[60px] max-w-[180px] flex-shrink-0">
+                                  {formatSubjectLabel(
+                                    assignment.subject || 
+                                    extractSubjectFromText(assignment.name) ||
+                                    extractSubjectFromText(assignment.description) ||
+                                    activeChecklistSchedule?.subject || 
+                                    'Chung'
+                                  )}
                                 </p>
                                 <div className="h-12 w-px bg-gray-300 flex-shrink-0"></div>
                                 <div className="flex-1 space-y-1 min-w-0 text-left">
@@ -2833,7 +2911,7 @@ useEffect(() => {
                                           <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
                                             <div className="flex items-center justify-center gap-2">
                                               <PenTool className="w-5 h-5" />
-                                              Nhiệm vụ
+                                              Yêu cầu chi tiết
                                             </div>
                                           </th>
                                           <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
@@ -3046,44 +3124,72 @@ useEffect(() => {
   const renderHomeworkSection = () => {
     // Các buổi học có bài tập về nhà (bao gồm cả quá khứ)
     const homeworkScheduleIds = Object.keys(homeworkDetailItems)
-    const homeworkScheduleOptionsRaw = homeworkScheduleIds
-      .map((id) => {
-        const schedule = schedules.find((s) => s.id === id)
-        return { id, schedule }
-      })
-      .filter((opt) => !!opt.schedule) as { id: string; schedule: ScheduleItem }[]
+    
+    // Tạo options bao gồm cả homework có và không có schedule
+    const homeworkScheduleOptionsRaw = homeworkScheduleIds.map((id) => {
+      const schedule = schedules.find((s) => s.id === id)
+      const homeworkItems = homeworkDetailItems[id] || []
+      
+      // Nếu có schedule, dùng thông tin từ schedule
+      if (schedule) {
+        return { id, schedule, homeworkItems }
+      }
+      
+      // Nếu không có schedule, tìm homework gốc để lấy thông tin
+      const originalHomework = homeworks.find(h => h.scheduleId === id || h.id === id)
+      if (originalHomework && homeworkItems.length > 0) {
+        const firstHomework = homeworkItems[0]
+        const homeworkDate = firstHomework.deadline 
+          ? new Date(firstHomework.deadline)
+          : originalHomework.deadline
+            ? new Date(originalHomework.deadline)
+            : new Date()
+        const subject = getSubjectLabel(originalHomework.subject)
+        const fakeSchedule: ScheduleItem = {
+          id,
+          subject: subject || 'Chung',
+          time: '--:--',
+          date: homeworkDate,
+          tutor: '',
+        }
+        return { id, schedule: fakeSchedule, homeworkItems }
+      }
+      
+      return null
+    }).filter((opt): opt is { id: string; schedule: ScheduleItem; homeworkItems: HomeworkDetailItem[] } => opt !== null)
+    
     const homeworkScheduleOptions = homeworkScheduleOptionsRaw.sort(
       (a, b) => a.schedule.date.getTime() - b.schedule.date.getTime()
     )
 
-    const activeHomeworkSchedule =
-      homeworkScheduleOptions.find((opt) => opt.id === selectedHomeworkScheduleId)?.schedule ||
-      homeworkScheduleOptions[homeworkScheduleOptions.length - 1]?.schedule
+    const activeOption = homeworkScheduleOptions.find((opt) => opt.id === selectedHomeworkScheduleId) ||
+      homeworkScheduleOptions[homeworkScheduleOptions.length - 1]
 
-    const activeHomeworkScheduleId = activeHomeworkSchedule?.id
-    const activeHomeworkItems: HomeworkDetailItem[] =
-      activeHomeworkScheduleId && homeworkDetailItems[activeHomeworkScheduleId]
-        ? homeworkDetailItems[activeHomeworkScheduleId]
-        : []
+    const activeHomeworkSchedule = activeOption?.schedule
+    const activeHomeworkScheduleId = activeOption?.id
+    const activeHomeworkItems: HomeworkDetailItem[] = activeOption?.homeworkItems || []
 
     return (
       <div className="h-full overflow-y-auto space-y-3 sm:space-y-4">
         {/* Bài tập theo buổi học */}
         <div className="card hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center justify-between mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-gray-200">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-gray-200">
             <div className="flex items-center space-x-2">
-              <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
-              <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Bài tập theo buổi học</h2>
+              <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600 flex-shrink-0" />
+              <h2 className="text-base sm:text-lg md:text-2xl font-bold text-gray-900">Bài tập theo buổi học</h2>
             </div>
             {homeworkScheduleOptions.length > 0 && (
               <select
                 value={activeHomeworkScheduleId || ''}
                 onChange={(e) => setSelectedHomeworkScheduleId(e.target.value || null)}
-                className="px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                className="w-full sm:w-auto px-3 py-2 sm:py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
                 {homeworkScheduleOptions.map(({ id, schedule }) => (
                   <option key={id} value={id}>
-                    {`${format(schedule.date, 'dd/MM/yyyy')} · ${schedule.time}${schedule.subject ? ` · ${schedule.subject}` : ''}`}
+                    {schedule.time !== '--:--' 
+                      ? `${format(schedule.date, 'dd/MM/yyyy')} · ${schedule.time}${schedule.subject ? ` · ${schedule.subject}` : ''}`
+                      : `${format(schedule.date, 'dd/MM/yyyy')}${schedule.subject ? ` · ${schedule.subject}` : ''}`
+                    }
                   </option>
                 ))}
               </select>
@@ -3114,15 +3220,15 @@ useEffect(() => {
                     className="border-l-4 border-primary-500 bg-white rounded-lg shadow-sm overflow-hidden"
                   >
                     {/* Header */}
-                    <div className="px-5 py-3 border-b border-gray-200">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
-                          <p className="text-xl font-bold text-gray-900">{item.task}</p>
+                    <div className="px-4 sm:px-5 py-3 border-b border-gray-200">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-0 mb-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-lg sm:text-xl font-bold text-gray-900 break-words">{item.task}</p>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="flex items-center gap-2 flex-wrap sm:flex-shrink-0">
                           {/* Status */}
                           <span
-                            className={`text-sm px-3 py-1 rounded-full font-semibold whitespace-nowrap ${
+                            className={`text-xs sm:text-sm px-2 sm:px-3 py-1 rounded-full font-semibold whitespace-nowrap ${
                               item.result === 'completed'
                                 ? 'bg-green-100 text-green-700'
                                 : 'bg-gray-100 text-gray-700'
@@ -3133,7 +3239,7 @@ useEffect(() => {
                           {/* Difficulty */}
                           {item.difficulty && (
                             <span
-                              className={`text-sm px-3 py-1 rounded-full font-semibold ${difficultyColors[item.difficulty]}`}
+                              className={`text-xs sm:text-sm px-2 sm:px-3 py-1 rounded-full font-semibold whitespace-nowrap ${difficultyColors[item.difficulty]}`}
                             >
                               {difficultyLabels[item.difficulty]}
                             </span>
@@ -3143,14 +3249,14 @@ useEffect(() => {
                     </div>
 
                     {/* Body */}
-                    <div className="px-5 py-4">
+                    <div className="px-4 sm:px-5 py-3 sm:py-4">
                       {/* Phần trên: Deadline, File bài tập, Bài làm HS, Lời giải */}
                       <div className="space-y-3 pb-4">
                         {/* Deadline */}
-                        <div className="flex items-center gap-3">
-                          <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-                          <span className="text-base font-medium text-gray-700 whitespace-nowrap">Hạn nộp:</span>
-                          <span className="text-base text-red-600 font-medium">
+                        <div className="flex items-start sm:items-center gap-2 sm:gap-3">
+                          <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5 sm:mt-0" />
+                          <span className="text-sm sm:text-base font-medium text-gray-700 whitespace-nowrap">Hạn nộp:</span>
+                          <span className="text-sm sm:text-base text-red-600 font-medium break-words">
                             {item.deadline
                               ? format(new Date(item.deadline), 'dd/MM/yyyy')
                               : 'Chưa có'}
@@ -3159,14 +3265,14 @@ useEffect(() => {
 
                         {/* File bài tập */}
                         {item.assignmentUrl && (
-                          <div className="flex items-center gap-3">
-                            <Folder className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-                            <span className="text-base font-medium text-blue-600 whitespace-nowrap">File Bài Tập:</span>
+                          <div className="flex items-start sm:items-center gap-2 sm:gap-3">
+                            <Folder className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5 sm:mt-0" />
+                            <span className="text-sm sm:text-base font-medium text-blue-600 whitespace-nowrap flex-shrink-0">File Bài Tập:</span>
                             <a
                               href={item.assignmentUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-base text-blue-600 hover:underline flex-1 truncate"
+                              className="text-sm sm:text-base text-blue-600 hover:underline flex-1 min-w-0 break-all"
                               title={item.assignmentUrl}
                             >
                               {item.assignmentFileName || item.assignmentUrl.split('/').pop() || 'Xem file bài tập'}
@@ -3175,67 +3281,69 @@ useEffect(() => {
                         )}
 
                         {/* Bài làm học sinh - Học sinh có thể upload */}
-                        <div className="flex items-center gap-3">
-                          <FileText className="w-5 h-5 text-gray-500 flex-shrink-0" />
-                          <span className="text-base font-medium text-blue-600 whitespace-nowrap">Bài làm HS:</span>
-                          <div className="flex items-center gap-3 flex-1">
-                            {item.uploadedFileName || item.studentSolutionFileUrl ? (
-                              <a
-                                href={item.studentSolutionFileUrl || '#'}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-base text-blue-600 hover:underline flex-1 truncate"
-                                title={item.studentSolutionFileUrl}
-                              >
-                                {item.uploadedFileName || 'Bài làm học sinh'}
-                              </a>
-                            ) : (
-                              <span className="text-base text-gray-400 flex-1">Chưa có bài làm</span>
-                            )}
-                            {handleUploadHomeworkFile && (
-                              <label
-                                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border-2 border-primary-500 ${
-                                  item.uploadedFileName || item.studentSolutionFileUrl
-                                    ? 'bg-primary-50 text-primary-700 hover:bg-primary-100'
-                                    : 'bg-primary-500 text-white hover:bg-primary-600 shadow-md'
-                                } font-semibold text-base flex-shrink-0 transition-colors cursor-pointer`}
-                                title={item.uploadedFileName || item.studentSolutionFileUrl ? "Cập nhật bài làm" : "Upload bài làm"}
-                              >
-                                <Upload className="w-5 h-5" />
-                                <span>{item.uploadedFileName || item.studentSolutionFileUrl ? 'Cập nhật' : 'Upload bài làm'}</span>
-                                <input
-                                  type="file"
-                                  className="hidden"
-                                  accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                  onChange={async (e) => {
-                                    const file = e.target.files?.[0]
-                                    if (!file || !handleUploadHomeworkFile) return
-                                    try {
-                                      await handleUploadHomeworkFile(item.id, file)
-                                      setScheduleFetchTrigger((prev) => prev + 1)
-                                    } catch (error) {
-                                      console.error('Upload failed:', error)
-                                      alert('Không thể upload file. Vui lòng thử lại.')
-                                    } finally {
-                                      e.target.value = ''
-                                    }
-                                  }}
-                                />
-                              </label>
-                            )}
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                          <div className="flex items-start sm:items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                            <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0 mt-0.5 sm:mt-0" />
+                            <span className="text-sm sm:text-base font-medium text-blue-600 whitespace-nowrap flex-shrink-0">Bài làm HS:</span>
+                            <div className="flex-1 min-w-0">
+                              {item.uploadedFileName || item.studentSolutionFileUrl ? (
+                                <a
+                                  href={item.studentSolutionFileUrl || '#'}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm sm:text-base text-blue-600 hover:underline break-all block"
+                                  title={item.studentSolutionFileUrl}
+                                >
+                                  {item.uploadedFileName || 'Bài làm học sinh'}
+                                </a>
+                              ) : (
+                                <span className="text-sm sm:text-base text-gray-400 block">Chưa có bài làm</span>
+                              )}
+                            </div>
                           </div>
+                          {handleUploadHomeworkFile && (
+                            <label
+                              className={`inline-flex items-center justify-center gap-2 w-full sm:w-auto px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg border-2 border-primary-500 ${
+                                item.uploadedFileName || item.studentSolutionFileUrl
+                                  ? 'bg-primary-50 text-primary-700 hover:bg-primary-100'
+                                  : 'bg-primary-500 text-white hover:bg-primary-600 shadow-md'
+                              } font-semibold text-sm sm:text-base flex-shrink-0 transition-colors cursor-pointer`}
+                              title={item.uploadedFileName || item.studentSolutionFileUrl ? "Cập nhật bài làm" : "Upload bài làm"}
+                            >
+                              <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
+                              <span className="whitespace-nowrap">{item.uploadedFileName || item.studentSolutionFileUrl ? 'Cập nhật' : 'Upload bài làm'}</span>
+                              <input
+                                type="file"
+                                className="hidden"
+                                accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0]
+                                  if (!file || !handleUploadHomeworkFile) return
+                                  try {
+                                    await handleUploadHomeworkFile(item.id, file)
+                                    setScheduleFetchTrigger((prev) => prev + 1)
+                                  } catch (error) {
+                                    console.error('Upload failed:', error)
+                                    alert('Không thể upload file. Vui lòng thử lại.')
+                                  } finally {
+                                    e.target.value = ''
+                                  }
+                                }}
+                              />
+                            </label>
+                          )}
                         </div>
 
                         {/* Lời giải */}
                         {item.solutionUrl && (
-                          <div className="flex items-center gap-3">
-                            <Lightbulb className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-                            <span className="text-base font-medium text-blue-600 whitespace-nowrap">Lời giải:</span>
+                          <div className="flex items-start sm:items-center gap-2 sm:gap-3">
+                            <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5 sm:mt-0" />
+                            <span className="text-sm sm:text-base font-medium text-blue-600 whitespace-nowrap flex-shrink-0">Lời giải:</span>
                             <a
                               href={item.solutionUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-base text-blue-600 hover:underline flex-1 truncate"
+                              className="text-sm sm:text-base text-blue-600 hover:underline flex-1 min-w-0 break-all"
                               title={item.solutionUrl}
                             >
                               {item.solutionFileName || item.solutionUrl.split('/').pop() || 'Xem lời giải'}
@@ -3251,11 +3359,11 @@ useEffect(() => {
 
                       {/* Nhận xét */}
                       {item.comment && (
-                        <div className="flex items-start gap-3 pt-2">
-                          <div className="w-1 h-6 bg-yellow-400 flex-shrink-0 rounded"></div>
-                          <div className="flex-1">
-                            <span className="text-base font-medium text-gray-700">Nhận xét:</span>
-                            <span className="text-base text-gray-900 ml-2">{item.comment}</span>
+                        <div className="flex items-start gap-2 sm:gap-3 pt-2">
+                          <div className="w-1 h-6 bg-yellow-400 flex-shrink-0 rounded mt-0.5"></div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm sm:text-base font-medium text-gray-700">Nhận xét:</span>
+                            <span className="text-sm sm:text-base text-gray-900 ml-2 break-words block sm:inline">{item.comment}</span>
                           </div>
                         </div>
                       )}

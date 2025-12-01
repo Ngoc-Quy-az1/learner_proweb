@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
-import { ChevronLeft, ChevronRight, Filter, Play, Copy, Check } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Filter, Play, Copy, Check, Mail, Phone, Users, FileText as FileTextIcon } from 'lucide-react'
 import { ScheduleItem } from './ScheduleWidget'
 
 interface TutorInfo {
@@ -13,6 +13,13 @@ interface TutorInfo {
   cvUrl?: string
   moreInfo?: string
   currentLevel?: string
+  qualification?: string
+  experience?: string
+  specialties?: string[]
+  subjects?: string[]
+  totalStudents?: number
+  bio?: string
+  rating?: number
 }
 
 interface MonthlyCalendarProps {
@@ -54,6 +61,7 @@ export default function MonthlyCalendar({ schedules, onJoinClass, tutorInfoMap =
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date())
   const [schedulePages, setSchedulePages] = useState<Record<string, number>>({})
+  const [selectedTutorSchedule, setSelectedTutorSchedule] = useState<string | null>(null)
 
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
@@ -273,37 +281,49 @@ export default function MonthlyCalendar({ schedules, onJoinClass, tutorInfoMap =
                     return (
                       <div
                         key={schedule.id}
-                        className="bg-white rounded-xl p-5 border-2 border-gray-200 hover:border-primary-400 hover:shadow-lg transition-all"
+                        className="bg-white rounded-xl p-4 sm:p-5 border-2 border-gray-200 hover:border-primary-400 hover:shadow-lg transition-all"
                       >
-                        <div className="flex items-center justify-between gap-4">
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                           <div className="flex-1 space-y-3">
                             <div className="flex items-center gap-2 flex-wrap">
                               {showSubject && subjectColor && (
-                                <span className={`px-3 py-1.5 rounded-lg text-xs font-bold ${subjectColor.bg} ${subjectColor.text} shadow-sm`}>
+                                <span className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-bold ${subjectColor.bg} ${subjectColor.text} shadow-sm`}>
                                   {schedule.subject}
                                 </span>
                               )}
-                              <span className={`text-sm font-semibold px-4 py-2 rounded-full ${statusInfo.color} ${
+                              <span className={`text-xs sm:text-sm font-semibold px-3 sm:px-4 py-1.5 sm:py-2 rounded-full ${statusInfo.color} ${
                                 nearStart && statusInfo.status === 'upcoming' ? 'animate-pulse' : ''
                               }`}>
                                 {statusInfo.label}
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="text-4xl font-bold text-primary-600">{schedule.time}</span>
+                              <span className="text-3xl sm:text-4xl font-bold text-primary-600">{schedule.time}</span>
                             </div>
                           </div>
-                          <div className="flex flex-col items-end gap-3">
+                          <div className="flex flex-col lg:items-end gap-3 w-full lg:w-auto">
                             {(() => {
                               // Ưu tiên lấy tên tutor từ tutorInfoMap nếu có tutorId
                               let displayTutorName = schedule.tutor
                               if (schedule.tutorId && tutorInfoMap[schedule.tutorId]) {
                                 displayTutorName = tutorInfoMap[schedule.tutorId].name || schedule.tutor
                               }
+                              const canViewTutorDetail = Boolean(schedule.tutorId)
                               return displayTutorName ? (
-                                <div className="text-2xl md:text-3xl font-bold text-gray-900 text-right">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (schedule.tutorId) {
+                                      setSelectedTutorSchedule(schedule.id)
+                                    }
+                                  }}
+                                  disabled={!canViewTutorDetail}
+                                  className={`text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 text-left lg:text-right hover:text-primary-600 transition-colors break-words ${
+                                    canViewTutorDetail ? 'cursor-pointer' : 'cursor-default'
+                                  }`}
+                                >
                                   {displayTutorName}
-                                </div>
+                                </button>
                               ) : null
                             })()}
                             {schedule.meetLink && onJoinClass && statusInfo.status !== 'completed' && (
@@ -313,17 +333,17 @@ export default function MonthlyCalendar({ schedules, onJoinClass, tutorInfoMap =
                                     e.stopPropagation()
                                     onJoinClass(schedule.id)
                                   }}
-                                  className="w-full max-w-2xl bg-primary-500 hover:bg-primary-600 text-white px-6 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg"
+                                  className="w-full lg:w-auto lg:min-w-[160px] bg-primary-500 hover:bg-primary-600 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg"
                                 >
-                                  <Play className="w-5 h-5" />
+                                  <Play className="w-4 h-4 sm:w-5 sm:h-5" />
                                   <span>Vào lớp</span>
                                 </button>
-                                <div className="flex items-center gap-2 w-full max-w-2xl">
+                                <div className="flex items-center gap-2 w-full">
                                   <input
                                     type="text"
                                     value={schedule.meetLink}
                                     readOnly
-                                    className="flex-1 bg-gray-50 border-2 border-gray-200 rounded-lg px-4 py-2.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-500"
+                                    className="flex-1 bg-gray-50 border-2 border-gray-200 rounded-lg px-3 sm:px-4 py-2 sm:py-2.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-500 truncate"
                                   />
                                   <CopyLinkButton link={schedule.meetLink || ''} />
                                 </div>
@@ -374,6 +394,179 @@ export default function MonthlyCalendar({ schedules, onJoinClass, tutorInfoMap =
           )}
         </div>
       </div>
+
+      {/* Tutor Detail Modal */}
+      {selectedTutorSchedule && (() => {
+        const schedule = schedules.find((s) => s.id === selectedTutorSchedule)
+        if (!schedule || !schedule.tutorId) return null
+        const tutorProfile = tutorInfoMap[schedule.tutorId]
+        const displayTutorName = tutorProfile?.name || schedule.tutor || 'Tutor đang được cập nhật'
+        const tutorInitial = displayTutorName.charAt(0)?.toUpperCase() || 'T'
+
+        return (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
+            onClick={() => setSelectedTutorSchedule(null)}
+          >
+            <div
+              className="bg-white rounded-2xl sm:rounded-[32px] shadow-2xl max-w-4xl w-full max-h-[96vh] sm:max-h-[92vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-white border-b border-gray-100 px-4 sm:px-8 py-4 sm:py-6 flex items-center justify-between z-10">
+                <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-gray-900">Thông tin chi tiết Tutor</h2>
+                <button
+                  onClick={() => setSelectedTutorSchedule(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 ml-2"
+                >
+                  <span className="text-xl sm:text-2xl">&times;</span>
+                </button>
+              </div>
+
+              <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+                <div className="border-b border-gray-200 pb-2"></div>
+
+                {tutorProfile ? (
+                  <>
+                    {/* Main Profile Card */}
+                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 border border-gray-100 rounded-2xl sm:rounded-3xl bg-gray-50 p-4 sm:p-6">
+                      <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl overflow-hidden border-2 border-primary-100 shadow-lg flex-shrink-0 bg-gradient-to-br from-primary-500 to-primary-600 text-white text-2xl sm:text-4xl font-bold flex items-center justify-center">
+                        {tutorProfile.avatarUrl ? (
+                          <img src={tutorProfile.avatarUrl} alt={displayTutorName} className="w-full h-full object-cover" />
+                        ) : (
+                          tutorInitial
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-1 sm:space-y-2 text-center sm:text-left">
+                        <p className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-[0.2em]">TUTOR</p>
+                        <h3 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-gray-900 break-words">{displayTutorName}</h3>
+                        <p className="text-base sm:text-lg text-gray-500">{tutorProfile.qualification || tutorProfile.currentLevel || 'Tutor LearnerPro'}</p>
+                      </div>
+                    </div>
+
+                    {/* Kinh nghiệm và Liên hệ */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                      {/* Kinh nghiệm */}
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">KINH NGHIỆM</p>
+                        <p className="text-sm sm:text-base font-semibold text-gray-900 break-words">{tutorProfile.experience || 'Chưa cập nhật'}</p>
+                      </div>
+                      
+                      {/* Liên hệ */}
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">LIÊN HỆ</p>
+                        <div className="space-y-1">
+                          {tutorProfile.email && (
+                            <div className="flex items-start sm:items-center gap-2">
+                              <Mail className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5 sm:mt-0" />
+                              <p className="text-sm sm:text-base font-semibold text-gray-900 break-all">{tutorProfile.email}</p>
+                            </div>
+                          )}
+                          {tutorProfile.phone && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                              <p className="text-sm sm:text-base font-semibold text-gray-900 break-all">{tutorProfile.phone}</p>
+                            </div>
+                          )}
+                          {!tutorProfile.email && !tutorProfile.phone && (
+                            <p className="text-sm sm:text-base font-semibold text-gray-900">Chưa cập nhật</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Môn phụ trách, Chuyên môn, Tổng học viên */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+                      {/* Môn phụ trách */}
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">MÔN PHỤ TRÁCH</p>
+                        <div className="flex flex-wrap gap-2">
+                          {tutorProfile.subjects && tutorProfile.subjects.length > 0 ? (
+                            tutorProfile.subjects.map((subject, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-semibold text-white bg-purple-500"
+                              >
+                                {subject}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-sm sm:text-base font-semibold text-gray-900">{schedule.subject || 'Chưa cập nhật'}</span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Chuyên môn */}
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">CHUYÊN MÔN</p>
+                        <div className="flex flex-wrap gap-2">
+                          {tutorProfile.specialties && tutorProfile.specialties.length > 0 ? (
+                            tutorProfile.specialties.map((specialty, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-semibold text-white bg-yellow-500"
+                              >
+                                {specialty}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-sm sm:text-base font-semibold text-gray-900">
+                              {tutorProfile.qualification || 'Chưa cập nhật'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Tổng học viên */}
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm sm:col-span-2 md:col-span-1">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">TỔNG HỌC VIÊN</p>
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600 flex-shrink-0" />
+                          <p className="text-sm sm:text-base font-semibold text-gray-900">
+                            {typeof tutorProfile.totalStudents === 'number' ? tutorProfile.totalStudents : 0} học viên đã dạy
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Hồ sơ & CV và Giới thiệu */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                      {/* Hồ sơ & CV */}
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">HỒ SƠ & CV</p>
+                        {tutorProfile.cvUrl ? (
+                          <a
+                            href={tutorProfile.cvUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-sm sm:text-base font-semibold text-primary-600 hover:text-primary-700"
+                          >
+                            <FileTextIcon className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                            <span>Xem CV</span>
+                          </a>
+                        ) : (
+                          <p className="text-sm sm:text-base font-semibold text-gray-900">Chưa cập nhật</p>
+                        )}
+                      </div>
+
+                      {/* Giới thiệu */}
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">GIỚI THIỆU</p>
+                        <p className="text-sm sm:text-base text-gray-700 leading-relaxed">
+                          {tutorProfile.bio || tutorProfile.moreInfo || 'Thông tin đang được bổ sung.'}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-4 border border-dashed border-gray-300 rounded-xl sm:rounded-2xl bg-gray-50 text-sm text-gray-600">
+                    Hệ thống đang cập nhật thông tin chi tiết của tutor này.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

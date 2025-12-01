@@ -88,24 +88,24 @@ const SessionEvaluationSection: React.FC<SessionEvaluationSectionProps> = ({
   }
 
   return (
-    <div className="rounded-2xl border-2 border-primary-50 bg-white p-4 shadow-sm mt-4">
-      <div className="flex items-center justify-between mb-4">
+    <div className="rounded-2xl border-2 border-primary-50 bg-white p-4 sm:p-6 shadow-sm mt-4">
+      <div className="flex items-center justify-between mb-4 gap-2">
         <button
           onClick={onToggle}
-          className="flex items-center gap-2 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
+          className="flex items-center justify-between flex-1 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors min-w-0"
         >
-          <h4>{title}</h4>
+          <h4 className="text-left">{title}</h4>
           {isExpanded ? (
-            <ChevronUp className="w-5 h-5" />
+            <ChevronUp className="w-5 h-5 flex-shrink-0 ml-2" />
           ) : (
-            <ChevronDown className="w-5 h-5" />
+            <ChevronDown className="w-5 h-5 flex-shrink-0 ml-2" />
           )}
         </button>
         {isExpanded && canEdit && (
           <button
             onClick={handleSaveClick}
             disabled={saving}
-            className="px-4 py-2 rounded-xl text-base font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-60 disabled:cursor-not-allowed transition shadow-md"
+            className="px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-base font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-60 disabled:cursor-not-allowed transition shadow-md flex-shrink-0 whitespace-nowrap"
           >
             {saving ? 'Đang lưu...' : 'Lưu đánh giá'}
           </button>

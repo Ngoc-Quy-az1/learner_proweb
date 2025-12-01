@@ -1995,9 +1995,6 @@ useEffect(() => {
                 Tổng quan lớp học · {studentPagination.totalResults} học sinh
               </h3>
             </div>
-            <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-3 py-1 text-xs text-gray-600 font-semibold">
-              <div className="w-2 h-2 rounded-full bg-primary-500" /> Đang hoạt động
-            </div>
           </div>
 
           <div className="mt-4">
@@ -2037,7 +2034,11 @@ useEffect(() => {
                         <h3 className={`text-lg font-bold truncate ${isActive ? 'text-primary-700' : 'text-gray-900'}`}>
                           {student.name}
                         </h3>
-                        <p className="text-sm text-gray-500 mt-1">{student.grade}</p>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {student.grade && !isNaN(Number(student.grade)) 
+                            ? `Lớp ${student.grade}` 
+                            : (student.grade || 'Chưa cập nhật lớp')}
+                        </p>
                         <p className="text-xs text-gray-400 mt-1 truncate">{student.address}</p>
                       </div>
                     </div>
@@ -2183,12 +2184,6 @@ useEffect(() => {
                   />
                   <input
                     className="w-full px-4 py-3 text-sm bg-white border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-500 transition-all"
-                    value={studentEditData?.grade ?? ''}
-                    onChange={(e) => handleStudentEditFieldChange('grade', e.target.value)}
-                    placeholder="Nhập lớp"
-                  />
-                  <input
-                    className="w-full px-4 py-3 text-sm bg-white border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-500 transition-all"
                     value={studentEditData?.school ?? ''}
                     onChange={(e) => handleStudentEditFieldChange('school', e.target.value)}
                     placeholder="Nhập trường học"
@@ -2206,7 +2201,9 @@ useEffect(() => {
                 <>
                   <h4 className="text-xl font-bold text-gray-900">{selectedStudent.name}</h4>
                   <p className="text-sm text-gray-500">
-                    {selectedStudent.grade} • {selectedStudent.school || 'Đang cập nhật'}
+                    {selectedStudent.grade && !isNaN(Number(selectedStudent.grade)) 
+                      ? `Lớp ${selectedStudent.grade}` 
+                      : (selectedStudent.grade || 'Chưa cập nhật lớp')} • {selectedStudent.school || 'Đang cập nhật'}
                   </p>
                 </>
               )}
@@ -2279,14 +2276,22 @@ useEffect(() => {
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em] mb-0.5">Lớp</p>
                 {isStudentEditing ? (
-                  <input
-                    className="w-full px-4 py-2.5 text-sm bg-white border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-500 transition-all"
+                  <select
+                    className="w-full px-4 py-2.5 text-sm bg-white border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-500 transition-all cursor-pointer"
                     value={studentEditData?.grade ?? ''}
                     onChange={(e) => handleStudentEditFieldChange('grade', e.target.value)}
-                    placeholder="Nhập lớp học"
-                  />
+                  >
+                    <option value="">Chọn lớp</option>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((grade) => (
+                      <option key={grade} value={grade.toString()}>
+                        {grade}
+                      </option>
+                    ))}
+                  </select>
                 ) : (
-                  <p className="text-sm font-semibold text-gray-900 truncate">{selectedStudent.grade}</p>
+                  <p className="text-sm font-semibold text-gray-900 truncate">
+                    {selectedStudent.grade || 'Chưa cập nhật'}
+                  </p>
                 )}
               </div>
             </div>
@@ -2484,13 +2489,16 @@ useEffect(() => {
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full">
           <div className="card h-full flex flex-col overflow-hidden max-h-[85vh]">
-            <div className="flex items-center justify-between gap-3 flex-wrap border-b border-gray-200 pb-4">
+            <div className="border-b border-gray-200 pb-4">
               <div>
-              <p className="text-sm font-bold text-gray-600 uppercase tracking-[0.3em]">Danh sách tutor</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">Danh sách tutor</p>
                 <h3 className="text-lg font-semibold text-gray-900">
                   Tổng quan · {tutorPagination.totalResults} tutor
                 </h3>
               </div>
+            </div>
+
+            <div className="mt-4">
               <div className="flex items-center bg-white border border-gray-200 rounded-2xl px-3 py-2 shadow-sm">
                 <Search className="w-4 h-4 text-gray-500 mr-2" />
                 <input
@@ -2750,7 +2758,7 @@ useEffect(() => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-3 rounded-2xl border border-gray-100 bg-gray-50/60">
                   <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em] mb-2">Môn phụ trách</p>
                   {isTutorEditing ? (
@@ -2795,29 +2803,6 @@ useEffect(() => {
                     </div>
                   ) : (
                     <p className="text-sm text-gray-500 mt-2">Chưa cập nhật</p>
-                  )}
-                </div>
-                <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-inner">
-                  <p className="text-xs font-semibold uppercase text-gray-500 tracking-[0.2em] mb-2">Tổng học viên</p>
-                  {isTutorEditing ? (
-                    <div className="mt-2">
-
-                      <input
-                        type="number"
-                        min={0}
-                        className="w-full px-4 py-3 text-sm bg-white border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-500 transition-all"
-                        value={tutorEditData?.totalStudents ?? 0}
-                        onChange={(e) => handleTutorTotalStudentsChange(e.target.value)}
-                      />
-                    </div>
-                  ) : (
-                    <div className="mt-2">
-                      <div className="flex items-center gap-2">
-                        <Users className="w-5 h-5 text-blue-500" />
-                        <span className="text-2xl font-bold text-gray-900">{selectedTutor.totalStudents}</span>
-                        <span className="text-sm text-gray-500">học viên đã dạy</span>
-                      </div>
-                    </div>
                   )}
                 </div>
               </div>

@@ -62,7 +62,7 @@ export default function DetailTable({ items, onChange }: DetailTableProps) {
               <th className="px-4 py-2 font-semibold min-w-[250px]">Upload bài làm</th>
               <th className="px-4 py-2 font-semibold min-w-[250px]">Lời giải</th>
               <th className="px-4 py-2 font-semibold min-w-[150px]">Kết quả</th>
-              <th className="px-4 py-2 font-semibold min-w-[200px]">Nhiệm vụ</th>
+              <th className="px-4 py-2 font-semibold min-w-[200px]">Yêu cầu chi tiết</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 bg-white">

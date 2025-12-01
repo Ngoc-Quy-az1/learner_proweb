@@ -3433,18 +3433,18 @@ const quickViewData = useMemo(() => {
                             </div>
                           )}
                         </div>
-                      <div className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-3">
+                      <div className="rounded-2xl border-2 border-primary-50 bg-white p-4 sm:p-6 shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
                           <button
                             type="button"
                             onClick={() => setIsHomeChecklistExpanded(prev => !prev)}
-                            className="flex items-center gap-2 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
+                            className="flex items-center justify-between w-full text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
                           >
-                            <h4 className="text-inherit font-inherit">Checklist hôm nay</h4>
+                            <h4 className="text-left">Checklist hôm nay</h4>
                             {isHomeChecklistExpanded ? (
-                              <ChevronUp className="w-5 h-5" />
+                              <ChevronUp className="w-5 h-5 flex-shrink-0 ml-2" />
                             ) : (
-                              <ChevronDown className="w-5 h-5" />
+                              <ChevronDown className="w-5 h-5 flex-shrink-0 ml-2" />
                             )}
                           </button>
                         </div>
@@ -4367,24 +4367,24 @@ const quickViewData = useMemo(() => {
 
                       {/* Báo cáo buổi học - Home quick view */}
                       {activeSchedule && (
-                        <div className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm mt-4">
-                          <div className="flex items-center justify-between mb-3 gap-3">
+                        <div className="rounded-2xl border-2 border-primary-50 bg-white p-4 sm:p-6 shadow-sm mt-4">
+                          <div className="flex items-center justify-between mb-4 gap-2">
                             <button
                               type="button"
                               onClick={() =>
                                 setIsHomeReportExpanded((prev) => !prev)
                               }
-                              className="flex items-center gap-2 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
+                              className="flex items-center justify-between flex-1 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors min-w-0"
                             >
-                              <h4 className="text-inherit font-inherit">Báo cáo buổi học</h4>
+                              <h4 className="text-left">Báo cáo buổi học</h4>
                               {isHomeReportExpanded ? (
-                                <ChevronUp className="w-5 h-5" />
+                                <ChevronUp className="w-5 h-5 flex-shrink-0 ml-2" />
                               ) : (
-                                <ChevronDown className="w-5 h-5" />
+                                <ChevronDown className="w-5 h-5 flex-shrink-0 ml-2" />
                               )}
                             </button>
                             {isHomeReportExpanded && (
-                              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto justify-end">
+                              <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
                                 <button
                                   type="button"
                                   onClick={() => handleGenerateReport(activeSchedule.id)}
@@ -5091,9 +5091,9 @@ const renderChecklistSection = () => {
                   </div>
                 </div>
                 {checklistUniqueDates.length > 0 && (
-                  <div className="flex items-center gap-3 flex-wrap">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     {/* Dropdown chọn ngày */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                       <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">Chọn ngày:</label>
                       <select
                         value={checklistSelectedDate || ''}
@@ -5105,7 +5105,7 @@ const renderChecklistSection = () => {
                           setChecklistSelectedScheduleId(null)
                           setChecklistSelectedStudentId(null)
                         }}
-                        className="px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        className="flex-1 w-full sm:w-auto px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       >
                         {checklistUniqueDates.map((dateKey) => (
                           <option key={dateKey} value={dateKey}>
@@ -5116,7 +5116,7 @@ const renderChecklistSection = () => {
                     </div>
                     {/* Dropdown chọn buổi học trong ngày */}
                     {checklistSelectedDate && checklistSchedulesForSelectedDate.length > 0 && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">Chọn buổi học:</label>
                         <select
                           value={checklistSelectedScheduleId || ''}
@@ -5132,7 +5132,7 @@ const renderChecklistSection = () => {
                               }
                             }
                           }}
-                          className="px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          className="flex-1 w-full sm:w-auto px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                         >
                           {checklistSchedulesForSelectedDate.map((schedule) => {
                             const subjectPart = schedule.subject && schedule.subject !== 'Chung' ? ` · ${schedule.subject}` : ''
@@ -5410,24 +5410,24 @@ const renderChecklistSection = () => {
 
                       {/* Báo cáo buổi học */}
                       {activeSchedule && (
-                        <div className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm">
-                          <div className="flex items-center justify-between mb-3">
+                        <div className="rounded-2xl border-2 border-primary-50 bg-white p-4 sm:p-6 shadow-sm">
+                          <div className="flex items-center justify-between mb-4 gap-2">
                             <button
                               type="button"
                               onClick={() =>
                                 setIsChecklistReportExpanded((prev) => !prev)
                               }
-                              className="flex items-center gap-2 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
+                              className="flex items-center justify-between flex-1 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors min-w-0"
                             >
-                              <h4 className="text-inherit font-inherit">Báo cáo buổi học</h4>
+                              <h4 className="text-left">Báo cáo buổi học</h4>
                               {isChecklistReportExpanded ? (
-                                <ChevronUp className="w-5 h-5" />
+                                <ChevronUp className="w-5 h-5 flex-shrink-0 ml-2" />
                               ) : (
-                                <ChevronDown className="w-5 h-5" />
+                                <ChevronDown className="w-5 h-5 flex-shrink-0 ml-2" />
                               )}
                             </button>
                             {isChecklistReportExpanded && (
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-shrink-0">
                                 <button
                                   type="button"
                                   onClick={() => handleGenerateReport(activeSchedule.id)}

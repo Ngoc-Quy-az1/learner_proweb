@@ -178,15 +178,15 @@ export default function PricingCards({ onContactClick }: PricingCardsProps) {
             
             <div className="overflow-x-auto">
               <div className="grid grid-cols-4 gap-2 sm:gap-4 pb-3 border-b-2 border-gray-400 min-w-[600px]">
-                <div className="text-left font-black text-gray-900 text-sm sm:text-base break-words" style={{ fontWeight: FONT_WEIGHT_BLACK }}>Tiêu chí / Lợi ích</div>
+                <div className="text-left font-black text-gray-900 text-sm sm:text-base break-words sticky left-0 z-10 bg-white pr-2" style={{ fontWeight: FONT_WEIGHT_BLACK }}>Tiêu chí / Lợi ích</div>
                 <div className="text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl break-words" style={{ fontWeight: FONT_WEIGHT_BLACK }}>Cơ bản</div>
                 <div className="text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl break-words" style={{ fontWeight: FONT_WEIGHT_BLACK }}>Toàn diện</div>
                 <div className="text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl break-words" style={{ fontWeight: FONT_WEIGHT_BLACK }}>Chuyên sâu</div>
               </div>
               
               {category.items.map((item, itemIndex) => (
-                <div key={itemIndex} className="grid grid-cols-4 gap-2 sm:gap-4 py-3 sm:py-4 border-b border-gray-300 min-w-[600px]">
-                  <div className="font-black text-gray-900 text-sm sm:text-base leading-relaxed break-words" style={{ fontWeight: FONT_WEIGHT_BOLD }}>{item.name}</div>
+                <div key={itemIndex} className="group grid grid-cols-4 gap-2 sm:gap-4 py-3 sm:py-4 border-b border-gray-300 min-w-[600px]">
+                  <div className="font-black text-gray-900 text-sm sm:text-base leading-relaxed break-words sticky left-0 z-10 bg-white group-hover:bg-white pr-2" style={{ fontWeight: FONT_WEIGHT_BOLD }}>{item.name}</div>
                   <div className="text-center flex items-center justify-center">
                     {renderFeatureValue(item.basic)}
                   </div>
@@ -275,63 +275,65 @@ export default function PricingCards({ onContactClick }: PricingCardsProps) {
           </div>
 
           {/* Feature Comparison Table */}
-          <div className='mt-12 lg:mt-16'>
-            {features.map((category, catIndex) => (
-              <React.Fragment key={catIndex}>
-                
-                {/* Table Header Row (Plan Names, fixed height for alignment) */}
-                <div 
-                  className="grid border-b-2 border-gray-400 mb-4" 
-                  style={{ 
-                    gridTemplateColumns: `minmax(200px, 250px) 1fr 1fr 1fr`,
-                    gap: 'clamp(0.75rem, 2vw, 1.5rem)'
-                  }}
-                >
-                  {/* Category Title Cell */}
-                  <div className={`text-left font-black ${FEATURE_TEXT_COLOR} text-sm sm:text-base md:text-lg lg:text-xl py-2 sm:py-3 break-words flex items-end justify-start`} style={{ fontWeight: FONT_WEIGHT_BLACK }}>
-                    {category.category}
+          <div className='mt-12 lg:mt-16 overflow-x-auto'>
+            <div className="min-w-full">
+              {features.map((category, catIndex) => (
+                <React.Fragment key={catIndex}>
+                  
+                  {/* Table Header Row (Plan Names, fixed height for alignment) */}
+                  <div 
+                    className="grid border-b-2 border-gray-400 mb-4" 
+                    style={{ 
+                      gridTemplateColumns: `minmax(200px, 250px) 1fr 1fr 1fr`,
+                      gap: 'clamp(0.75rem, 2vw, 1.5rem)'
+                    }}
+                  >
+                    {/* Category Title Cell */}
+                    <div className={`text-left font-black ${FEATURE_TEXT_COLOR} text-sm sm:text-base md:text-lg lg:text-xl py-2 sm:py-3 break-words flex items-end justify-start sticky left-0 z-10 bg-white pr-4`} style={{ fontWeight: FONT_WEIGHT_BLACK }}>
+                      {category.category}
+                    </div>
+                    
+                    {/* Plan Name Cells */}
+                    <div className='text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl lg:text-3xl py-2 sm:py-3 break-words flex items-end justify-center' style={{ fontWeight: FONT_WEIGHT_BLACK }}>Cơ bản</div>
+                    <div className='text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl lg:text-3xl py-2 sm:py-3 break-words flex items-end justify-center' style={{ fontWeight: FONT_WEIGHT_BLACK }}>Toàn diện</div>
+                    <div className='text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl lg:text-3xl py-2 sm:py-3 break-words flex items-end justify-center' style={{ fontWeight: FONT_WEIGHT_BLACK }}>Chuyên sâu</div>
                   </div>
                   
-                  {/* Plan Name Cells */}
-                  <div className='text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl lg:text-3xl py-2 sm:py-3 break-words flex items-end justify-center' style={{ fontWeight: FONT_WEIGHT_BLACK }}>Cơ bản</div>
-                  <div className='text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl lg:text-3xl py-2 sm:py-3 break-words flex items-end justify-center' style={{ fontWeight: FONT_WEIGHT_BLACK }}>Toàn diện</div>
-                  <div className='text-center font-black text-gray-900 text-lg sm:text-xl md:text-2xl lg:text-3xl py-2 sm:py-3 break-words flex items-end justify-center' style={{ fontWeight: FONT_WEIGHT_BLACK }}>Chuyên sâu</div>
-                </div>
-                
-                {/* Table Content Rows */}
-                {category.items.map((item, itemIndex) => {
-                  const items = [item.basic, item.premium, item.ultra]
-                  return (
-                    <div 
-                      key={`${catIndex}-${itemIndex}`} 
-                      className="grid py-3 sm:py-4 border-b border-gray-300 transition-all duration-100 hover:bg-gray-50/50" 
-                      style={{ 
-                        gridTemplateColumns: `minmax(200px, 250px) 1fr 1fr 1fr`,
-                        gap: 'clamp(0.75rem, 2vw, 1.5rem)'
-                      }}
-                    >
-                      {/* Feature Name */}
-                      <div className={`font-black ${FEATURE_TEXT_COLOR} text-xs sm:text-sm md:text-base lg:text-lg leading-relaxed break-words flex items-center`} style={{ fontWeight: FONT_WEIGHT_BOLD }}>
-                        {item.name}
-                      </div>
-                      
-                      {/* Plan Feature Values */}
-                      {items.map((value, planIndex) => {
-                        const isPopular = planIndex === 1
-                        const cellClass = isPopular ? 'bg-blue-50' : 'bg-transparent'
+                  {/* Table Content Rows */}
+                  {category.items.map((item, itemIndex) => {
+                    const items = [item.basic, item.premium, item.ultra]
+                    return (
+                      <div 
+                        key={`${catIndex}-${itemIndex}`} 
+                        className="group grid py-3 sm:py-4 border-b border-gray-300 transition-all duration-100 hover:bg-gray-50/50" 
+                        style={{ 
+                          gridTemplateColumns: `minmax(200px, 250px) 1fr 1fr 1fr`,
+                          gap: 'clamp(0.75rem, 2vw, 1.5rem)'
+                        }}
+                      >
+                        {/* Feature Name */}
+                        <div className={`font-black ${FEATURE_TEXT_COLOR} text-xs sm:text-sm md:text-base lg:text-lg leading-relaxed break-words flex items-center sticky left-0 z-10 bg-white group-hover:bg-gray-50/50 pr-4 transition-colors`} style={{ fontWeight: FONT_WEIGHT_BOLD }}>
+                          {item.name}
+                        </div>
                         
-                        return (
-                          <div key={planIndex} className={`text-center py-3 flex items-center justify-center ${cellClass}`}>
-                            {renderFeatureValue(value)}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })}
-                
-              </React.Fragment>
-            ))}
+                        {/* Plan Feature Values */}
+                        {items.map((value, planIndex) => {
+                          const isPopular = planIndex === 1
+                          const cellClass = isPopular ? 'bg-blue-50' : 'bg-transparent'
+                          
+                          return (
+                            <div key={planIndex} className={`text-center py-3 flex items-center justify-center ${cellClass}`}>
+                              {renderFeatureValue(value)}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
+                  
+                </React.Fragment>
+              ))}
+            </div>
           </div>
           
           {/* Action Buttons at bottom of feature comparison */}

@@ -73,20 +73,20 @@ const StudentSessionEvaluationSection: React.FC<StudentSessionEvaluationSectionP
       : defaultReviews
 
   return (
-    <div className="rounded-2xl border-2 border-primary-50 bg-white p-4 shadow-sm mt-4">
+    <div className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm mt-4">
       <div className="flex items-center justify-between mb-4">
         {alwaysExpanded ? (
           <h4 className="text-2xl md:text-3xl font-bold text-gray-900">{title}</h4>
         ) : (
           <button
             onClick={onToggle}
-            className="flex items-center gap-2 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
+            className="flex items-center justify-between w-full text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
           >
-            <h4>{title}</h4>
+            <h4 className="text-left">{title}</h4>
             {isExpanded ? (
-              <ChevronUp className="w-5 h-5" />
+              <ChevronUp className="w-5 h-5 flex-shrink-0 ml-2" />
             ) : (
-              <ChevronDown className="w-5 h-5" />
+              <ChevronDown className="w-5 h-5 flex-shrink-0 ml-2" />
             )}
           </button>
         )}
