@@ -1467,17 +1467,6 @@ useEffect(() => {
     }
   }
 
-  const handleTutorTotalStudentsChange = (value: string) => {
-    setTutorEditData((prev) => {
-      if (!prev) return prev
-      const parsed = parseInt(value, 10)
-      return {
-        ...prev,
-        totalStudents: Number.isNaN(parsed) ? 0 : parsed,
-      }
-    })
-  }
-
   const handleTutorAvatarUpload = async (file: File | null) => {
     if (!file) return
     try {
