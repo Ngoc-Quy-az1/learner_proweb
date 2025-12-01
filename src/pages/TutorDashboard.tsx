@@ -3069,15 +3069,7 @@ const quickViewData = useMemo(() => {
 
               {/* Quick Stats */}
               <div className="flex-1 flex flex-col gap-4 py-6">
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Tổng số học sinh đã dạy */}
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-3xl p-6 text-center border border-blue-200 shadow-md min-h-[160px] flex flex-col justify-center">
-                    <Users className="w-12 h-12 text-blue-600 mx-auto mb-3" />
-                    <p className="text-base text-gray-600 mb-3 uppercase tracking-[0.35em] font-semibold">
-                      Học sinh đã dạy
-                    </p>
-                    <p className="text-6xl font-black text-gray-900">{students.length}</p>
-                  </div>
+                <div className="grid grid-cols-1 gap-4">
                   {/* Số ca dạy hôm nay */}
                   <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-md min-h-[160px] flex flex-col justify-center text-center">
                     <Calendar className="w-12 h-12 text-primary-500 mx-auto mb-3" />
@@ -3362,7 +3354,7 @@ const quickViewData = useMemo(() => {
                                   onClick={() => openChecklistForm(activeSchedule.studentId, activeSchedule.id)}
                                   className="btn-secondary px-5 py-2.5 text-sm font-bold border-2 border-primary-200 text-primary-600 bg-white hover:bg-primary-50 shadow-sm whitespace-nowrap"
                                 >
-                                  Tạo checklist
+                                  Tạo checklist cho môn học mới
                                       </button>
                                     <button
                                   onClick={() => handleJoinSchedule(activeSchedule.id)}
@@ -3476,24 +3468,91 @@ const quickViewData = useMemo(() => {
 
                               return (
                                 <div key={assignmentKey} className="border border-gray-200 rounded-2xl overflow-hidden bg-gray-50">
-                                  <div className="flex items-center px-5 py-4 gap-4">
-                                    <p className="text-2xl font-bold text-primary-600 uppercase tracking-wide whitespace-nowrap w-48 flex-shrink-0">
-                                      {assignment.subject || 'Chung'}
-                                    </p>
-                                    <div className="h-12 w-px bg-gray-300 flex-shrink-0"></div>
+                                  <div className="flex flex-col sm:flex-row sm:items-center px-4 sm:px-5 py-4 gap-3 sm:gap-4">
+                                    <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
+                                      <p className="text-base sm:text-lg font-bold text-primary-600 uppercase tracking-wide min-w-[60px] max-w-[180px]">
+                                      {(() => {
+                                        // Helper to extract subject from text - return original subject name from keywords
+                                        const extractSubject = (text?: string): string | null => {
+                                          if (!text) return null
+                                          const textLower = text.toLowerCase().trim()
+                                          // Map to original subject names (not abbreviations)
+                                          const subjectKeywords: Record<string, string> = {
+                                            'giáo dục quốc phòng an ninh': 'Giáo dục quốc phòng an ninh',
+                                            'quốc phòng an ninh': 'Quốc phòng an ninh',
+                                            'quoc phong an ninh': 'Giáo dục quốc phòng an ninh',
+                                            'giáo dục công dân': 'Giáo dục công dân',
+                                            'giao duc cong dan': 'Giáo dục công dân',
+                                            'công dân': 'Giáo dục công dân',
+                                            'công nghệ': 'Công nghệ',
+                                            'cong nghe': 'Công nghệ',
+                                            'tin học': 'Tin học',
+                                            'tin hoc': 'Tin học',
+                                            'tiếng anh': 'Tiếng Anh',
+                                            'tieng anh': 'Tiếng Anh',
+                                            'ngữ văn': 'Ngữ văn',
+                                            'ngu van': 'Ngữ văn',
+                                            'vật lý': 'Vật lý',
+                                            'vat ly': 'Vật lý',
+                                            'hóa học': 'Hóa học',
+                                            'hoa hoc': 'Hóa học',
+                                            'sinh học': 'Sinh học',
+                                            'sinh hoc': 'Sinh học',
+                                            'lịch sử': 'Lịch sử',
+                                            'lich su': 'Lịch sử',
+                                            'địa lý': 'Địa lý',
+                                            'dia ly': 'Địa lý',
+                                            'thể dục': 'Thể dục',
+                                            'the duc': 'Thể dục',
+                                            'âm nhạc': 'Âm nhạc',
+                                            'am nhac': 'Âm nhạc',
+                                            'mỹ thuật': 'Mỹ thuật',
+                                            'my thuat': 'Mỹ thuật',
+                                            'toán': 'Toán',
+                                            'toan': 'Toán',
+                                            'ly': 'Vật lý',
+                                            'lý': 'Vật lý',
+                                            'hoá': 'Hóa học',
+                                            'hóa': 'Hóa học',
+                                            'hoa': 'Hóa học',
+                                            'sinh': 'Sinh học',
+                                            'văn': 'Ngữ văn',
+                                            'van': 'Ngữ văn',
+                                            'anh': 'Tiếng Anh',
+                                            'sử': 'Lịch sử',
+                                            'su': 'Lịch sử',
+                                            'địa': 'Địa lý',
+                                            'dia': 'Địa lý',
+                                            'gdcd': 'Giáo dục công dân',
+                                            'tin': 'Tin học',
+                                          }
+                                          for (const [keyword, subject] of Object.entries(subjectKeywords)) {
+                                            if (textLower.includes(keyword)) return subject
+                                          }
+                                          return null
+                                        }
+                                        const subject = assignment.subject || 
+                                                        extractSubject(assignment.name) ||
+                                                        extractSubject(assignment.description) ||
+                                                        'Chung'
+                                        return subject.toUpperCase()
+                                      })()}
+                                      </p>
+                                      <div className="hidden sm:block h-12 w-px bg-gray-300 flex-shrink-0"></div>
+                                    </div>
                                     <div className="flex-1 space-y-1 min-w-0">
-                                      <h5 className="text-base font-bold text-gray-900">{assignment.name || 'Checklist'}</h5>
+                                      <h5 className="text-sm sm:text-base font-bold text-gray-900 break-words">{assignment.name || 'Checklist'}</h5>
                                       {assignment.description && (
-                                        <p className="text-sm text-gray-600 italic line-clamp-1">{assignment.description}</p>
+                                        <p className="text-xs sm:text-sm text-gray-600 italic line-clamp-1 sm:line-clamp-2 break-words">{assignment.description}</p>
                                       )}
                                     </div>
-                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
                                       {isExpanded ? (
                                         <>
                               <button
                                             type="button"
                                             onClick={() => handleCollapseQuickViewAssignment(assignmentKey)}
-                                            className="px-4 py-1.5 rounded-full text-sm font-semibold text-primary-600 bg-white border border-primary-200 hover:bg-primary-50 transition"
+                                            className="w-full sm:w-auto px-3 sm:px-4 py-2 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold text-primary-600 bg-white border border-primary-200 hover:bg-primary-50 transition whitespace-nowrap"
                                           >
                                             Thu gọn
                               </button>
@@ -3501,7 +3560,7 @@ const quickViewData = useMemo(() => {
                                             type="button"
                                             onClick={() => handleToggleEditAssignment(assignmentKey, assignment)}
                                             disabled={savingAssignmentId === assignmentKey}
-                                            className="px-4 py-1.5 rounded-full text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                                            className="w-full sm:w-auto px-3 sm:px-4 py-2 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-60 disabled:cursor-not-allowed transition whitespace-nowrap"
                                           >
                                             {isEditing
                                               ? savingAssignmentId === assignmentKey
@@ -3513,7 +3572,7 @@ const quickViewData = useMemo(() => {
                                             type="button"
                                             onClick={() => handleDeleteAssignment(assignment)}
                                             disabled={deletingAssignmentId === (assignment._id || assignment.id)}
-                                            className="px-4 py-1.5 rounded-full text-sm font-semibold text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                                            className="w-full sm:w-auto px-3 sm:px-4 py-2 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed transition whitespace-nowrap"
                                           >
                                             {deletingAssignmentId === (assignment._id || assignment.id) ? 'Đang xoá...' : 'Xoá'}
                                           </button>
@@ -3526,7 +3585,7 @@ const quickViewData = useMemo(() => {
                                             setEditingQuickViewAssignmentId(null)
                                             clearAssignmentDraft(assignmentKey)
                                           }}
-                                          className="px-4 py-1.5 rounded-full text-sm font-semibold text-primary-600 bg-primary-50 hover:bg-primary-100 transition"
+                                          className="w-full sm:w-auto px-3 sm:px-4 py-2 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold text-primary-600 bg-primary-50 hover:bg-primary-100 transition whitespace-nowrap"
                                         >
                                           Chi tiết
                                         </button>
@@ -3534,8 +3593,8 @@ const quickViewData = useMemo(() => {
                 </div>
               </div>
                                   {isExpanded && (
-                                    <div className="p-5 space-y-8 bg-white">
-                                      <div className="flex items-center justify-between">
+                                    <div className="p-3 sm:p-5 space-y-6 sm:space-y-8 bg-white">
+                                      <div className="flex items-center justify-between flex-wrap gap-2">
                                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em]">
                                           Bảng tóm tắt
                                         </p>
@@ -3543,15 +3602,160 @@ const quickViewData = useMemo(() => {
             <button
                                             type="button"
                                             onClick={() => handleAddAssignmentTask(assignmentKey, assignment)}
-                                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-semibold text-primary-600 bg-primary-50 hover:bg-primary-100 transition"
+                                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold text-primary-600 bg-primary-50 hover:bg-primary-100 transition"
             >
-                                            <Plus className="w-4 h-4" />
+                                            <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
                                             Thêm bài tập
             </button>
                         )}
                       </div>
-                                      <div className="rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-x-auto scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
-                                        <table className="w-full text-base border-collapse min-w-[800px]">
+                      
+                      {/* Mobile Card Layout for Summary Table */}
+                      <div className="block md:hidden space-y-3">
+                        {summaryRows.map((task, taskIndex) => {
+                          const rowLesson = task.name || assignment.name || '—'
+                          const rowMission = task.description || assignment.description || '—'
+                          const rowStatus = (task.status as AssignmentTaskStatus) || 'pending'
+                          const rowChip =
+                            rowStatus === 'completed'
+                              ? 'bg-green-100 text-green-700'
+                              : rowStatus === 'in-progress'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-red-100 text-red-700'
+                          const rowNote = task.note || assignment.description || '—'
+                          const stableKey = task.id || `${assignmentKey}-summary-${taskIndex}`
+                          
+                          return (
+                            <div key={stableKey} className="rounded-xl border-2 border-gray-200 bg-white p-4 space-y-3">
+                              <div className="flex items-start gap-2">
+                                <Layers className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">Bài học</p>
+                                  {isEditing ? (
+                                    <input
+                                      value={task.name || ''}
+                                      onChange={(e) =>
+                                        handleAssignmentTaskFieldChange(
+                                          assignmentKey,
+                                          taskIndex,
+                                          'name',
+                                          e.target.value
+                                        )
+                                      }
+                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                      placeholder="Nhập tên bài học"
+                                    />
+                                  ) : (
+                                    <p className="text-sm font-bold text-gray-900 break-words">{rowLesson}</p>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-start gap-2">
+                                <PenTool className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">Yêu cầu chi tiết</p>
+                                  {isEditing ? (
+                                    <textarea
+                                      value={task.description || ''}
+                                      onChange={(e) =>
+                                        handleAssignmentTaskFieldChange(
+                                          assignmentKey,
+                                          taskIndex,
+                                          'description',
+                                          e.target.value
+                                        )
+                                      }
+                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                      rows={2}
+                                      placeholder="Nhập nhiệm vụ"
+                                    />
+                                  ) : (
+                                    <p className="text-sm text-gray-700 break-words">{rowMission}</p>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                                <Clock className="w-4 h-4 text-primary-600 flex-shrink-0" />
+                                <div className="flex-1">
+                                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">Trạng thái</p>
+                                  {isEditing ? (
+                                    <select
+                                      value={rowStatus}
+                                      onChange={(e) =>
+                                        handleAssignmentTaskFieldChange(
+                                          assignmentKey,
+                                          taskIndex,
+                                          'status',
+                                          e.target.value as AssignmentTaskStatus
+                                        )
+                                      }
+                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                                    >
+                                      <option value="pending">Chưa xong</option>
+                                      <option value="in-progress">Đang làm</option>
+                                      <option value="completed">Đã xong</option>
+                                    </select>
+                                  ) : (
+                                    <span className={`inline-block px-3 py-1.5 rounded-full text-xs font-semibold ${rowChip}`}>
+                                      {rowStatus === 'completed'
+                                        ? 'Đã xong'
+                                        : rowStatus === 'in-progress'
+                                          ? 'Đang làm'
+                                          : 'CHƯA XONG'}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-start gap-2 pt-2 border-t border-gray-100">
+                                <Lightbulb className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">Nhận xét</p>
+                                  {isEditing ? (
+                                    <textarea
+                                      value={task.note || ''}
+                                      onChange={(e) =>
+                                        handleAssignmentTaskFieldChange(
+                                          assignmentKey,
+                                          taskIndex,
+                                          'note',
+                                          e.target.value
+                                        )
+                                      }
+                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                      rows={2}
+                                      placeholder="Ghi chú"
+                                    />
+                                  ) : (
+                                    <p className="text-sm text-gray-600 break-words">{rowNote}</p>
+                                  )}
+                                  {isEditing && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleRemoveAssignmentTask(
+                                          assignmentKey,
+                                          assignment,
+                                          taskIndex
+                                        )
+                                      }
+                                      className="mt-2 text-xs font-semibold text-red-500 hover:text-red-600"
+                                    >
+                                      Xoá
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      
+                      {/* Desktop Table Layout for Summary */}
+                                      <div className="hidden md:block rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-x-auto scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
+                                        <table className="w-full text-base border-collapse">
                                           <thead className="bg-purple-50 text-gray-700 uppercase text-sm md:text-base tracking-[0.3em] font-semibold">
                                             <tr>
                                               <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
@@ -3563,7 +3767,7 @@ const quickViewData = useMemo(() => {
                                               <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
                                                 <div className="flex items-center justify-center gap-2">
                                                   <PenTool className="w-5 h-5" />
-                                                  Nhiệm vụ
+                                                  Yêu cầu chi tiết
                                                 </div>
                                               </th>
                                               <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
@@ -3706,8 +3910,112 @@ const quickViewData = useMemo(() => {
                               </table>
                             </div>
 
-                                      <div className="rounded-2xl border border-gray-200 overflow-x-auto bg-white shadow-sm scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
-                                        <table className="w-full text-base min-w-[900px]">
+                                      {/* Mobile Card Layout for Detail Table */}
+                                      <div className="block md:hidden space-y-3">
+                                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">
+                                          Bảng chi tiết
+                                        </p>
+                                        {displayTasks.length === 0 ? (
+                                          <div className="text-center py-4">
+                                            <p className="text-sm text-gray-500">Chưa có nhiệm vụ nào trong checklist này.</p>
+                                          </div>
+                                        ) : (
+                                          displayTasks.map((task, taskIndex) => {
+                                            const taskStatus = (task.status as AssignmentTaskStatus) || 'pending'
+                                            const taskChipClass =
+                                              taskStatus === 'completed'
+                                                ? 'bg-green-100 text-green-700'
+                                                : taskStatus === 'in-progress'
+                                                  ? 'bg-yellow-100 text-yellow-700'
+                                                  : 'bg-red-100 text-red-700'
+                                            const stableKey = task.id || `${assignmentKey}-detail-${taskIndex}`
+                                            
+                                            return (
+                                              <div key={stableKey} className="rounded-xl border-2 border-gray-200 bg-white p-4 space-y-3">
+                                                <div className="flex items-start gap-2">
+                                                  <Layers className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">Bài học</p>
+                                                    <p className="text-sm font-bold text-gray-900 break-words">{task.name || '—'}</p>
+                                                  </div>
+                                                </div>
+                                                
+                                                <div className="flex items-center gap-2">
+                                                  <Clock className="w-4 h-4 text-primary-600 flex-shrink-0" />
+                                                  <div className="flex-1">
+                                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">Thời gian</p>
+                                                    <p className="text-sm text-gray-700">
+                                                      {task.estimatedTime ? `${task.estimatedTime}'` : '—'} /{' '}
+                                                      {task.actualTime ? `${task.actualTime}'` : '—'}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                                
+                                                {/* File bài tập - Luôn hiển thị */}
+                                                <div className="flex items-start gap-2">
+                                                  <Folder className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">File bài tập</p>
+                                                    {task.assignmentUrl ? (
+                                                      <a href={task.assignmentUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">
+                                                        Xem file
+                                                      </a>
+                                                    ) : (
+                                                      <span className="text-xs text-gray-400">—</span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                                
+                                                {/* Bài làm học sinh - Luôn hiển thị */}
+                                                <div className="flex items-start gap-2">
+                                                  <Folder className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">Bài làm học sinh</p>
+                                                    {task.answerURL ? (
+                                                      <a href={task.answerURL} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">
+                                                        Bài làm học sinh
+                                                      </a>
+                                                    ) : (
+                                                      <span className="text-xs text-gray-400">—</span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                                
+                                                {/* File lời giải - Luôn hiển thị */}
+                                                <div className="flex items-start gap-2">
+                                                  <Lightbulb className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">File lời giải</p>
+                                                    {task.solutionUrl ? (
+                                                      <a href={task.solutionUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">
+                                                        File lời giải
+                                                      </a>
+                                                    ) : (
+                                                      <span className="text-xs text-gray-400">—</span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                                
+                                                <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                                                  <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                                                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                                  </div>
+                                                  <div className="flex-1">
+                                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">Trạng thái</p>
+                                                    <span className={`inline-block px-3 py-1.5 rounded-full text-xs font-semibold ${taskChipClass}`}>
+                                                      {taskStatus === 'completed' ? 'Đã xong' : taskStatus === 'in-progress' ? 'Đang làm' : 'Chưa xong'}
+                                                    </span>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            )
+                                          })
+                                        )}
+                                      </div>
+                                      
+                                      {/* Desktop Table Layout for Detail Table */}
+                                      <div className="hidden md:block rounded-2xl border border-gray-200 overflow-x-auto bg-white shadow-sm scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
+                                        <table className="w-full text-base">
                                           <thead className="bg-gray-50 text-gray-600">
                                             <tr>
                                               <th className="px-4 py-3 text-left font-semibold uppercase text-xs tracking-[0.3em]">
@@ -4223,7 +4531,11 @@ const renderStudentsSection = () => {
                             >
                               {student.name}
                             </h3>
-                            <p className="text-sm text-gray-500">{student.grade || 'Chưa cập nhật lớp'}</p>
+                            <p className="text-sm text-gray-500">
+                              {student.grade && student.grade !== 'Chưa cập nhật lớp' && !isNaN(Number(student.grade)) 
+                                ? `Lớp ${student.grade}` 
+                                : (student.grade || 'Chưa cập nhật lớp')}
+                            </p>
                             <p className="text-xs text-gray-400 truncate">{student.address || 'Chưa có địa chỉ'}</p>
                           </div>
                         </div>
@@ -4887,7 +5199,7 @@ const renderChecklistSection = () => {
                                   onClick={() => openChecklistForm(activeSchedule.studentId, activeSchedule.id)}
                                   className="btn-secondary px-5 py-2.5 text-sm font-bold border-2 border-primary-200 text-primary-600 bg-white hover:bg-primary-50 shadow-sm whitespace-nowrap"
                                 >
-                                  Tạo checklist
+                                  Tạo checklist cho môn học mới
                                       </button>
                                     <button
                                   onClick={() => handleJoinSchedule(activeSchedule.id)}

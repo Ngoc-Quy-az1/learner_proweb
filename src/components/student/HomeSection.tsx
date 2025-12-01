@@ -79,6 +79,78 @@ const getAssignmentScheduleId = (assignment: AssignmentApiItem): string | undefi
   return undefined
 }
 
+// Helper function to extract subject from checklist name or description
+const extractSubjectFromText = (text?: string): string | null => {
+  if (!text) return null
+  const textLower = text.toLowerCase().trim()
+  
+  // Common subject keywords - order matters, check longer phrases first - return full names
+  const subjectKeywords: Record<string, string> = {
+    'giáo dục quốc phòng an ninh': 'Giáo dục quốc phòng an ninh',
+    'quốc phòng an ninh': 'Quốc phòng an ninh',
+    'quoc phong an ninh': 'Giáo dục quốc phòng an ninh',
+    'giáo dục công dân': 'Giáo dục công dân',
+    'giao duc cong dan': 'Giáo dục công dân',
+    'công dân': 'Giáo dục công dân',
+    'công nghệ': 'Công nghệ',
+    'cong nghe': 'Công nghệ',
+    'tin học': 'Tin học',
+    'tin hoc': 'Tin học',
+    'tiếng anh': 'Tiếng Anh',
+    'tieng anh': 'Tiếng Anh',
+    'ngữ văn': 'Ngữ văn',
+    'ngu van': 'Ngữ văn',
+    'vật lý': 'Vật lý',
+    'vat ly': 'Vật lý',
+    'hóa học': 'Hóa học',
+    'hoa hoc': 'Hóa học',
+    'sinh học': 'Sinh học',
+    'sinh hoc': 'Sinh học',
+    'lịch sử': 'Lịch sử',
+    'lich su': 'Lịch sử',
+    'địa lý': 'Địa lý',
+    'dia ly': 'Địa lý',
+    'thể dục': 'Thể dục',
+    'the duc': 'Thể dục',
+    'âm nhạc': 'Âm nhạc',
+    'am nhac': 'Âm nhạc',
+    'mỹ thuật': 'Mỹ thuật',
+    'my thuat': 'Mỹ thuật',
+    'toán': 'Toán',
+    'toan': 'Toán',
+    'ly': 'Vật lý',
+    'lý': 'Vật lý',
+    'hoá': 'Hóa học',
+    'hóa': 'Hóa học',
+    'hoa': 'Hóa học',
+    'sinh': 'Sinh học',
+    'văn': 'Ngữ văn',
+    'van': 'Ngữ văn',
+    'anh': 'Tiếng Anh',
+    'sử': 'Lịch sử',
+    'su': 'Lịch sử',
+    'địa': 'Địa lý',
+    'dia': 'Địa lý',
+    'gdcd': 'Giáo dục công dân',
+    'tin': 'Tin học',
+  }
+  
+  // Check for subject keywords in text (longer phrases first)
+  for (const [keyword, subject] of Object.entries(subjectKeywords)) {
+    if (textLower.includes(keyword)) {
+      return subject
+    }
+  }
+  
+  return null
+}
+
+// Helper to format subject label - keep original name
+const formatSubjectLabel = (subject: string | null | undefined): string => {
+  if (!subject) return 'Chung'
+  return subject.toUpperCase()
+}
+
 export default function HomeSection({
   todaySchedules,
   tutorInfoMap,
@@ -794,9 +866,9 @@ export default function HomeSection({
                   return (
                     <div className="mt-2 flex flex-col gap-4">
                       {/* Schedule info card */}
-                      <div className="rounded-2xl border-2 border-primary-100 bg-white p-6 space-y-4 shadow-sm">
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                          <div>
+                      <div className="rounded-2xl border-2 border-primary-100 bg-white p-4 sm:p-6 space-y-4 shadow-sm">
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                          <div className="flex-1 min-w-0">
                             {displayTutorName ? (
                               <button
                                 onClick={() => {
@@ -804,90 +876,88 @@ export default function HomeSection({
                                     setSelectedTutorSchedule(activeSchedule.id)
                                   }
                                 }}
-                                className="text-left hover:opacity-80 transition-opacity"
+                                className="text-left hover:opacity-80 transition-opacity w-full"
                                 disabled={!activeSchedule.tutorId}
                               >
-                                <h3 className="text-2xl font-bold text-gray-900 hover:text-primary-600 transition-colors">
+                                <h3 className="text-xl sm:text-2xl font-bold text-gray-900 hover:text-primary-600 transition-colors break-words">
                                   {displayTutorName}
                                 </h3>
                               </button>
                             ) : (
-                            <h3 className="text-2xl font-bold text-gray-900">
+                            <h3 className="text-xl sm:text-2xl font-bold text-gray-900 break-words">
                               {activeSchedule.subject || 'Chung'}
                             </h3>
                             )}
                             {activeSchedule.subject && (
-                              <p className="text-base text-gray-600 mt-1">
+                              <p className="text-sm sm:text-base text-gray-600 mt-1">
                                 Môn: <span className="font-semibold text-gray-900">{activeSchedule.subject}</span>
                               </p>
                             )}
                           </div>
-                          <div className="flex flex-col sm:flex-row sm:items-end gap-3 w-full sm:w-auto">
-                            {activeSchedule.meetLink && (() => {
-                              // Kiểm tra trạng thái cho schedule này
-                              const scheduleTimeMatch = activeSchedule.time.match(/(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})/)
-                              let canJoinThisSchedule = false
-                              let messageForThisSchedule = ''
+                          {activeSchedule.meetLink && (() => {
+                            // Kiểm tra trạng thái cho schedule này
+                            const scheduleTimeMatch = activeSchedule.time.match(/(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})/)
+                            let canJoinThisSchedule = false
+                            let messageForThisSchedule = ''
+                            
+                            if (scheduleTimeMatch) {
+                              const startHour = parseInt(scheduleTimeMatch[1], 10)
+                              const startMinute = parseInt(scheduleTimeMatch[2], 10)
+                              const scheduleStartTime = new Date(activeSchedule.date)
+                              scheduleStartTime.setHours(startHour, startMinute, 0, 0)
                               
-                              if (scheduleTimeMatch) {
-                                const startHour = parseInt(scheduleTimeMatch[1], 10)
-                                const startMinute = parseInt(scheduleTimeMatch[2], 10)
-                                const scheduleStartTime = new Date(activeSchedule.date)
-                                scheduleStartTime.setHours(startHour, startMinute, 0, 0)
-                                
-                                const now = new Date()
-                                const minutesUntilStart = (scheduleStartTime.getTime() - now.getTime()) / (1000 * 60)
-                                
-                                const endHour = parseInt(scheduleTimeMatch[3], 10)
-                                const endMinute = parseInt(scheduleTimeMatch[4], 10)
-                                const scheduleEndTime = new Date(activeSchedule.date)
-                                scheduleEndTime.setHours(endHour, endMinute, 0, 0)
-                                const minutesUntilEnd = (scheduleEndTime.getTime() - now.getTime()) / (1000 * 60)
-                                
-                                if (minutesUntilEnd < 0) {
-                                  messageForThisSchedule = 'Buổi học đã kết thúc'
-                                } else if (minutesUntilStart > 15) {
-                                  messageForThisSchedule = 'Buổi học chưa bắt đầu'
-                                } else {
-                                  canJoinThisSchedule = true
-                                }
+                              const now = new Date()
+                              const minutesUntilStart = (scheduleStartTime.getTime() - now.getTime()) / (1000 * 60)
+                              
+                              const endHour = parseInt(scheduleTimeMatch[3], 10)
+                              const endMinute = parseInt(scheduleTimeMatch[4], 10)
+                              const scheduleEndTime = new Date(activeSchedule.date)
+                              scheduleEndTime.setHours(endHour, endMinute, 0, 0)
+                              const minutesUntilEnd = (scheduleEndTime.getTime() - now.getTime()) / (1000 * 60)
+                              
+                              if (minutesUntilEnd < 0) {
+                                messageForThisSchedule = 'Buổi học đã kết thúc'
+                              } else if (minutesUntilStart > 15) {
+                                messageForThisSchedule = 'Buổi học chưa bắt đầu'
+                              } else {
+                                canJoinThisSchedule = true
                               }
-                              
-                              return (
-                                <div className="flex flex-col items-end gap-1">
-                                  <button
-                                    onClick={() => canJoinThisSchedule && onJoinClass(activeSchedule.id)}
-                                    disabled={!canJoinThisSchedule}
-                                    className={`px-8 py-3 text-base font-bold shadow-xl whitespace-nowrap transition-all ${
-                                      canJoinThisSchedule
-                                        ? 'btn-primary hover:shadow-2xl cursor-pointer'
-                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                    }`}
-                                    title={messageForThisSchedule || 'Vào lớp'}
-                                  >
-                                    Vào lớp
-                                  </button>
-                                  {messageForThisSchedule && (
-                                    <p className="text-xs text-gray-500">{messageForThisSchedule}</p>
-                                  )}
-                                </div>
-                              )
-                            })()}
-                          </div>
+                            }
+                            
+                            return (
+                              <div className="flex flex-col items-start lg:items-end gap-1 flex-shrink-0">
+                                <button
+                                  onClick={() => canJoinThisSchedule && onJoinClass(activeSchedule.id)}
+                                  disabled={!canJoinThisSchedule}
+                                  className={`px-6 sm:px-8 py-2.5 sm:py-3 text-sm sm:text-base font-bold shadow-xl whitespace-nowrap transition-all ${
+                                    canJoinThisSchedule
+                                      ? 'btn-primary hover:shadow-2xl cursor-pointer'
+                                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                  }`}
+                                  title={messageForThisSchedule || 'Vào lớp'}
+                                >
+                                  Vào lớp
+                                </button>
+                                {messageForThisSchedule && (
+                                  <p className="text-xs text-gray-500">{messageForThisSchedule}</p>
+                                )}
+                              </div>
+                            )
+                          })()}
                         </div>
 
                         <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4">
-                          <div className="flex items-center justify-between gap-4 flex-wrap">
-                            <p className="text-4xl font-black text-primary-600 tracking-wide">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                            <p className="text-3xl sm:text-4xl font-black text-primary-600 tracking-wide">
                               {activeSchedule.time}
                             </p>
                             {activeSchedule.meetLink && (
-                              <div className="flex items-center gap-2 bg-white border border-primary-100 rounded-full px-4 py-2 ml-auto">
+                              <div className="flex items-center gap-2 bg-white border border-primary-100 rounded-full px-3 sm:px-4 py-2 w-full sm:w-auto justify-center sm:justify-start">
                                 <a
                                   href={activeSchedule.meetLink}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-sm font-semibold text-primary-600 hover:underline whitespace-nowrap"
+                                  className="text-xs sm:text-sm font-semibold text-primary-600 hover:underline whitespace-nowrap"
                                 >
                                   Mở link lớp
                                 </a>
@@ -897,7 +967,7 @@ export default function HomeSection({
                                     setCopiedScheduleLink(activeSchedule.id)
                                     setTimeout(() => setCopiedScheduleLink(null), 2000)
                                   }}
-                                  className="text-primary-500 hover:text-primary-700 transition-colors"
+                                  className="text-primary-500 hover:text-primary-700 transition-colors flex-shrink-0"
                                   title="Copy meet link"
                                 >
                                   {copiedScheduleLink === activeSchedule.id ? (
@@ -931,18 +1001,18 @@ export default function HomeSection({
                       )}
 
                       {/* Checklist hôm nay */}
-                      <div ref={checklistSectionRef} className="rounded-2xl border-2 border-primary-50 bg-white p-6 shadow-sm">
+                      <div ref={checklistSectionRef} className="rounded-2xl border-2 border-primary-50 bg-white p-4 sm:p-6 shadow-sm">
                         <div className="flex items-center justify-between mb-4">
                           <button
                             type="button"
                             onClick={() => setIsChecklistCollapsed((prev) => !prev)}
-                            className="flex items-center gap-2 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
+                            className="flex items-center gap-2 text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
                           >
                             <h4>Checklist hôm nay</h4>
                             {isChecklistCollapsed ? (
-                              <ChevronDown className="w-5 h-5" />
+                              <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5" />
                             ) : (
-                              <ChevronUp className="w-5 h-5" />
+                              <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5" />
                             )}
                           </button>
                         </div>
@@ -980,64 +1050,74 @@ export default function HomeSection({
                                           }))}
                                           className="w-full"
                                         >
-                                          <div className="flex items-center px-5 py-4 gap-4">
-                                            <p className="text-2xl font-bold text-primary-600 uppercase tracking-wide whitespace-nowrap w-48 flex-shrink-0">
-                                              {assignment.subject || activeSchedule.subject || 'Chung'}
+                                          <div className="flex items-center px-3 sm:px-5 py-3 sm:py-4 gap-3 sm:gap-4">
+                                            <p className="text-sm sm:text-base lg:text-lg font-bold text-primary-600 uppercase tracking-wide min-w-[50px] sm:min-w-[60px] max-w-[120px] sm:max-w-[180px] flex-shrink-0 break-words">
+                                              {formatSubjectLabel(
+                                                assignment.subject || 
+                                                extractSubjectFromText(assignment.name) ||
+                                                extractSubjectFromText(assignment.description) ||
+                                                activeSchedule.subject || 
+                                                'Chung'
+                                              )}
                                             </p>
-                                            <div className="h-12 w-px bg-gray-300 flex-shrink-0"></div>
+                                            <div className="h-10 sm:h-12 w-px bg-gray-300 flex-shrink-0 hidden sm:block"></div>
                                             <div className="flex-1 space-y-1 min-w-0 text-left">
-                                              <h5 className="text-base font-bold text-gray-900">
+                                              <h5 className="text-sm sm:text-base font-bold text-gray-900 break-words">
                                                 {assignment.name || 'Checklist'}
                                               </h5>
                                               {assignment.description && (
-                                                <p className="text-sm text-gray-600 italic line-clamp-1">
+                                                <p className="text-xs sm:text-sm text-gray-600 italic line-clamp-1 sm:line-clamp-2">
                                                   {assignment.description}
                                                 </p>
                                               )}
                                 </div>
                                             <div className="flex-shrink-0">
                                               {isExpanded ? (
-                                                <ChevronUp className="w-5 h-5 text-gray-500" />
+                                                <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
                                               ) : (
-                                                <ChevronDown className="w-5 h-5 text-gray-500" />
+                                                <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
                                               )}
                             </div>
                                           </div>
                                         </button>
                                         
                                         {isExpanded && (
-                                          <div className="px-5 pb-4 pt-2 border-t border-gray-200 space-y-4">
+                                          <div className="px-3 sm:px-5 pb-4 pt-2 border-t border-gray-200 space-y-4">
                                             {/* Bảng tóm tắt */}
                                 <div>
                                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.35em] mb-3">
                                     BẢNG TÓM TẮT
                                   </p>
-                                              <div className="rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-x-auto scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
-                                                <table className="w-full text-base border-collapse min-w-[800px]">
-                                                  <thead className="bg-purple-50 text-gray-700 uppercase text-sm md:text-base tracking-[0.3em] font-semibold">
+                                              <div className="rounded-xl sm:rounded-2xl border-2 border-gray-200 bg-white shadow-sm overflow-x-auto scrollbar-thin scrollbar-thumb-primary-200 scrollbar-track-gray-100">
+                                                <table className="w-full text-sm sm:text-base border-collapse min-w-[600px] sm:min-w-[800px]">
+                                                  <thead className="bg-purple-50 text-gray-700 uppercase text-xs sm:text-sm md:text-base tracking-[0.2em] sm:tracking-[0.3em] font-semibold">
                                                     <tr>
-                                                      <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
-                                                        <div className="flex items-center justify-center gap-2">
-                                                          <Layers className="w-5 h-5" />
-                                                          Bài học
+                                                      <th className="px-3 sm:px-5 py-2 sm:py-3 text-center font-semibold border-b-2 border-gray-200">
+                                                        <div className="flex items-center justify-center gap-1 sm:gap-2">
+                                                          <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                          <span className="hidden sm:inline">Bài học</span>
+                                                          <span className="sm:hidden">Bài</span>
                                                         </div>
                                                       </th>
-                                                      <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
-                                                        <div className="flex items-center justify-center gap-2">
-                                                          <PenTool className="w-5 h-5" />
-                                                          Nhiệm vụ
+                                                      <th className="px-3 sm:px-5 py-2 sm:py-3 text-center font-semibold border-b-2 border-gray-200">
+                                                        <div className="flex items-center justify-center gap-1 sm:gap-2">
+                                                          <PenTool className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                          <span className="hidden sm:inline">Yêu cầu chi tiết</span>
+                                                          <span className="sm:hidden">Yêu cầu</span>
                                                         </div>
                                                       </th>
-                                                      <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
-                                                        <div className="flex items-center justify-center gap-2">
-                                                          <Clock className="w-5 h-5" />
-                                                          Trạng thái
+                                                      <th className="px-3 sm:px-5 py-2 sm:py-3 text-center font-semibold border-b-2 border-gray-200">
+                                                        <div className="flex items-center justify-center gap-1 sm:gap-2">
+                                                          <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                          <span className="hidden sm:inline">Trạng thái</span>
+                                                          <span className="sm:hidden">TT</span>
                                                         </div>
                                                       </th>
-                                                      <th className="px-5 py-3 text-center font-semibold border-b-2 border-gray-200">
-                                                        <div className="flex items-center justify-center gap-2">
-                                                          <Lightbulb className="w-5 h-5" />
-                                                          Nhận xét
+                                                      <th className="px-3 sm:px-5 py-2 sm:py-3 text-center font-semibold border-b-2 border-gray-200">
+                                                        <div className="flex items-center justify-center gap-1 sm:gap-2">
+                                                          <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                          <span className="hidden sm:inline">Nhận xét</span>
+                                                          <span className="sm:hidden">NX</span>
                                                         </div>
                                                       </th>
                                         </tr>
@@ -1060,15 +1140,15 @@ export default function HomeSection({
                                                       
                                                       return (
                                                         <tr key={task.id || `${assignmentKey}-task-${taskIndex}`}>
-                                                          <td className="px-5 py-4 font-semibold text-gray-900 text-center text-lg">
+                                                          <td className="px-3 sm:px-5 py-3 sm:py-4 font-semibold text-gray-900 text-center text-sm sm:text-base lg:text-lg break-words">
                                                             {task.name || assignment.name || 'Bài học'}
                                             </td>
-                                                          <td className="px-5 py-4 text-gray-700 text-center text-base">
+                                                          <td className="px-3 sm:px-5 py-3 sm:py-4 text-gray-700 text-center text-xs sm:text-sm lg:text-base break-words">
                                                             {task.description || assignment.description || '—'}
                                             </td>
-                                                          <td className="px-5 py-4 text-center text-base">
+                                                          <td className="px-3 sm:px-5 py-3 sm:py-4 text-center text-xs sm:text-sm lg:text-base">
                                               <span
-                                                              className={`px-4 py-1.5 rounded-full text-xs font-semibold ${rowChip}`}
+                                                              className={`px-2 sm:px-3 lg:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${rowChip}`}
                                                             >
                                                               {taskStatus === 'done'
                                                   ? 'Đã xong'
@@ -1077,7 +1157,7 @@ export default function HomeSection({
                                                                   : 'CHƯA XONG'}
                                               </span>
                                             </td>
-                                                          <td className="px-5 py-4 text-gray-600 text-center text-base">
+                                                          <td className="px-3 sm:px-5 py-3 sm:py-4 text-gray-600 text-center text-xs sm:text-sm lg:text-base break-words">
                                                             <span className="flex-1">{rowNote}</span>
                                             </td>
                                           </tr>
@@ -1560,123 +1640,123 @@ export default function HomeSection({
 
         return (
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
             onClick={() => setSelectedTutorSchedule(null)}
           >
             <div
-              className="bg-white rounded-[32px] shadow-2xl max-w-4xl w-full max-h-[92vh] overflow-y-auto"
+              className="bg-white rounded-2xl sm:rounded-[32px] shadow-2xl max-w-4xl w-full max-h-[96vh] sm:max-h-[92vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="sticky top-0 bg-white border-b border-gray-100 px-8 py-6 flex items-center justify-between z-10">
-                <h2 className="text-3xl font-bold text-gray-900">Thông tin chi tiết Tutor</h2>
+              <div className="sticky top-0 bg-white border-b border-gray-100 px-4 sm:px-8 py-4 sm:py-6 flex items-center justify-between z-10">
+                <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-gray-900">Thông tin chi tiết Tutor</h2>
                 <button
                   onClick={() => setSelectedTutorSchedule(null)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 ml-2"
                 >
-                  <span className="text-2xl">&times;</span>
+                  <span className="text-xl sm:text-2xl">&times;</span>
                 </button>
               </div>
 
-              <div className="p-6 space-y-6">
+              <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
                 <div className="border-b border-gray-200 pb-2"></div>
 
                 {tutorProfile ? (
                   <>
                     {/* Main Profile Card */}
-                    <div className="flex flex-col lg:flex-row items-start gap-6 border border-gray-100 rounded-3xl bg-gray-50 p-6">
-                      <div className="w-28 h-28 rounded-3xl overflow-hidden border-2 border-primary-100 shadow-lg flex-shrink-0 bg-gradient-to-br from-primary-500 to-primary-600 text-white text-4xl font-bold flex items-center justify-center">
+                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 border border-gray-100 rounded-2xl sm:rounded-3xl bg-gray-50 p-4 sm:p-6">
+                      <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl overflow-hidden border-2 border-primary-100 shadow-lg flex-shrink-0 bg-gradient-to-br from-primary-500 to-primary-600 text-white text-2xl sm:text-4xl font-bold flex items-center justify-center">
                         {tutorProfile.avatarUrl ? (
                           <img src={tutorProfile.avatarUrl} alt={displayTutorName} className="w-full h-full object-cover" />
                         ) : (
                           tutorInitial
                         )}
                       </div>
-                      <div className="flex-1 space-y-2">
-                        <p className="text-sm font-semibold text-gray-500 uppercase tracking-[0.2em]">TUTOR</p>
-                        <h3 className="text-4xl font-extrabold text-gray-900">{displayTutorName}</h3>
-                        <p className="text-lg text-gray-500">{tutorProfile.qualification || tutorProfile.currentLevel || 'Tutor LearnerPro'}</p>
+                      <div className="flex-1 space-y-1 sm:space-y-2 text-center sm:text-left">
+                        <p className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-[0.2em]">TUTOR</p>
+                        <h3 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-gray-900 break-words">{displayTutorName}</h3>
+                        <p className="text-base sm:text-lg text-gray-500">{tutorProfile.qualification || tutorProfile.currentLevel || 'Tutor LearnerPro'}</p>
                       </div>
                     </div>
 
                     {/* Kinh nghiệm và Liên hệ */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                       {/* Kinh nghiệm */}
-                      <div className="p-5 border rounded-2xl bg-white shadow-sm">
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">KINH NGHIỆM</p>
-                        <p className="text-base font-semibold text-gray-900">{tutorProfile.experience || 'Chưa cập nhật'}</p>
+                        <p className="text-sm sm:text-base font-semibold text-gray-900 break-words">{tutorProfile.experience || 'Chưa cập nhật'}</p>
                       </div>
                       
                       {/* Liên hệ */}
-                      <div className="p-5 border rounded-2xl bg-white shadow-sm">
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">LIÊN HỆ</p>
                         <div className="space-y-1">
                           {tutorProfile.email && (
-                            <div className="flex items-center gap-2">
-                              <Mail className="w-4 h-4 text-gray-400" />
-                              <p className="text-base font-semibold text-gray-900">{tutorProfile.email}</p>
-                      </div>
+                            <div className="flex items-start sm:items-center gap-2">
+                              <Mail className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5 sm:mt-0" />
+                              <p className="text-sm sm:text-base font-semibold text-gray-900 break-all">{tutorProfile.email}</p>
+                            </div>
                           )}
                           {tutorProfile.phone && (
                             <div className="flex items-center gap-2">
-                              <Phone className="w-4 h-4 text-gray-400" />
-                              <p className="text-base font-semibold text-gray-900">{tutorProfile.phone}</p>
+                              <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                              <p className="text-sm sm:text-base font-semibold text-gray-900 break-all">{tutorProfile.phone}</p>
                             </div>
                           )}
                           {!tutorProfile.email && !tutorProfile.phone && (
-                            <p className="text-base font-semibold text-gray-900">Chưa cập nhật</p>
+                            <p className="text-sm sm:text-base font-semibold text-gray-900">Chưa cập nhật</p>
                           )}
                         </div>
                       </div>
                     </div>
 
                     {/* Môn phụ trách, Chuyên môn, Tổng học viên */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                       {/* Môn phụ trách */}
-                      <div className="p-5 border rounded-2xl bg-white shadow-sm">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-3">MÔN PHỤ TRÁCH</p>
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">MÔN PHỤ TRÁCH</p>
                         <div className="flex flex-wrap gap-2">
                           {tutorProfile.subjects && tutorProfile.subjects.length > 0 ? (
                             tutorProfile.subjects.map((subject, idx) => (
                               <span
                                 key={idx}
-                                className="px-3 py-1.5 rounded-full text-xs font-semibold text-white bg-purple-500"
+                                className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-semibold text-white bg-purple-500"
                               >
                                 {subject}
                               </span>
                             ))
                           ) : (
-                            <span className="text-base font-semibold text-gray-900">{schedule.subject || 'Chưa cập nhật'}</span>
+                            <span className="text-sm sm:text-base font-semibold text-gray-900">{schedule.subject || 'Chưa cập nhật'}</span>
                           )}
-                      </div>
+                        </div>
                       </div>
                       
                       {/* Chuyên môn */}
-                      <div className="p-5 border rounded-2xl bg-white shadow-sm">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-3">CHUYÊN MÔN</p>
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">CHUYÊN MÔN</p>
                         <div className="flex flex-wrap gap-2">
                           {tutorProfile.specialties && tutorProfile.specialties.length > 0 ? (
                             tutorProfile.specialties.map((specialty, idx) => (
                               <span
                                 key={idx}
-                                className="px-3 py-1.5 rounded-full text-xs font-semibold text-white bg-yellow-500"
+                                className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-semibold text-white bg-yellow-500"
                               >
                                 {specialty}
                               </span>
                             ))
                           ) : (
-                            <span className="text-base font-semibold text-gray-900">
+                            <span className="text-sm sm:text-base font-semibold text-gray-900">
                               {tutorProfile.qualification || 'Chưa cập nhật'}
                             </span>
                           )}
-                      </div>
+                        </div>
                       </div>
                       
                       {/* Tổng học viên */}
-                      <div className="p-5 border rounded-2xl bg-white shadow-sm">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-3">TỔNG HỌC VIÊN</p>
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm sm:col-span-2 md:col-span-1">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">TỔNG HỌC VIÊN</p>
                         <div className="flex items-center gap-2">
-                          <Users className="w-5 h-5 text-primary-600" />
-                          <p className="text-base font-semibold text-gray-900">
+                          <Users className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600 flex-shrink-0" />
+                          <p className="text-sm sm:text-base font-semibold text-gray-900">
                             {typeof tutorProfile.totalStudents === 'number' ? tutorProfile.totalStudents : 0} học viên đã dạy
                           </p>
                         </div>
@@ -1684,36 +1764,36 @@ export default function HomeSection({
                     </div>
 
                     {/* Hồ sơ & CV và Giới thiệu */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                       {/* Hồ sơ & CV */}
-                      <div className="p-5 border rounded-2xl bg-white shadow-sm">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-3">HỒ SƠ & CV</p>
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">HỒ SƠ & CV</p>
                         {tutorProfile.cvUrl ? (
                           <a
                             href={tutorProfile.cvUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 text-base font-semibold text-primary-600 hover:text-primary-700"
+                            className="inline-flex items-center gap-2 text-sm sm:text-base font-semibold text-primary-600 hover:text-primary-700"
                           >
-                            <FileTextIcon className="w-5 h-5" />
+                            <FileTextIcon className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                             <span>Xem CV</span>
                           </a>
                         ) : (
-                          <p className="text-base font-semibold text-gray-900">Chưa cập nhật</p>
+                          <p className="text-sm sm:text-base font-semibold text-gray-900">Chưa cập nhật</p>
                         )}
-                    </div>
+                      </div>
 
                       {/* Giới thiệu */}
-                      <div className="p-5 border rounded-2xl bg-white shadow-sm">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-3">GIỚI THIỆU</p>
-                        <p className="text-base text-gray-700 leading-relaxed">
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">GIỚI THIỆU</p>
+                        <p className="text-sm sm:text-base text-gray-700 leading-relaxed">
                           {tutorProfile.bio || tutorProfile.moreInfo || 'Thông tin đang được bổ sung.'}
-                      </p>
-                    </div>
+                        </p>
+                      </div>
                     </div>
                   </>
                 ) : (
-                  <div className="p-4 border border-dashed border-gray-300 rounded-2xl bg-gray-50 text-sm text-gray-600">
+                  <div className="p-4 border border-dashed border-gray-300 rounded-xl sm:rounded-2xl bg-gray-50 text-sm text-gray-600">
                     Hệ thống đang cập nhật thông tin chi tiết của tutor này.
                   </div>
                 )}
