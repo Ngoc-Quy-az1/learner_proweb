@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Layout } from '../components/common'
 import { Sidebar, ScheduleItem, MonthlyCalendar, ChecklistItem, TaskItem } from '../components/dashboard'
-import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, FileText, AlertTriangle, Star, Eye, Download, ExternalLink, Folder, Lightbulb, Upload, Layers, PenTool } from 'lucide-react'
+import { BookOpen, MessageSquare, TrendingUp, Calendar, Target, UserCircle, Play, ChevronRight, ChevronDown, ChevronUp, Clock, Copy, FileText, Star, Eye, Download, ExternalLink, Layers, PenTool, Plus, Lightbulb, AlertTriangle, Folder, Upload, Loader2 } from 'lucide-react'
 import { format, isToday } from 'date-fns'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { apiCall, API_BASE_URL } from '../config/api'
 import { getCookie } from '../utils/cookies'
 import { useAuth } from '../contexts/AuthContext'
+import { splitFileUrls, joinFileUrls } from '../utils/fileUrlHelper'
 import { ChecklistDetailTable, MaterialUploadSection, HomeSection, ScheduleSection, type ChecklistDetailItem, type HomeworkDetailItem } from '../components/student'
 import StudentSubjectReviewSection from '../components/student/StudentSubjectReviewSection'
 import StudentSessionEvaluationSection from '../components/student/StudentSessionEvaluationSection'
@@ -215,7 +216,7 @@ const mapAssignmentsToChecklistItems = (
           // Ghi chú: lấy trường note riêng của task nếu có
           status: mapAssignmentStatusToChecklist(task.status),
           note: (task as any).note || assignment.description,
-          attachment: task.assignmentUrl || assignment.supplementaryMaterials?.[0]?.url,
+          attachment: Array.isArray(task.assignmentUrl) ? task.assignmentUrl.join('\n') : (task.assignmentUrl || assignment.supplementaryMaterials?.[0]?.url),
           date: new Date(date),
           assignmentId: assignmentId,
           taskId: task.id,
@@ -237,7 +238,7 @@ const mapAssignmentsToChecklistItems = (
         date: new Date(date),
         assignmentId: assignmentId,
         scheduleId,
-        attachment: assignment.supplementaryMaterials?.[0]?.url,
+        attachment: Array.isArray(assignment.supplementaryMaterials?.[0]?.url) ? assignment.supplementaryMaterials[0].url.join('\n') : (assignment.supplementaryMaterials?.[0]?.url),
       })
     }
   })
@@ -376,6 +377,7 @@ export default function StudentDashboard() {
   const [_isHomeworkLoading, setIsHomeworkLoading] = useState<boolean>(false)
   const [_homeworkError, setHomeworkError] = useState<string | null>(null)
   const [homeworkDetailItems, setHomeworkDetailItems] = useState<Record<string, HomeworkDetailItem[]>>({})
+  const [studentHomeworkUploading, setStudentHomeworkUploading] = useState<string | null>(null)
 
   useEffect(() => {
     if (activeSection !== 'home' && showChecklistOverlay) {
@@ -415,7 +417,8 @@ export default function StudentDashboard() {
   const [selectedUploadScheduleId, setSelectedUploadScheduleId] = useState<string | null>(null)
   const [selectedChecklistScheduleId, setSelectedChecklistScheduleId] = useState<string | null>(null)
   const [selectedChecklistDate, setSelectedChecklistDate] = useState<string | null>(null)
-  const [selectedHomeworkScheduleId, setSelectedHomeworkScheduleId] = useState<string | null>(null)
+  const [selectedHomeworkDate, setSelectedHomeworkDate] = useState<string | null>(null)
+  const [selectedHomeworkSessionId, setSelectedHomeworkSessionId] = useState<string | null>(null)
   const [expandedChecklistItems, setExpandedChecklistItems] = useState<Record<string, boolean>>({})
 
   const getScheduleStartDateTime = (schedule: ScheduleItem) => {
@@ -544,6 +547,112 @@ export default function StudentDashboard() {
       isActive = false
     }
   }, [user, scheduleFetchTrigger])
+
+  async function handleDeleteHomeworkFile(taskId: string, fileIndex: number) {
+    try {
+      // Tìm homework và task tương ứng
+      for (const homework of homeworks) {
+        const tasks = homework.tasks || []
+        const taskIndex = tasks.findIndex((t, idx) => t.id === taskId || `${homework.id}-task-${idx}` === taskId)
+        if (taskIndex >= 0 && tasks[taskIndex]) {
+          const task = tasks[taskIndex]
+
+          // Parse existing answerURL thành mảng
+          const existingUrls = task.answerURL
+            ? Array.isArray(task.answerURL)
+              ? task.answerURL.filter((url: string) => url && url.trim())
+              : splitFileUrls(task.answerURL)
+            : []
+
+          // Xóa file tại vị trí fileIndex
+          const newUrls = existingUrls.filter((_, idx) => idx !== fileIndex)
+          // Backend mong đợi answerURL là mảng; gửi [] để xóa hết thay vì undefined (giữ nguyên)
+          const newAnswerURLArray = newUrls
+
+          // Payload PATCH homework
+          const payload: any = {
+            tasks: tasks.map((t, idx) => {
+              const isTargetTask = (t.id === task.id || `${homework.id}-task-${idx}` === taskId)
+              if (isTargetTask) {
+                return {
+                  name: t.name || '',
+                  assignmentUrl: Array.isArray(t.assignmentUrl) ? t.assignmentUrl : (t.assignmentUrl || undefined),
+                  solutionUrl: Array.isArray(t.solutionUrl) ? t.solutionUrl : (t.solutionUrl || undefined),
+                  answerURL: newAnswerURLArray,
+                  status: t.status || undefined,
+                  description: t.description || undefined,
+                }
+              }
+              return {
+                name: t.name || '',
+                assignmentUrl: Array.isArray(t.assignmentUrl) ? t.assignmentUrl : (t.assignmentUrl || undefined),
+                solutionUrl: Array.isArray(t.solutionUrl) ? t.solutionUrl : (t.solutionUrl || undefined),
+                answerURL: t.answerURL
+                  ? Array.isArray(t.answerURL)
+                    ? t.answerURL.filter((url: string) => url && url.trim())
+                    : splitFileUrls(t.answerURL)
+                  : undefined,
+                status: t.status || undefined,
+                description: t.description || undefined,
+              }
+            }),
+          }
+
+          await apiCall(`/homeworks/${homework.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+          })
+
+          // Cập nhật state local cho homeworkDetailItems (đồng bộ với server)
+          setHomeworkDetailItems((prev) => {
+            const updated: Record<string, HomeworkDetailItem[]> = {}
+            Object.entries(prev).forEach(([sessionId, items]) => {
+              updated[sessionId] = items.map((item) => {
+                if (item.id !== taskId) return item
+                const currentUrls =
+                  (item as any).studentSolutionFileUrls ||
+                  (item.studentSolutionFileUrl ? splitFileUrls(item.studentSolutionFileUrl) : [])
+                const nextUrls = currentUrls.filter((_: string, idx: number) => idx !== fileIndex)
+                return {
+                  ...item,
+                  studentSolutionFileUrls: nextUrls,
+                  studentSolutionFileUrl: nextUrls.length > 0 ? joinFileUrls(nextUrls) : undefined,
+                }
+              })
+            })
+            return updated
+          })
+
+          return
+        }
+      }
+
+      // Fallback: nếu không tìm thấy task trong danh sách homework,
+      // vẫn cập nhật state local để UI phản hồi ngay.
+      setHomeworkDetailItems((prev) => {
+        const updated: Record<string, HomeworkDetailItem[]> = {}
+        Object.entries(prev).forEach(([sessionId, items]) => {
+          updated[sessionId] = items.map((item) => {
+            if (item.id !== taskId) return item
+            const currentUrls =
+              (item as any).studentSolutionFileUrls ||
+              (item.studentSolutionFileUrl ? splitFileUrls(item.studentSolutionFileUrl) : [])
+            const nextUrls = currentUrls.filter((_: string, idx: number) => idx !== fileIndex)
+            return {
+              ...item,
+              studentSolutionFileUrls: nextUrls,
+              studentSolutionFileUrl: nextUrls.length > 0 ? joinFileUrls(nextUrls) : undefined,
+            }
+          })
+        })
+        return updated
+      })
+    } catch (error) {
+      console.error('Failed to delete homework file:', error)
+      alert('Không thể xóa file bài làm. Vui lòng thử lại.')
+      throw error
+    }
+  }
 
   const scheduleInfoById = useMemo(() => {
     const map: Record<string, { date?: Date; subject?: string }> = {}
@@ -689,10 +798,35 @@ export default function StudentDashboard() {
           solutionText: undefined,
           solutionFileName: getFileNameFromUrl(task.solutionUrl),
           solutionUrl: task.solutionUrl,
+          solutionUrls: Array.isArray((task as any).solutionUrl)
+            ? ((task as any).solutionUrl as string[])
+            : task.solutionUrl
+              ? splitFileUrls(task.solutionUrl)
+              : [],
           assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
           assignmentUrl: task.assignmentUrl,
+          assignmentUrls: Array.isArray((task as any).assignmentUrl)
+            ? ((task as any).assignmentUrl as string[])
+            : task.assignmentUrl
+              ? splitFileUrls(task.assignmentUrl)
+              : [],
           deadline: homework.deadline,
-          studentSolutionFileUrl: (task as any).answerURL,
+          // Bài làm HS - backend có thể trả answerURL là string hoặc array
+          ...(() => {
+            const rawAnswer = (task as any).answerURL
+            const urls = rawAnswer
+              ? Array.isArray(rawAnswer)
+                ? rawAnswer.filter((url: string) => url && url.trim())
+                : splitFileUrls(rawAnswer)
+              : []
+
+            return {
+              studentSolutionFileUrls: urls,
+              // Giữ string gộp cho tương thích chỗ cũ (nếu cần)
+              studentSolutionFileUrl: urls.length > 0 ? joinFileUrls(urls) : undefined,
+            }
+          })(),
+          createdAt: homework.createdAt,
         })) || []
 
       const fallbackTask: HomeworkDetailItem[] =
@@ -710,6 +844,7 @@ export default function StudentDashboard() {
                 solutionText: undefined,
                 solutionFileName: undefined,
                 assignmentFileName: undefined,
+                createdAt: homework.createdAt,
               },
             ]
           : []
@@ -960,7 +1095,7 @@ export default function StudentDashboard() {
     })
   }
 
-  const handleUploadHomeworkFile = async (taskId: string, file: File) => {
+  const handleUploadHomeworkFile = async (taskId: string, file: File, fileIndex?: number) => {
     try {
       // Upload file lên server
       const formData = new FormData()
@@ -995,6 +1130,30 @@ export default function StudentDashboard() {
         const taskIndex = tasks.findIndex((t, idx) => t.id === taskId || `${homework.id}-task-${idx}` === taskId)
         if (taskIndex >= 0 && tasks[taskIndex]) {
           const task = tasks[taskIndex]
+          
+          // Parse existing answerURL to array (luôn dùng mảng để gửi lên backend)
+          const existingUrls = task.answerURL
+            ? Array.isArray(task.answerURL)
+              ? task.answerURL.filter((url: string) => url && url.trim())
+              : splitFileUrls(task.answerURL)
+            : []
+          
+          // Update URLs: nếu có fileIndex thì replace/append, nếu không thì thêm mới (multi-file)
+          let newUrls: string[]
+          if (fileIndex !== undefined && fileIndex >= 0 && fileIndex < existingUrls.length) {
+            // Thay thế file tại vị trí cụ thể
+            newUrls = [...existingUrls]
+            newUrls[fileIndex] = fileUrl
+          } else {
+            // Thêm file mới
+            newUrls = [...existingUrls, fileUrl]
+          }
+          
+          // Mảng URL để gửi lên backend (API yêu cầu answerURL là array)
+          const newAnswerURLArray = newUrls
+          // String chỉ dùng để cập nhật state hiển thị tạm thời
+          const newAnswerURL = joinFileUrls(newUrls)
+          
           // Cập nhật homework task với answerURL
           // Chỉ gửi các trường được phép theo validation schema
           const payload: any = {
@@ -1005,9 +1164,9 @@ export default function StudentDashboard() {
                 // Chỉ gửi các trường được phép, loại bỏ _id, id, và các trường MongoDB khác
                 return {
                   name: t.name || '',
-                  assignmentUrl: t.assignmentUrl || undefined,
-                  solutionUrl: t.solutionUrl || undefined,
-                  answerURL: fileUrl,
+                  assignmentUrl: Array.isArray(t.assignmentUrl) ? t.assignmentUrl : (t.assignmentUrl || undefined),
+                  solutionUrl: Array.isArray(t.solutionUrl) ? t.solutionUrl : (t.solutionUrl || undefined),
+                  answerURL: newAnswerURLArray, // Gửi mảng answerURL cho backend
                   status: t.status || undefined,
                   description: t.description || undefined,
                 }
@@ -1015,9 +1174,13 @@ export default function StudentDashboard() {
                 // Giữ nguyên task khác nhưng cũng loại bỏ _id
                 return {
                   name: t.name || '',
-                  assignmentUrl: t.assignmentUrl || undefined,
-                  solutionUrl: t.solutionUrl || undefined,
-                  answerURL: t.answerURL || undefined,
+                  assignmentUrl: Array.isArray(t.assignmentUrl) ? t.assignmentUrl : (t.assignmentUrl || undefined),
+                  solutionUrl: Array.isArray(t.solutionUrl) ? t.solutionUrl : (t.solutionUrl || undefined),
+                  answerURL: t.answerURL
+                    ? Array.isArray(t.answerURL)
+                      ? t.answerURL.filter((url: string) => url && url.trim())
+                      : splitFileUrls(t.answerURL)
+                    : undefined,
                   status: t.status || undefined,
                   description: t.description || undefined,
                 }
@@ -1047,7 +1210,12 @@ export default function StudentDashboard() {
             Object.entries(prev).forEach(([sessionId, items]) => {
               updatedEntries[sessionId] = items.map((item) =>
                 item.id === taskId
-                  ? { ...item, studentSolutionFileUrl: fileUrl, uploadedFileName: file.name }
+                  ? {
+                      ...item,
+                      studentSolutionFileUrl: newAnswerURL,
+                      studentSolutionFileUrls: newAnswerURLArray,
+                      uploadedFileName: file.name,
+                    }
                   : item
               )
             })
@@ -1083,7 +1251,7 @@ export default function StudentDashboard() {
     )
   }
 
-  const handleUploadChecklistFile = async (taskId: string, file: File) => {
+  const handleUploadChecklistFile = async (taskId: string, file: File, fileIndex?: number) => {
     try {
       // Upload file lên server
       const formData = new FormData()
@@ -1134,6 +1302,27 @@ export default function StudentDashboard() {
             return 'pending'
           }
           
+          // Parse existing answerURL to array (luôn dùng mảng để gửi lên backend)
+          const existingUrls = task.answerURL
+            ? Array.isArray(task.answerURL)
+              ? task.answerURL.filter((url: string) => url && url.trim())
+              : splitFileUrls(task.answerURL)
+            : []
+          
+          // Update URLs: replace at fileIndex or add new
+          let newUrls: string[]
+          if (fileIndex !== undefined && fileIndex >= 0 && fileIndex < existingUrls.length) {
+            // Replace file at specific index
+            newUrls = [...existingUrls]
+            newUrls[fileIndex] = fileUrl
+          } else {
+            // Add new file
+            newUrls = [...existingUrls, fileUrl]
+          }
+          
+          // Mảng URL để gửi lên backend (API yêu cầu answerURL là array)
+          const newAnswerURLArray = newUrls
+          
           // Cập nhật assignment task với answerURL
           const payload: any = {
             tasks: tasks.map((t, idx) => {
@@ -1149,9 +1338,9 @@ export default function StudentDashboard() {
                     ? Math.max(t.estimatedTime, 1)
                     : 1,
                   actualTime: typeof t.actualTime === 'number' ? t.actualTime : undefined,
-                  assignmentUrl: t.assignmentUrl || undefined,
-                  answerURL: fileUrl, // Cập nhật answerURL
-                  solutionUrl: t.solutionUrl || undefined,
+                  assignmentUrl: Array.isArray(t.assignmentUrl) ? t.assignmentUrl : (t.assignmentUrl || undefined),
+                  answerURL: newAnswerURLArray, // Cập nhật answerURL với nhiều file (mảng)
+                  solutionUrl: Array.isArray(t.solutionUrl) ? t.solutionUrl : (t.solutionUrl || undefined),
                   note: (t as any).note || undefined,
                 }
               } else {
@@ -1164,9 +1353,13 @@ export default function StudentDashboard() {
                     ? Math.max(t.estimatedTime, 1)
                     : 1,
                   actualTime: typeof t.actualTime === 'number' ? t.actualTime : undefined,
-                  assignmentUrl: t.assignmentUrl || undefined,
-                  answerURL: t.answerURL || undefined,
-                  solutionUrl: t.solutionUrl || undefined,
+                  assignmentUrl: Array.isArray(t.assignmentUrl) ? t.assignmentUrl : (t.assignmentUrl || undefined),
+                  answerURL: t.answerURL
+                    ? Array.isArray(t.answerURL)
+                      ? t.answerURL.filter((url: string) => url && url.trim())
+                      : splitFileUrls(t.answerURL)
+                    : undefined,
+                  solutionUrl: Array.isArray(t.solutionUrl) ? t.solutionUrl : (t.solutionUrl || undefined),
                   note: (t as any).note || undefined,
                 }
               }
@@ -1191,8 +1384,6 @@ export default function StudentDashboard() {
 
           // Reload assignments để cập nhật dữ liệu
           setAssignmentFetchTrigger((prev) => prev + 1)
-          
-          alert('Đã upload bài làm thành công!')
           return
         }
       }
@@ -1201,6 +1392,117 @@ export default function StudentDashboard() {
     } catch (error) {
       console.error('Failed to upload checklist file:', error)
       const message = error instanceof Error ? error.message : 'Không thể tải file. Vui lòng thử lại.'
+      alert(message)
+      throw error
+    }
+  }
+
+  const handleDeleteChecklistFile = async (taskId: string, fileIndex: number) => {
+    try {
+      // Tìm assignment và task tương ứng
+      for (const assignment of assignments) {
+        const assignmentId = assignment._id || assignment.id
+        if (!assignmentId) continue
+        
+        const tasks = assignment.tasks || []
+        const taskIndex = tasks.findIndex((t, idx) => {
+          const tId = t.id || `${assignmentId}-task-${idx}`
+          return tId === taskId || t.id === taskId
+        })
+        
+        if (taskIndex >= 0 && tasks[taskIndex]) {
+          const task = tasks[taskIndex]
+          
+          // Map task status từ API sang frontend
+          const mapTaskStatusToApi = (status?: string): 'pending' | 'in-progress' | 'submitted' | 'undone' => {
+            if (!status || status === 'pending') return 'pending'
+            if (status === 'in-progress') return 'in-progress'
+            if (status === 'completed' || status === 'submitted') return 'submitted'
+            return 'pending'
+          }
+          
+          // Parse existing answerURL to array (luôn dùng mảng để gửi lên backend)
+          const existingUrls = task.answerURL
+            ? Array.isArray(task.answerURL)
+              ? task.answerURL.filter((url: string) => url && url.trim())
+              : splitFileUrls(task.answerURL)
+            : []
+          
+          // Remove file at fileIndex
+          const newUrls = existingUrls.filter((_, idx) => idx !== fileIndex)
+          
+          // Mảng URL để gửi lên backend (API yêu cầu answerURL là array)
+          const newAnswerURLArray = newUrls.length > 0 ? newUrls : undefined
+          
+          // Cập nhật assignment task với answerURL
+          const payload: any = {
+            tasks: tasks.map((t, idx) => {
+              const isTargetTask = (t.id === task.id || `${assignmentId}-task-${idx}` === taskId)
+              
+              if (isTargetTask) {
+                // Chỉ gửi các trường được phép
+                return {
+                  name: t.name || '',
+                  description: t.description || undefined,
+                  status: mapTaskStatusToApi(t.status),
+                  estimatedTime: typeof t.estimatedTime === 'number' && !Number.isNaN(t.estimatedTime)
+                    ? Math.max(t.estimatedTime, 1)
+                    : 1,
+                  actualTime: typeof t.actualTime === 'number' ? t.actualTime : undefined,
+                  assignmentUrl: Array.isArray(t.assignmentUrl) ? t.assignmentUrl : (t.assignmentUrl || undefined),
+                  answerURL: newAnswerURLArray, // Cập nhật answerURL sau khi xóa file (mảng)
+                  solutionUrl: Array.isArray(t.solutionUrl) ? t.solutionUrl : (t.solutionUrl || undefined),
+                  note: (t as any).note || undefined,
+                }
+              } else {
+                // Giữ nguyên task khác
+                return {
+                  name: t.name || '',
+                  description: t.description || undefined,
+                  status: mapTaskStatusToApi(t.status),
+                  estimatedTime: typeof t.estimatedTime === 'number' && !Number.isNaN(t.estimatedTime)
+                    ? Math.max(t.estimatedTime, 1)
+                    : 1,
+                  actualTime: typeof t.actualTime === 'number' ? t.actualTime : undefined,
+                  assignmentUrl: Array.isArray(t.assignmentUrl) ? t.assignmentUrl : (t.assignmentUrl || undefined),
+                  answerURL: t.answerURL
+                    ? Array.isArray(t.answerURL)
+                      ? t.answerURL.filter((url: string) => url && url.trim())
+                      : splitFileUrls(t.answerURL)
+                    : undefined,
+                  solutionUrl: Array.isArray(t.solutionUrl) ? t.solutionUrl : (t.solutionUrl || undefined),
+                  note: (t as any).note || undefined,
+                }
+              }
+            })
+          }
+          
+          // Loại bỏ các trường undefined để payload gọn hơn
+          payload.tasks = payload.tasks.map((task: any) => {
+            const cleaned: any = {}
+            Object.keys(task).forEach(key => {
+              if (task[key] !== undefined && task[key] !== null && task[key] !== '') {
+                cleaned[key] = task[key]
+              }
+            })
+            return cleaned
+          })
+
+          await apiCall(`/assignments/${assignmentId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+          })
+
+          // Reload assignments để cập nhật dữ liệu
+          setAssignmentFetchTrigger((prev) => prev + 1)
+          return
+        }
+      }
+      
+      throw new Error('Không tìm thấy task tương ứng.')
+    } catch (error) {
+      console.error('Failed to delete checklist file:', error)
+      const message = error instanceof Error ? error.message : 'Không thể xóa file. Vui lòng thử lại.'
       alert(message)
       throw error
     }
@@ -1357,21 +1659,28 @@ export default function StudentDashboard() {
     },
   ]
 
-const todayReports = reportSummaries.filter((report) => format(report.date, 'yyyy-MM-dd') === todayDateKey)
-const [activeReportId, setActiveReportId] = useState<string>(todayReports[0]?.id || '')
+  const todayReports = reportSummaries.filter((report) => format(report.date, 'yyyy-MM-dd') === todayDateKey)
+  const [activeReportId, setActiveReportId] = useState<string>(todayReports[0]?.id || '')
   const [previewReport, setPreviewReport] = useState<DailyReport | null>(null)
   const [showReportPreview, setShowReportPreview] = useState(false)
   const [isDetailedReviewExpanded, setIsDetailedReviewExpanded] = useState<boolean>(true)
+  const [previewStats, setPreviewStats] = useState<{
+    completed: number
+    total: number
+    percentage: number
+    items: ChecklistWithDate[]
+    detailItems: ChecklistDetailItem[]
+  } | null>(null)
 
-useEffect(() => {
-  if (todayReports.length === 0) {
-    setActiveReportId('')
-    return
-  }
-  if (activeReportId && !todayReports.some((report) => report.id === activeReportId)) {
-    setActiveReportId(todayReports[0].id)
-  }
-}, [todayReports, activeReportId])
+  useEffect(() => {
+    if (todayReports.length === 0) {
+      setActiveReportId('')
+      return
+    }
+    if (activeReportId && !todayReports.some((report) => report.id === activeReportId)) {
+      setActiveReportId(todayReports[0].id)
+    }
+  }, [todayReports, activeReportId])
 
   // Helper function to group by date
   const groupByDate = <T extends { date: Date }>(items: T[]): Record<string, T[]> => {
@@ -1521,7 +1830,7 @@ useEffect(() => {
     }
   }, [uploadScheduleOptions, selectedUploadScheduleId])
 
-  const getSubjectChecklistStats = (subject: string) => {
+  function getSubjectChecklistStats(subject: string) {
     const items = todayChecklist.filter((item) => item.subject === subject)
     const detailItems = getSubjectDetailItems(subject)
     const completed = items.filter((item) => item.status === 'done').length
@@ -1554,12 +1863,15 @@ useEffect(() => {
   
   const handleOpenReportPreview = (report: DailyReport) => {
     setPreviewReport(report)
+    const stats = getSubjectChecklistStats(report.subject)
+    setPreviewStats(stats)
     setShowReportPreview(true)
   }
 
   const handleCloseReportPreview = () => {
     setShowReportPreview(false)
     setPreviewReport(null)
+    setPreviewStats(null)
   }
 
   // Helper function to get subject color
@@ -1706,10 +2018,12 @@ useEffect(() => {
               assignmentReviews={assignmentReviews}
               assignmentReviewsLoading={assignmentReviewsLoading}
               onUploadHomeworkFile={handleUploadHomeworkFile}
+              onDeleteHomeworkFile={handleDeleteHomeworkFile}
               uploadScheduleOptions={uploadScheduleOptions}
               selectedUploadScheduleId={selectedUploadScheduleId}
               onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
               onUploadChecklistFile={handleUploadChecklistFile}
+              onDeleteChecklistFile={handleDeleteChecklistFile}
             />
           )
         case 'schedule':
@@ -1750,9 +2064,12 @@ useEffect(() => {
               assignmentReviews={assignmentReviews}
               assignmentReviewsLoading={assignmentReviewsLoading}
               onUploadHomeworkFile={handleUploadHomeworkFile}
+              onDeleteHomeworkFile={handleDeleteHomeworkFile}
               uploadScheduleOptions={uploadScheduleOptions}
               selectedUploadScheduleId={selectedUploadScheduleId}
               onUploadScheduleChange={(scheduleId) => setSelectedUploadScheduleId(scheduleId)}
+              onUploadChecklistFile={handleUploadChecklistFile}
+              onDeleteChecklistFile={handleDeleteChecklistFile}
             />
           )
       }
@@ -2732,9 +3049,12 @@ useEffect(() => {
         solutionText: undefined,
         solutionFileName: item.solutionUrl ? getFileNameFromUrl(item.solutionUrl) : undefined,
         solutionUrl: item.solutionUrl,
+        solutionUrls: item.solutionUrl ? splitFileUrls(item.solutionUrl) : undefined,
         solutionPreview: undefined,
         uploadedFileName: undefined,
-        assignmentFileName: getFileNameFromUrl(item.attachment),
+        assignmentFileName: getFileNameFromUrl(Array.isArray(item.attachment) ? item.attachment[0] : item.attachment),
+        assignmentUrl: Array.isArray(item.attachment) ? item.attachment.join('\n') : (item.attachment || undefined),
+        assignmentUrls: item.attachment ? (Array.isArray(item.attachment) ? item.attachment.filter((url: string) => url && url.trim()) : splitFileUrls(item.attachment)) : undefined,
       }))
     }
 
@@ -2996,14 +3316,19 @@ useEffect(() => {
                                         solutionText: undefined,
                                         solutionFileName: getFileNameFromUrl(task.solutionUrl),
                                         solutionUrl: task.solutionUrl,
+                                        solutionUrls: task.solutionUrl ? (Array.isArray(task.solutionUrl) ? task.solutionUrl.filter((url: string) => url && url.trim()) : splitFileUrls(task.solutionUrl)) : undefined,
                                         solutionPreview: undefined,
-                                        uploadedFileName: task.answerURL ? getFileNameFromUrl(task.answerURL) : undefined,
-                                        uploadedFileUrl: task.answerURL || undefined,
-                                        assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
+                                        uploadedFileName: task.answerURL ? getFileNameFromUrl(Array.isArray(task.answerURL) ? task.answerURL[0] : task.answerURL) : undefined,
+                                        uploadedFileUrl: Array.isArray(task.answerURL) ? task.answerURL.join('\n') : (task.answerURL || undefined),
+                                        uploadedFileUrls: task.answerURL ? (Array.isArray(task.answerURL) ? task.answerURL.filter((url: string) => url && url.trim()) : splitFileUrls(task.answerURL)) : undefined,
+                                        assignmentFileName: getFileNameFromUrl(Array.isArray(task.assignmentUrl) ? task.assignmentUrl[0] : task.assignmentUrl),
+                                        assignmentUrl: Array.isArray(task.assignmentUrl) ? task.assignmentUrl.join('\n') : (task.assignmentUrl || undefined),
+                                        assignmentUrls: task.assignmentUrl ? (Array.isArray(task.assignmentUrl) ? task.assignmentUrl.filter((url: string) => url && url.trim()) : splitFileUrls(task.assignmentUrl)) : undefined,
                                       })
                                     })
                                   } else {
                                     // Không có task con
+                                    const assignmentUrl = assignment.supplementaryMaterials?.[0]?.url as string | undefined
                                     detailItemsForAssignment.push({
                                       id: assignmentId,
                                       lesson: assignment.name || 'Bài học',
@@ -3016,20 +3341,25 @@ useEffect(() => {
                                       solutionFileName: undefined,
                                       solutionPreview: undefined,
                                       uploadedFileName: undefined,
-                                      assignmentFileName: getFileNameFromUrl(
-                                        assignment.supplementaryMaterials?.[0]?.url as string | undefined
-                                      ),
+                                      assignmentFileName: getFileNameFromUrl(assignmentUrl),
+                                      assignmentUrl: assignmentUrl || undefined,
+                                      assignmentUrls: assignmentUrl ? (Array.isArray(assignmentUrl) ? assignmentUrl.filter((url: string) => url && url.trim()) : splitFileUrls(assignmentUrl)) : undefined,
                                     })
                                   }
                                   
                                   return (
                                     <ChecklistDetailTable
                                       items={detailItemsForAssignment}
-                                      onUpload={handleUploadChecklistFile ? (taskId, file) => {
-                                        handleUploadChecklistFile(taskId, file).catch((error) => {
+                                      onUpload={handleUploadChecklistFile ? (taskId, file, fileIndex) => {
+                                        handleUploadChecklistFile(taskId, file, fileIndex).catch((error) => {
                                           console.error('Upload checklist file error:', error)
                                         })
                                       } : () => {}}
+                                      onDeleteFile={handleDeleteChecklistFile ? (taskId, fileIndex) => {
+                                        handleDeleteChecklistFile(taskId, fileIndex).catch((error) => {
+                                          console.error('Delete checklist file error:', error)
+                                        })
+                                      } : undefined}
                                       onStatusChange={(taskId, result) => {
                                         // Map ChecklistDetailItem['result'] to ChecklistItem['status']
                                         const status: ChecklistItem['status'] = 
@@ -3122,258 +3452,524 @@ useEffect(() => {
   void _renderScheduleSection_OLD
 
   const renderHomeworkSection = () => {
-    // Các buổi học có bài tập về nhà (bao gồm cả quá khứ)
-    const homeworkScheduleIds = Object.keys(homeworkDetailItems)
-    
-    // Tạo options bao gồm cả homework có và không có schedule
-    const homeworkScheduleOptionsRaw = homeworkScheduleIds.map((id) => {
-      const schedule = schedules.find((s) => s.id === id)
-      const homeworkItems = homeworkDetailItems[id] || []
-      
-      // Nếu có schedule, dùng thông tin từ schedule
-      if (schedule) {
-        return { id, schedule, homeworkItems }
-      }
-      
-      // Nếu không có schedule, tìm homework gốc để lấy thông tin
-      const originalHomework = homeworks.find(h => h.scheduleId === id || h.id === id)
-      if (originalHomework && homeworkItems.length > 0) {
-        const firstHomework = homeworkItems[0]
-        const homeworkDate = firstHomework.deadline 
-          ? new Date(firstHomework.deadline)
-          : originalHomework.deadline
-            ? new Date(originalHomework.deadline)
-            : new Date()
-        const subject = getSubjectLabel(originalHomework.subject)
-        const fakeSchedule: ScheduleItem = {
-          id,
-          subject: subject || 'Chung',
-          time: '--:--',
-          date: homeworkDate,
-          tutor: '',
-        }
-        return { id, schedule: fakeSchedule, homeworkItems }
-      }
-      
-      return null
-    }).filter((opt): opt is { id: string; schedule: ScheduleItem; homeworkItems: HomeworkDetailItem[] } => opt !== null)
-    
-    const homeworkScheduleOptions = homeworkScheduleOptionsRaw.sort(
-      (a, b) => a.schedule.date.getTime() - b.schedule.date.getTime()
-    )
+    // Map scheduleId -> schedule để lấy ngày học và môn
+    const scheduleMap = schedules.reduce<Record<string, ScheduleItem>>((acc, schedule) => {
+      acc[schedule.id] = schedule
+      return acc
+    }, {})
 
-    const activeOption = homeworkScheduleOptions.find((opt) => opt.id === selectedHomeworkScheduleId) ||
-      homeworkScheduleOptions[homeworkScheduleOptions.length - 1]
+    // Gom các session homeworks lại theo buổi (scheduleId hoặc id homework)
+    const sessions = Object.entries(homeworkDetailItems).map(([sessionId, items]) => {
+      const schedule = scheduleMap[sessionId]
+      const homework = homeworks.find(
+        (hw) => hw.scheduleId === sessionId || hw.id === sessionId,
+      )
 
-    const activeHomeworkSchedule = activeOption?.schedule
-    const activeHomeworkScheduleId = activeOption?.id
-    const activeHomeworkItems: HomeworkDetailItem[] = activeOption?.homeworkItems || []
+      const subject =
+        schedule?.subject ||
+        (homework ? getSubjectLabel(homework.subject) : '') ||
+        'Chung'
+
+      const date =
+        schedule?.date ||
+        (homework?.deadline ? ensureValidDate(homework.deadline) : new Date())
+
+      return { sessionId, subject, date, schedule, items }
+    })
+
+    // Sắp xếp theo ngày
+    sessions.sort((a, b) => a.date.getTime() - b.date.getTime())
+
+    // Danh sách ngày duy nhất có bài tập
+    const homeworkDates = Array.from(
+      new Set(sessions.map((s) => format(s.date, 'yyyy-MM-dd'))),
+    ).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+
+    // Ngày hôm nay theo định dạng key
+    const todayKey = format(new Date(), 'yyyy-MM-dd')
+
+    // Ngày đang chọn:
+    // - Nếu người dùng đã chọn thì dùng selectedHomeworkDate
+    // - Nếu không, ưu tiên hôm nay nếu có dữ liệu
+    // - Nếu cũng không có thì lấy ngày đầu tiên có bài
+    const activeDateKey =
+      selectedHomeworkDate ||
+      (homeworkDates.includes(todayKey) ? todayKey : homeworkDates[0] || null)
+    const sessionsForDate =
+      activeDateKey === null
+        ? []
+        : sessions.filter(
+            (s) => format(s.date, 'yyyy-MM-dd') === activeDateKey,
+          )
+
+    // Chọn buổi học trong ngày
+    const activeSessionId =
+      selectedHomeworkSessionId || (sessionsForDate[0]?.sessionId ?? null)
+
+    const sessionsToRender =
+      activeSessionId === null
+        ? sessionsForDate
+        : sessionsForDate.filter((s) => s.sessionId === activeSessionId)
 
     return (
       <div className="h-full overflow-y-auto space-y-3 sm:space-y-4">
-        {/* Bài tập theo buổi học */}
-        <div className="card hover:shadow-xl transition-shadow duration-300">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-gray-200">
-            <div className="flex items-center space-x-2">
-              <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600 flex-shrink-0" />
-              <h2 className="text-base sm:text-lg md:text-2xl font-bold text-gray-900">Bài tập theo buổi học</h2>
-            </div>
-            {homeworkScheduleOptions.length > 0 && (
-              <select
-                value={activeHomeworkScheduleId || ''}
-                onChange={(e) => setSelectedHomeworkScheduleId(e.target.value || null)}
-                className="w-full sm:w-auto px-3 py-2 sm:py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              >
-                {homeworkScheduleOptions.map(({ id, schedule }) => (
-                  <option key={id} value={id}>
-                    {schedule.time !== '--:--' 
-                      ? `${format(schedule.date, 'dd/MM/yyyy')} · ${schedule.time}${schedule.subject ? ` · ${schedule.subject}` : ''}`
-                      : `${format(schedule.date, 'dd/MM/yyyy')}${schedule.subject ? ` · ${schedule.subject}` : ''}`
-                    }
-                  </option>
-                ))}
-              </select>
-            )}
+        {sessions.length === 0 ? (
+          <div className="card text-center py-8">
+            <p className="text-sm text-gray-500">
+              Chưa có bài tập về nhà nào được giao cho bạn.
+            </p>
           </div>
+        ) : (
+          <>
+            {/* Thanh chọn ngày & buổi học */}
+            {homeworkDates.length > 0 && (
+              <div className="card-no-transition mb-3 sm:mb-4">
+                <div className="mb-4 flex items-center space-x-3">
+                  <Calendar className="w-6 h-6 text-primary-600" />
+                  <div>
+                    <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
+                      Lịch sử bài tập về nhà
+                    </h2>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  {/* Dropdown chọn ngày */}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">
+                      Chọn ngày:
+                    </label>
+                    <select
+                      value={activeDateKey || ''}
+                      onChange={(e) => {
+                        const value = e.target.value || null
+                        setSelectedHomeworkDate(value)
+                        // Reset buổi học khi đổi ngày
+                        setSelectedHomeworkSessionId(null)
+                      }}
+                      className="flex-1 w-full sm:w-auto px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    >
+                      {homeworkDates.map((dateKey) => (
+                        <option key={dateKey} value={dateKey}>
+                          {format(new Date(dateKey), 'dd/MM/yyyy')}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-          {homeworkScheduleOptions.length === 0 || !activeHomeworkScheduleId || !activeHomeworkSchedule ? (
-            <p className="text-sm text-gray-500 italic">Chưa có bài tập về nhà nào cho học sinh này.</p>
-          ) : (
-            <div className="mt-2 pt-1 space-y-4">
-              {activeHomeworkItems.map((item) => {
-                const difficultyLabels = {
-                  easy: 'Dễ',
-                  medium: 'Trung bình',
-                  hard: 'Khó',
-                  advanced: 'Nâng cao',
-                }
-                const difficultyColors = {
-                  easy: 'bg-green-100 text-green-700',
-                  medium: 'bg-yellow-100 text-yellow-700',
-                  hard: 'bg-red-100 text-red-700',
-                  advanced: 'bg-purple-100 text-purple-700',
-                }
-                
-                return (
+                  {/* Dropdown chọn buổi học trong ngày */}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">
+                      Chọn buổi học:
+                    </label>
+                    <select
+                      value={activeSessionId || ''}
+                      onChange={(e) =>
+                        setSelectedHomeworkSessionId(e.target.value || null)
+                      }
+                      className="flex-1 w-full sm:w-auto px-3 py-1.5 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    >
+                      {sessionsForDate.map((session) => {
+                        const rawTutorName =
+                          (session.schedule && (session.schedule as any).tutor) ||
+                          (session.schedule && (session.schedule as any).tutorName) ||
+                          (session.schedule &&
+                            (session.schedule as any).tutorId &&
+                            tutorInfoMap[(session.schedule as any).tutorId]?.name)
+
+                        const tutorLabel = rawTutorName || 'Tutor'
+
+                        return (
+                          <option key={session.sessionId} value={session.sessionId}>
+                            {session.schedule?.time
+                              ? `${session.schedule.time} · ${tutorLabel}`
+                              : tutorLabel}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {sessionsForDate.length === 0 ? (
+              <div className="card text-center py-8">
+                <p className="text-sm text-gray-500">
+                  Không có bài tập nào cho ngày đã chọn.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {sessionsToRender.map(({ sessionId, items }) => (
                   <div
-                    key={item.id}
-                    className="border-l-4 border-primary-500 bg-white rounded-lg shadow-sm overflow-hidden"
+                    key={sessionId}
+                    className="card rounded-2xl border-2 border-primary-50 bg-white p-4 sm:p-6 shadow-sm hover:shadow-xl transition-shadow duration-300"
                   >
-                    {/* Header */}
-                    <div className="px-4 sm:px-5 py-3 border-b border-gray-200">
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-0 mb-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-lg sm:text-xl font-bold text-gray-900 break-words">{item.task}</p>
-                        </div>
-                        <div className="flex items-center gap-2 flex-wrap sm:flex-shrink-0">
-                          {/* Status */}
-                          <span
-                            className={`text-xs sm:text-sm px-2 sm:px-3 py-1 rounded-full font-semibold whitespace-nowrap ${
-                              item.result === 'completed'
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-lg sm:text-xl font-bold text-gray-900">
+                      Bài tập buổi này
+                    </h4>
+                  </div>
+
+                    <div className="space-y-4">
+                      {items.map((item) => {
+                        const difficultyLabels = {
+                          easy: 'Dễ',
+                          medium: 'Trung bình',
+                          hard: 'Khó',
+                          advanced: 'Nâng cao',
+                        }
+                        const difficultyColors = {
+                          easy: 'bg-green-100 text-green-700',
+                          medium: 'bg-yellow-100 text-yellow-700',
+                          hard: 'bg-red-100 text-red-700',
+                          advanced: 'bg-purple-100 text-purple-700',
+                        }
+
+                        return (
+                          <div
+                            key={item.id}
+                            className="border-l-4 border-primary-500 bg-white rounded-lg sm:rounded-xl shadow-sm overflow-hidden"
                           >
-                            {item.result === 'completed' ? 'Đã hoàn thành' : 'Chưa hoàn thành'}
-                          </span>
-                          {/* Difficulty */}
-                          {item.difficulty && (
-                            <span
-                              className={`text-xs sm:text-sm px-2 sm:px-3 py-1 rounded-full font-semibold whitespace-nowrap ${difficultyColors[item.difficulty]}`}
-                            >
-                              {difficultyLabels[item.difficulty]}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                            {/* Header */}
+                            <div className="px-4 sm:px-5 py-3 border-b border-gray-200">
+                              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-0 mb-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-lg sm:text-xl font-bold text-gray-900 break-words">
+                                    {item.task}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {/* Status */}
+                                  <span
+                                    className={`text-xs sm:text-sm px-2 sm:px-3 py-1 rounded-full font-semibold whitespace-nowrap ${
+                                      item.result === 'completed'
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'bg-gray-100 text-gray-700'
+                                    }`}
+                                  >
+                                    {item.result === 'completed' ? 'Đã hoàn thành' : 'Chưa hoàn thành'}
+                                  </span>
+                                  {/* Difficulty */}
+                                  {item.difficulty && (
+                                    <span
+                                      className={`text-xs sm:text-sm px-2 sm:px-3 py-1 rounded-full font-semibold whitespace-nowrap ${difficultyColors[item.difficulty]}`}
+                                    >
+                                      {difficultyLabels[item.difficulty]}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
 
-                    {/* Body */}
-                    <div className="px-4 sm:px-5 py-3 sm:py-4">
-                      {/* Phần trên: Deadline, File bài tập, Bài làm HS, Lời giải */}
-                      <div className="space-y-3 pb-4">
-                        {/* Deadline */}
-                        <div className="flex items-start sm:items-center gap-2 sm:gap-3">
-                          <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5 sm:mt-0" />
-                          <span className="text-sm sm:text-base font-medium text-gray-700 whitespace-nowrap">Hạn nộp:</span>
-                          <span className="text-sm sm:text-base text-red-600 font-medium break-words">
-                            {item.deadline
-                              ? format(new Date(item.deadline), 'dd/MM/yyyy')
-                              : 'Chưa có'}
-                          </span>
-                        </div>
+                            {/* Body */}
+                            <div className="px-4 sm:px-5 py-3 sm:py-4">
+                              {/* Grid layout cho thông tin chính */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pb-3 sm:pb-4">
+                                {/* Deadline */}
+                                <div className="flex items-center gap-2 sm:gap-3">
+                                  <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <span className="text-xs sm:text-sm font-medium text-gray-500">
+                                      Hạn nộp:
+                                    </span>
+                                    <span className="text-sm sm:text-base text-red-600 font-medium ml-2">
+                                      {item.deadline
+                                        ? format(new Date(item.deadline), 'dd/MM/yyyy')
+                                        : 'Chưa có'}
+                                    </span>
+                                  </div>
+                                </div>
 
-                        {/* File bài tập */}
-                        {item.assignmentUrl && (
-                          <div className="flex items-start sm:items-center gap-2 sm:gap-3">
-                            <Folder className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5 sm:mt-0" />
-                            <span className="text-sm sm:text-base font-medium text-blue-600 whitespace-nowrap flex-shrink-0">File Bài Tập:</span>
-                            <a
-                              href={item.assignmentUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm sm:text-base text-blue-600 hover:underline flex-1 min-w-0 break-all"
-                              title={item.assignmentUrl}
-                            >
-                              {item.assignmentFileName || item.assignmentUrl.split('/').pop() || 'Xem file bài tập'}
-                            </a>
-                          </div>
-                        )}
+                                {/* File bài tập */}
+                                {(() => {
+                                  const assignmentUrls =
+                                    item.assignmentUrls && item.assignmentUrls.length > 0
+                                      ? item.assignmentUrls
+                                      : item.assignmentUrl
+                                      ? splitFileUrls(item.assignmentUrl)
+                                      : []
 
-                        {/* Bài làm học sinh - Học sinh có thể upload */}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                          <div className="flex items-start sm:items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                            <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0 mt-0.5 sm:mt-0" />
-                            <span className="text-sm sm:text-base font-medium text-blue-600 whitespace-nowrap flex-shrink-0">Bài làm HS:</span>
-                            <div className="flex-1 min-w-0">
-                              {item.uploadedFileName || item.studentSolutionFileUrl ? (
-                                <a
-                                  href={item.studentSolutionFileUrl || '#'}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm sm:text-base text-blue-600 hover:underline break-all block"
-                                  title={item.studentSolutionFileUrl}
-                                >
-                                  {item.uploadedFileName || 'Bài làm học sinh'}
-                                </a>
-                              ) : (
-                                <span className="text-sm sm:text-base text-gray-400 block">Chưa có bài làm</span>
+                                  if (assignmentUrls.length === 0) return null
+
+                                  return (
+                                    <div className="flex items-start gap-2 sm:gap-3">
+                                      <Folder className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                                      <div className="flex-1 min-w-0">
+                                        <span className="text-xs sm:text-sm font-medium text-gray-500">
+                                          File Bài Tập:
+                                        </span>
+                                        <div className="mt-0.5 space-y-1">
+                                          {assignmentUrls.map((url, idx) => {
+                                            const rawName = url.split('/').pop() || url
+                                            const fileName = rawName.split('?')[0] || rawName
+                                            return (
+                                              <a
+                                                key={idx}
+                                                href={url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block text-sm sm:text-base text-blue-600 hover:underline break-all"
+                                                title={url}
+                                              >
+                                                {assignmentUrls.length > 1 ? `File ${idx + 1}` : fileName}
+                                              </a>
+                                            )
+                                          })}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
+
+                                {/* Lời giải */}
+                                {(() => {
+                                  const solutionUrls =
+                                    item.solutionUrls && item.solutionUrls.length > 0
+                                      ? item.solutionUrls
+                                      : item.solutionUrl
+                                      ? splitFileUrls(item.solutionUrl)
+                                      : []
+
+                                  if (solutionUrls.length === 0) return null
+
+                                  return (
+                                    <div
+                                      className={`flex items-start gap-2 sm:gap-3 ${
+                                        !item.assignmentUrl &&
+                                        (!item.assignmentUrls || item.assignmentUrls.length === 0)
+                                          ? 'sm:col-span-2'
+                                          : ''
+                                      }`}
+                                    >
+                                      <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                                      <div className="flex-1 min-w-0">
+                                        <span className="text-xs sm:text-sm font-medium text-gray-500">
+                                          Lời giải:
+                                        </span>
+                                        <div className="mt-0.5 space-y-1">
+                                          {solutionUrls.map((url, idx) => {
+                                            const rawName = url.split('/').pop() || url
+                                            const fileName = rawName.split('?')[0] || rawName
+                                            return (
+                                              <a
+                                                key={idx}
+                                                href={url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block text-sm sm:text-base text-blue-600 hover:underline break-all"
+                                                title={url}
+                                              >
+                                                {solutionUrls.length > 1
+                                                  ? `File lời giải ${idx + 1}`
+                                                  : fileName}
+                                              </a>
+                                            )
+                                          })}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
+                              </div>
+
+                              {/* Bài làm học sinh - Full width section */}
+                              <div className="pt-2 sm:pt-3 border-t border-gray-100">
+                                <div className="flex flex-col gap-2 sm:gap-3">
+                                  <div className="flex items-center gap-2 sm:gap-3">
+                                    <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
+                                    <span className="text-xs sm:text-sm font-medium text-gray-500">
+                                      Bài làm học sinh:
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 pl-6 sm:pl-8">
+                                    <div className="flex-1 min-w-0 space-y-2">
+                                      {(() => {
+                                        const urls =
+                                          (item as any).studentSolutionFileUrls ||
+                                          (item.studentSolutionFileUrl
+                                            ? splitFileUrls(item.studentSolutionFileUrl)
+                                            : [])
+
+                                        if (urls.length === 0) {
+                                          return (
+                                            <span className="text-sm sm:text-base text-gray-400 block">
+                                              Chưa có bài làm
+                                            </span>
+                                          )
+                                        }
+
+                                        return (
+                                          <>
+                                            {urls.map((url: string, idx: number) => {
+                                              const fileName =
+                                                url.split('/').pop() || 'Bài làm học sinh'
+                                              const key = `${item.id}-${idx}`
+                                              const isBusy = studentHomeworkUploading === key
+                                              return (
+                                                <div key={idx} className="flex items-center gap-2">
+                                                  <a
+                                                    href={url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-sm sm:text-base text-blue-600 hover:underline break-all flex-1 min-w-0"
+                                                    title={url}
+                                                  >
+                                                    {urls.length > 1
+                                                      ? `Bài làm ${idx + 1}`
+                                                      : fileName}
+                                                  </a>
+                                                  {/* Nút thay file */}
+                                                  <label
+                                                    className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
+                                                      isBusy ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-primary-50'
+                                                    }`}
+                                                    title={isBusy ? 'Đang cập nhật...' : 'Thay thế file'}
+                                                  >
+                                                    {isBusy ? (
+                                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                    ) : (
+                                                      <Upload className="w-3.5 h-3.5" />
+                                                    )}
+                                                    <input
+                                                      type="file"
+                                                      className="hidden"
+                                                      accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                      onChange={async (e) => {
+                                                        const file = e.target.files?.[0]
+                                                        if (!file) return
+                                                        const key = `${item.id}-${idx}`
+                                                        setStudentHomeworkUploading(key)
+                                                        try {
+                                                          await handleUploadHomeworkFile(
+                                                            item.id,
+                                                            file,
+                                                            idx,
+                                                          )
+                                                          setScheduleFetchTrigger((prev) => prev + 1)
+                                                        } catch (error) {
+                                                          console.error('Upload failed:', error)
+                                                          alert('Không thể upload file. Vui lòng thử lại.')
+                                                        } finally {
+                                                          setStudentHomeworkUploading(null)
+                                                          e.target.value = ''
+                                                        }
+                                                      }}
+                                                      disabled={isBusy}
+                                                    />
+                                                  </label>
+                                                  {/* Nút xoá file */}
+                                                  <button
+                                                    type="button"
+                                                    className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-red-300 text-red-600 flex-shrink-0 ${
+                                                      isBusy ? 'cursor-wait opacity-60' : 'hover:bg-red-50'
+                                                    }`}
+                                                    title={isBusy ? 'Đang xóa...' : 'Xóa file'}
+                                                    onClick={async () => {
+                                                      if (isBusy) return
+                                                      const key = `${item.id}-${idx}`
+                                                      setStudentHomeworkUploading(key)
+                                                      try {
+                                                        await handleDeleteHomeworkFile(item.id, idx)
+                                                        setScheduleFetchTrigger((prev) => prev + 1)
+                                                      } catch (error) {
+                                                        console.error('Delete homework file error:', error)
+                                                        alert('Không thể xóa file. Vui lòng thử lại.')
+                                                      } finally {
+                                                        setStudentHomeworkUploading(null)
+                                                      }
+                                                    }}
+                                                  >
+                                                    {isBusy ? (
+                                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                    ) : (
+                                                      '×'
+                                                    )}
+                                                  </button>
+                                                </div>
+                                              )
+                                            })}
+                                          </>
+                                        )
+                                      })()}
+                                    </div>
+                                  </div>
+                                  {/* Nút thêm file mới */}
+                                  <div className="pl-6 sm:pl-8">
+                                    <label
+                                      className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border border-dashed border-primary-300 text-primary-600 text-xs sm:text-sm font-semibold ${
+                                        studentHomeworkUploading === `${item.id}-new`
+                                          ? 'cursor-wait opacity-60'
+                                          : 'cursor-pointer hover:bg-primary-50'
+                                      }`}
+                                      title={
+                                        studentHomeworkUploading === `${item.id}-new`
+                                          ? 'Đang upload...'
+                                          : 'Thêm file mới'
+                                      }
+                                    >
+                                      {studentHomeworkUploading === `${item.id}-new` ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : (
+                                        <>
+                                          <Plus className="w-3.5 h-3.5" />
+                                          <span>Thêm file</span>
+                                        </>
+                                      )}
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                        onChange={async (e) => {
+                                          const file = e.target.files?.[0]
+                                          if (!file) return
+                                          setStudentHomeworkUploading(`${item.id}-new`)
+                                          try {
+                                            await handleUploadHomeworkFile(item.id, file)
+                                            setScheduleFetchTrigger((prev) => prev + 1)
+                                          } catch (error) {
+                                            console.error('Upload failed:', error)
+                                            alert('Không thể upload file. Vui lòng thử lại.')
+                                          } finally {
+                                            setStudentHomeworkUploading(null)
+                                            e.target.value = ''
+                                          }
+                                        }}
+                                        disabled={studentHomeworkUploading === `${item.id}-new`}
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Nhận xét */}
+                              {item.comment && (
+                                <>
+                                  <div className="border-t border-dashed border-gray-300 my-3 sm:my-4"></div>
+                                  <div className="flex items-start gap-2 sm:gap-3">
+                                    <div className="w-1 h-6 bg-yellow-400 flex-shrink-0 rounded mt-0.5"></div>
+                                    <div className="flex-1 min-w-0">
+                                      <span className="text-sm sm:text-base font-medium text-gray-700">
+                                        Nhận xét:
+                                      </span>
+                                      <span className="text-sm sm:text-base text-gray-900 ml-2 break-words block sm:inline">
+                                        {item.comment}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </>
                               )}
                             </div>
                           </div>
-                          {handleUploadHomeworkFile && (
-                            <label
-                              className={`inline-flex items-center justify-center gap-2 w-full sm:w-auto px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg border-2 border-primary-500 ${
-                                item.uploadedFileName || item.studentSolutionFileUrl
-                                  ? 'bg-primary-50 text-primary-700 hover:bg-primary-100'
-                                  : 'bg-primary-500 text-white hover:bg-primary-600 shadow-md'
-                              } font-semibold text-sm sm:text-base flex-shrink-0 transition-colors cursor-pointer`}
-                              title={item.uploadedFileName || item.studentSolutionFileUrl ? "Cập nhật bài làm" : "Upload bài làm"}
-                            >
-                              <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
-                              <span className="whitespace-nowrap">{item.uploadedFileName || item.studentSolutionFileUrl ? 'Cập nhật' : 'Upload bài làm'}</span>
-                              <input
-                                type="file"
-                                className="hidden"
-                                accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                onChange={async (e) => {
-                                  const file = e.target.files?.[0]
-                                  if (!file || !handleUploadHomeworkFile) return
-                                  try {
-                                    await handleUploadHomeworkFile(item.id, file)
-                                    setScheduleFetchTrigger((prev) => prev + 1)
-                                  } catch (error) {
-                                    console.error('Upload failed:', error)
-                                    alert('Không thể upload file. Vui lòng thử lại.')
-                                  } finally {
-                                    e.target.value = ''
-                                  }
-                                }}
-                              />
-                            </label>
-                          )}
-                        </div>
-
-                        {/* Lời giải */}
-                        {item.solutionUrl && (
-                          <div className="flex items-start sm:items-center gap-2 sm:gap-3">
-                            <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5 sm:mt-0" />
-                            <span className="text-sm sm:text-base font-medium text-blue-600 whitespace-nowrap flex-shrink-0">Lời giải:</span>
-                            <a
-                              href={item.solutionUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm sm:text-base text-blue-600 hover:underline flex-1 min-w-0 break-all"
-                              title={item.solutionUrl}
-                            >
-                              {item.solutionFileName || item.solutionUrl.split('/').pop() || 'Xem lời giải'}
-                            </a>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Separator */}
-                      {item.comment && (
-                        <div className="border-t border-dashed border-gray-300 my-4"></div>
-                      )}
-
-                      {/* Nhận xét */}
-                      {item.comment && (
-                        <div className="flex items-start gap-2 sm:gap-3 pt-2">
-                          <div className="w-1 h-6 bg-yellow-400 flex-shrink-0 rounded mt-0.5"></div>
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm sm:text-base font-medium text-gray-700">Nhận xét:</span>
-                            <span className="text-sm sm:text-base text-gray-900 ml-2 break-words block sm:inline">{item.comment}</span>
-                          </div>
-                        </div>
-                      )}
+                        )
+                      })}
                     </div>
                   </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
     )
   }
@@ -3413,9 +4009,6 @@ useEffect(() => {
         </div>
       )}
       {showReportPreview && previewReport && (
-        (() => {
-          const previewStats = getSubjectChecklistStats(previewReport.subject)
-          return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
@@ -3438,42 +4031,49 @@ useEffect(() => {
                 <p className="text-lg font-bold text-gray-900 mt-1">{previewReport.summary}</p>
               </div>
 
-              {previewStats && (
-                  <div className="border border-gray-200 rounded-2xl p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-sm font-bold text-gray-900 uppercase">Checklist hôm nay</p>
-                      <span className="text-xs font-semibold text-primary-600">
+              {previewReport && previewStats && (
+                <div className="border border-gray-200 rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-bold text-gray-900 uppercase">Checklist hôm nay</p>
+                    <span className="text-xs font-semibold text-primary-600">
                       {previewStats.completed}/{previewStats.total} ({previewStats.percentage}%)
-                      </span>
-                    </div>
-                    <div className="space-y-2">
+                    </span>
+                  </div>
+                  <div className="space-y-2">
                     {previewStats.items.length === 0 ? (
-                        <p className="text-sm text-gray-500">Không có nhiệm vụ nào cho môn này.</p>
-                      ) : (
+                      <p className="text-sm text-gray-500">Không có nhiệm vụ nào cho môn này.</p>
+                    ) : (
                       previewStats.items.map((item, index) => (
-                          <div key={item.id} className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-2 text-sm bg-white">
-                            <span className="font-medium text-gray-700">
-                              {index + 1}. {item.lesson}
-                            </span>
-                            <span
-                              className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                                item.status === 'done'
-                                  ? 'bg-green-100 text-green-700'
-                                  : item.status === 'in_progress'
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-2 text-sm bg-white"
+                        >
+                          <span className="font-medium text-gray-700">
+                            {index + 1}. {item.lesson}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                              item.status === 'done'
+                                ? 'bg-green-100 text-green-700'
+                                : item.status === 'in_progress'
                                   ? 'bg-yellow-100 text-yellow-700'
                                   : 'bg-gray-100 text-gray-600'
-                              }`}
-                            >
-                              {item.status === 'done' ? 'Hoàn thành' : item.status === 'in_progress' ? 'Đang làm' : 'Chưa xong'}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
+                            }`}
+                          >
+                            {item.status === 'done'
+                              ? 'Hoàn thành'
+                              : item.status === 'in_progress'
+                                ? 'Đang làm'
+                                : 'Chưa xong'}
+                          </span>
+                        </div>
+                      ))
+                    )}
                   </div>
+                </div>
               )}
 
-              {previewStats && (
+              {previewReport && previewStats && (
                 <div className="border border-gray-200 rounded-2xl p-4 space-y-3">
                   <p className="text-sm font-bold text-gray-900 uppercase">Chi tiết bài tập</p>
                   {previewStats.detailItems.length === 0 ? (
@@ -3493,29 +4093,68 @@ useEffect(() => {
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {previewStats.detailItems.map((item) => {
+                          {previewStats.detailItems.map((item: ChecklistDetailItem) => {
                             const badge = checklistResultConfig[item.result]
                             return (
                               <tr key={item.id}>
                                 <td className="px-3 py-2 font-semibold text-gray-900">{item.lesson}</td>
                                 <td className="px-3 py-2 text-gray-600">{item.estimatedTime} phút</td>
                                 <td className="px-3 py-2 text-gray-600">
-                                  {item.assignmentFileName ? (
-                                    <div className="flex items-center gap-1 text-blue-600">
-                                      <FileText className="w-3 h-3 flex-shrink-0" />
-                                      <span className="text-xs font-semibold truncate max-w-[100px]">{item.assignmentFileName}</span>
-                                      <Download className="w-3 h-3 cursor-pointer hover:text-blue-700 flex-shrink-0" />
-                                    </div>
-                                  ) : (
-                                    <span className="text-xs text-gray-400">—</span>
-                                  )}
+                                  {(() => {
+                                    const urls =
+                                      (item as any).assignmentUrls ||
+                                      ((item.assignmentUrl || (item as any).assignmentUrl)
+                                        ? Array.isArray(item.assignmentUrl || (item as any).assignmentUrl)
+                                          ? (item.assignmentUrl || (item as any).assignmentUrl).filter(
+                                              (url: string) => url && url.trim(),
+                                            )
+                                          : splitFileUrls(item.assignmentUrl || (item as any).assignmentUrl)
+                                        : [])
+                                    return urls.length > 0 ? (
+                                      <div className="flex flex-col gap-1">
+                                        {urls.map((url: string, idx: number) => (
+                                          <a
+                                            key={idx}
+                                            href={url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                                          >
+                                            <FileText className="w-3 h-3 flex-shrink-0" />
+                                            <span className="text-xs font-semibold truncate max-w-[100px]">
+                                              {urls.length > 1 ? `File ${idx + 1}` : 'Xem file'}
+                                            </span>
+                                            <Download className="w-3 h-3 cursor-pointer hover:text-blue-700 flex-shrink-0" />
+                                          </a>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <span className="text-xs text-gray-400">—</span>
+                                    )
+                                  })()}
                                 </td>
                                 <td className="px-3 py-2 text-gray-900 font-medium">{item.actualTime} phút</td>
                                 <td className="px-3 py-2 text-gray-600 space-y-1">
                                   {item.solutionText && <p className="text-xs text-gray-700">{item.solutionText}</p>}
-                                  {item.solutionFileName && (
-                                    <p className="text-xs font-semibold text-gray-700">{item.solutionFileName}</p>
-                                  )}
+                                  {(() => {
+                                    const urls = (item as any).solutionUrls || splitFileUrls(item.solutionUrl)
+                                    return urls.length > 0 ? (
+                                      <div className="flex flex-col gap-1">
+                                        {urls.map((url: string, idx: number) => (
+                                          <a
+                                            key={idx}
+                                            href={url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs font-semibold text-gray-700 hover:text-primary-600 hover:underline"
+                                            title={url}
+                                          >
+                                            {urls.length > 1 ? `File lời giải ${idx + 1}` : 'File lời giải'}
+                                          </a>
+                                        ))}
+                                      </div>
+                                    ) : null
+                                  })()}
                                 </td>
                                 <td className="px-3 py-2">
                                   <span className={`px-2 py-0.5 inline-flex text-xs font-semibold rounded-full ${badge.className}`}>
@@ -3593,8 +4232,6 @@ useEffect(() => {
             </div>
           </div>
         </div>
-          )
-        })()
       )}
     </Layout>
   )

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { format } from 'date-fns'
+import { format, isToday } from 'date-fns'
 import {
   UserCircle,
   Play,
@@ -23,19 +23,20 @@ import {
   Mail,
   Phone,
   FileText as FileTextIcon,
+  Plus,
+  X,
 } from 'lucide-react'
 import MaterialUploadSection from './MaterialUploadSection'
-import {
-  StudentSubjectReviewSection,
-  StudentSessionEvaluationSection,
-  StudentReportSection,
-  ChecklistDetailTable,
-} from './index'
+import StudentSubjectReviewSection from './StudentSubjectReviewSection'
+import StudentSessionEvaluationSection from './StudentSessionEvaluationSection'
+import StudentReportSection from './StudentReportSection'
+import ChecklistDetailTable from './ChecklistDetailTable'
 import type { ScheduleItem } from '../dashboard'
 import type { AssignmentApiItem } from '../../pages/TutorDashboard'
 import type { TutorInfo, ChecklistWithDate } from './types'
 import type { HomeworkDetailItem } from './HomeworkDetailTable'
 import type { ChecklistDetailItem } from './ChecklistDetailTable'
+import { splitFileUrls } from '../../utils/fileUrlHelper'
 
 // Helper hiển thị text nhiều dòng theo ký tự xuống dòng \n
 const renderMultilineText = (text: string) => {
@@ -69,11 +70,13 @@ interface HomeSectionProps {
   scheduleReports?: Record<string, { id: string; subjectCode: string; startTime: string; tutor: string; reportURL: string } | null>
   assignmentReviews?: Record<string, { reviewId?: string; taskId: string; result: number; comment: string }>
   assignmentReviewsLoading?: boolean
-  onUploadHomeworkFile?: (homeworkId: string, file: File) => Promise<void>
+  onUploadHomeworkFile?: (homeworkId: string, file: File, fileIndex?: number) => Promise<void>
+  onDeleteHomeworkFile?: (homeworkId: string, fileIndex: number) => Promise<void>
   uploadScheduleOptions?: ScheduleItem[]
   selectedUploadScheduleId?: string | null
   onUploadScheduleChange?: (scheduleId: string) => void
-  onUploadChecklistFile?: (taskId: string, file: File) => Promise<void>
+  onUploadChecklistFile?: (taskId: string, file: File, fileIndex?: number) => Promise<void>
+  onDeleteChecklistFile?: (taskId: string, fileIndex: number) => Promise<void>
 }
 
 type ScheduleSlotGroup = {
@@ -184,10 +187,12 @@ export default function HomeSection({
   assignmentReviews = {},
   assignmentReviewsLoading = false,
   onUploadHomeworkFile,
+  onDeleteHomeworkFile,
   uploadScheduleOptions = [],
   selectedUploadScheduleId = null,
   onUploadScheduleChange,
   onUploadChecklistFile,
+  onDeleteChecklistFile,
 }: HomeSectionProps) {
   const [selectedTutorSchedule, setSelectedTutorSchedule] = useState<string | null>(null)
   const [selectedScheduleSlotId, setSelectedScheduleSlotId] = useState<string | null>(null)
@@ -397,7 +402,11 @@ export default function HomeSection({
               solutionPreview: undefined,
               uploadedFileName: task.answerURL ? getFileNameFromUrl(task.answerURL) : undefined,
               uploadedFileUrl: task.answerURL || undefined,
-              assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
+              uploadedFileUrls: task.answerURL ? (Array.isArray(task.answerURL) ? task.answerURL : (typeof task.answerURL === 'string' ? task.answerURL.split('\n').filter((url: string) => url.trim()) : [])) : undefined,
+              assignmentFileName: getFileNameFromUrl(Array.isArray(task.assignmentUrl) ? task.assignmentUrl[0] : task.assignmentUrl),
+              assignmentUrl: Array.isArray(task.assignmentUrl) ? task.assignmentUrl.join('\n') : (task.assignmentUrl || undefined),
+              assignmentUrls: task.assignmentUrl ? (Array.isArray(task.assignmentUrl) ? task.assignmentUrl.filter((url: string) => url && url.trim()) : (typeof task.assignmentUrl === 'string' ? task.assignmentUrl.split('\n').filter((url: string) => url.trim()) : [])) : undefined,
+              solutionUrls: task.solutionUrl ? (Array.isArray(task.solutionUrl) ? task.solutionUrl.filter((url: string) => url && url.trim()) : (typeof task.solutionUrl === 'string' ? task.solutionUrl.split('\n').filter((url: string) => url.trim()) : [])) : undefined,
             })
           })
         } else {
@@ -428,27 +437,55 @@ export default function HomeSection({
 
     // Fallback: map từ checklistItems đã chuẩn hoá
     const items = scheduleChecklistMap[scheduleId] || []
-    return items.map((item) => ({
-      id: item.id,
-      lesson: item.lesson,
-      estimatedTime: 0,
-      actualTime: 0,
-      result:
-        item.status === 'done'
-          ? 'completed'
-          : item.status === 'in_progress'
-            ? 'not_accurate'
-            : 'not_completed',
-      qualityNote: item.note || '',
-      // Chỉ hiển thị file lời giải tutor upload, không hiển thị mô tả text
-      solutionType: item.solutionUrl ? 'file' : 'text',
-      solutionText: undefined,
-      solutionFileName: item.solutionUrl ? getFileNameFromUrl(item.solutionUrl) : undefined,
-      solutionUrl: item.solutionUrl,
-      solutionPreview: undefined,
-      uploadedFileName: undefined,
-      assignmentFileName: item.assignmentUrl ? getFileNameFromUrl(item.assignmentUrl) : undefined,
-    }))
+    return items.map((item) => {
+      const assignmentUrls = item.assignmentUrl
+        ? Array.isArray(item.assignmentUrl)
+          ? item.assignmentUrl.filter((url: string) => url && url.trim())
+          : splitFileUrls(item.assignmentUrl)
+        : []
+
+      const uploadedFileUrls = (item as any).answerURL
+        ? Array.isArray((item as any).answerURL)
+          ? (item as any).answerURL.filter((url: string) => url && url.trim())
+          : splitFileUrls((item as any).answerURL)
+        : []
+
+      const solutionUrls = item.solutionUrl
+        ? Array.isArray(item.solutionUrl)
+          ? item.solutionUrl.filter((url: string) => url && url.trim())
+          : splitFileUrls(item.solutionUrl)
+        : []
+
+      return {
+        id: item.id,
+        lesson: item.lesson,
+        estimatedTime: 0,
+        actualTime: 0,
+        result:
+          item.status === 'done'
+            ? 'completed'
+            : item.status === 'in_progress'
+              ? 'not_accurate'
+              : 'not_completed',
+        qualityNote: item.note || '',
+        // Chỉ hiển thị file lời giải tutor upload, không hiển thị mô tả text
+        solutionType: solutionUrls.length > 0 ? 'file' : 'text',
+        solutionText: undefined,
+        solutionFileName: solutionUrls.length > 0 ? getFileNameFromUrl(solutionUrls[0]) : undefined,
+        solutionUrl: solutionUrls.length > 0 ? solutionUrls.join('\n') : undefined,
+        solutionPreview: undefined,
+        uploadedFileName:
+          uploadedFileUrls.length > 0 ? getFileNameFromUrl(uploadedFileUrls[0]) : undefined,
+        uploadedFileUrl:
+          uploadedFileUrls.length > 0 ? uploadedFileUrls.join('\n') : undefined,
+        uploadedFileUrls: uploadedFileUrls.length > 0 ? uploadedFileUrls : undefined,
+        assignmentFileName:
+          assignmentUrls.length > 0 ? getFileNameFromUrl(assignmentUrls[0]) : undefined,
+        assignmentUrl:
+          assignmentUrls.length > 0 ? assignmentUrls.join('\n') : undefined,
+        assignmentUrls: assignmentUrls.length > 0 ? assignmentUrls : undefined,
+      }
+    })
   }
 
   // Group schedules by time into slots
@@ -1260,6 +1297,21 @@ export default function HomeSection({
                                               if (assignmentTasks.length > 0) {
                                                 assignmentTasks.forEach((task: any, taskIndex: number) => {
                                                   const taskId = task.id || `${assignmentId}-task-${taskIndex}`
+                                                  const assignmentUrls = task.assignmentUrl
+                                                    ? Array.isArray(task.assignmentUrl)
+                                                      ? task.assignmentUrl.filter((url: string) => url && url.trim())
+                                                      : splitFileUrls(task.assignmentUrl)
+                                                    : []
+                                                  const uploadedFileUrls = task.answerURL
+                                                    ? Array.isArray(task.answerURL)
+                                                      ? task.answerURL.filter((url: string) => url && url.trim())
+                                                      : splitFileUrls(task.answerURL)
+                                                    : []
+                                                  const solutionUrls = task.solutionUrl
+                                                    ? Array.isArray(task.solutionUrl)
+                                                      ? task.solutionUrl.filter((url: string) => url && url.trim())
+                                                      : splitFileUrls(task.solutionUrl)
+                                                    : []
                                                   detailItemsForAssignment.push({
                                                     id: taskId,
                                                     lesson: task.name || assignment.name || 'Bài học',
@@ -1267,18 +1319,27 @@ export default function HomeSection({
                                                     actualTime: task.actualTime ?? 0,
                                                     result: mapTaskStatusToResult(task.status as string | undefined),
                                                     qualityNote: (task as any).note || '',
-                                                    solutionType: task.solutionUrl ? 'file' : 'text',
+                                                    solutionType: solutionUrls.length > 0 ? 'file' : 'text',
                                                     solutionText: undefined,
-                                                    solutionFileName: getFileNameFromUrl(task.solutionUrl),
-                                                    solutionUrl: task.solutionUrl,
+                                                    solutionFileName: solutionUrls.length > 0 ? getFileNameFromUrl(solutionUrls[0]) : undefined,
+                                                    solutionUrl: solutionUrls.length > 0 ? solutionUrls.join('\n') : undefined,
+                                                    solutionUrls: solutionUrls.length > 0 ? solutionUrls : undefined,
                                                     solutionPreview: undefined,
-                                                    uploadedFileName: task.answerURL ? getFileNameFromUrl(task.answerURL) : undefined,
-                                                    uploadedFileUrl: task.answerURL || undefined,
-                                                    assignmentFileName: getFileNameFromUrl(task.assignmentUrl),
+                                                    uploadedFileName: uploadedFileUrls.length > 0 ? getFileNameFromUrl(uploadedFileUrls[0]) : undefined,
+                                                    uploadedFileUrl: uploadedFileUrls.length > 0 ? uploadedFileUrls.join('\n') : undefined,
+                                                    uploadedFileUrls: uploadedFileUrls.length > 0 ? uploadedFileUrls : undefined,
+                                                    assignmentFileName: assignmentUrls.length > 0 ? getFileNameFromUrl(assignmentUrls[0]) : undefined,
+                                                    assignmentUrl: assignmentUrls.length > 0 ? assignmentUrls.join('\n') : undefined,
+                                                    assignmentUrls: assignmentUrls.length > 0 ? assignmentUrls : undefined,
                                                   })
                                                 })
                                               } else {
                                                 // Không có task con
+                                                const assignmentUrls = assignment.supplementaryMaterials?.[0]?.url
+                                                  ? Array.isArray(assignment.supplementaryMaterials[0].url)
+                                                    ? assignment.supplementaryMaterials[0].url.filter((url: string) => url && url.trim())
+                                                    : splitFileUrls(assignment.supplementaryMaterials[0].url)
+                                                  : []
                                                 detailItemsForAssignment.push({
                                                   id: assignmentId,
                                                   lesson: assignment.name || 'Bài học',
@@ -1291,20 +1352,25 @@ export default function HomeSection({
                                                   solutionFileName: undefined,
                                                   solutionPreview: undefined,
                                                   uploadedFileName: undefined,
-                                                  assignmentFileName: getFileNameFromUrl(
-                                                    assignment.supplementaryMaterials?.[0]?.url as string | undefined
-                                                  ),
+                                                  assignmentFileName: assignmentUrls.length > 0 ? getFileNameFromUrl(assignmentUrls[0]) : undefined,
+                                                  assignmentUrl: assignmentUrls.length > 0 ? assignmentUrls.join('\n') : undefined,
+                                                  assignmentUrls: assignmentUrls.length > 0 ? assignmentUrls : undefined,
                                                 })
                                               }
                                               
                                               return (
                                 <ChecklistDetailTable
                                                   items={detailItemsForAssignment}
-                                  onUpload={onUploadChecklistFile ? (taskId, file) => {
-                                    onUploadChecklistFile(taskId, file).catch((error) => {
+                                  onUpload={onUploadChecklistFile ? (taskId, file, fileIndex) => {
+                                    onUploadChecklistFile(taskId, file, fileIndex).catch((error) => {
                                       console.error('Upload checklist file error:', error)
                                     })
                                   } : () => {}}
+                                  onDeleteFile={onDeleteChecklistFile ? (taskId, fileIndex) => {
+                                    onDeleteChecklistFile(taskId, fileIndex).catch((error) => {
+                                      console.error('Delete checklist file error:', error)
+                                    })
+                                  } : undefined}
                                 />
                                               )
                                             })()}
@@ -1369,11 +1435,16 @@ export default function HomeSection({
                                               items={mapChecklistToDetailItems(activeSchedule.id).filter(
                                                 (detailItem) => detailItem.id === item.id
                                               )}
-                                              onUpload={onUploadChecklistFile ? (taskId, file) => {
-                                                onUploadChecklistFile(taskId, file).catch((error) => {
+                                              onUpload={onUploadChecklistFile ? (taskId, file, fileIndex) => {
+                                                onUploadChecklistFile(taskId, file, fileIndex).catch((error) => {
                                                   console.error('Upload checklist file error:', error)
                                                 })
                                               } : () => {}}
+                                              onDeleteFile={onDeleteChecklistFile ? (taskId, fileIndex) => {
+                                                onDeleteChecklistFile(taskId, fileIndex).catch((error) => {
+                                                  console.error('Delete checklist file error:', error)
+                                                })
+                                              } : undefined}
                                 />
                               </div>
                             )}
@@ -1404,13 +1475,22 @@ export default function HomeSection({
                           </button>
                         </div>
                         {!isHomeworkCollapsed && (() => {
-                          // Lấy tất cả homework của hôm nay từ tất cả schedules
+                          // Lấy tất cả homework được tạo hôm nay (theo createdAt) từ tất cả schedules
                           const allTodayHomework: HomeworkDetailItem[] = []
                           Object.keys(homeworkDetailsMap).forEach((scheduleId) => {
                             const items = homeworkDetailsMap[scheduleId] || []
-                            allTodayHomework.push(...items)
+                            const todayItems = items.filter((item) => {
+                              if (!item.createdAt) return false
+                              try {
+                                const d = new Date(item.createdAt)
+                                return isToday(d)
+                              } catch {
+                                return false
+                              }
+                            })
+                            allTodayHomework.push(...todayItems)
                           })
-                          
+
                           if (allTodayHomework.length > 0) {
                             return (
                               <div className="space-y-4">
@@ -1480,42 +1560,88 @@ export default function HomeSection({
                                           </div>
 
                                           {/* File bài tập */}
-                                          {item.assignmentUrl && (
-                                            <div className="flex items-start gap-2 sm:gap-3">
-                                              <Folder className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
-                                              <div className="flex-1 min-w-0">
-                                                <span className="text-xs sm:text-sm font-medium text-gray-500">File Bài Tập:</span>
-                                                <a
-                                                  href={item.assignmentUrl}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="text-sm sm:text-base text-blue-600 hover:underline break-all block mt-0.5"
-                                                  title={item.assignmentUrl}
-                                                >
-                                                  {item.assignmentFileName || item.assignmentUrl.split('/').pop() || 'Xem file bài tập'}
-                                                </a>
+                                          {(() => {
+                                            const assignmentUrls =
+                                              item.assignmentUrls && item.assignmentUrls.length > 0
+                                                ? item.assignmentUrls
+                                                : item.assignmentUrl
+                                                  ? splitFileUrls(item.assignmentUrl)
+                                                  : []
+
+                                            if (assignmentUrls.length === 0) return null
+
+                                            return (
+                                              <div className="flex items-start gap-2 sm:gap-3">
+                                                <Folder className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                                                <div className="flex-1 min-w-0">
+                                                  <span className="text-xs sm:text-sm font-medium text-gray-500">File Bài Tập:</span>
+                                                  <div className="mt-0.5 space-y-1">
+                                                    {assignmentUrls.map((url, idx) => {
+                                                      const rawName = url.split('/').pop() || url
+                                                      const fileName = rawName.split('?')[0] || rawName
+                                                      return (
+                                                        <a
+                                                          key={idx}
+                                                          href={url}
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          className="block text-sm sm:text-base text-blue-600 hover:underline break-all"
+                                                          title={url}
+                                                        >
+                                                          {assignmentUrls.length > 1 ? `File ${idx + 1}` : fileName}
+                                                        </a>
+                                                      )
+                                                    })}
+                                                  </div>
+                                                </div>
                                               </div>
-                              </div>
-                            )}
+                                            )
+                                          })()}
 
                                           {/* Lời giải */}
-                                          {item.solutionUrl && (
-                                            <div className={`flex items-start gap-2 sm:gap-3 ${!item.assignmentUrl ? 'sm:col-span-2' : ''}`}>
-                                              <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
-                                              <div className="flex-1 min-w-0">
-                                                <span className="text-xs sm:text-sm font-medium text-gray-500">Lời giải:</span>
-                                                <a
-                                                  href={item.solutionUrl}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="text-sm sm:text-base text-blue-600 hover:underline break-all block mt-0.5"
-                                                  title={item.solutionUrl}
-                                                >
-                                                  {item.solutionFileName || item.solutionUrl.split('/').pop() || 'Xem lời giải'}
-                                                </a>
+                                          {(() => {
+                                            const solutionUrls =
+                                              item.solutionUrls && item.solutionUrls.length > 0
+                                                ? item.solutionUrls
+                                                : item.solutionUrl
+                                                  ? splitFileUrls(item.solutionUrl)
+                                                  : []
+
+                                            if (solutionUrls.length === 0) return null
+
+                                            return (
+                                              <div
+                                                className={`flex items-start gap-2 sm:gap-3 ${
+                                                  !item.assignmentUrl && (!item.assignmentUrls || item.assignmentUrls.length === 0)
+                                                    ? 'sm:col-span-2'
+                                                    : ''
+                                                }`}
+                                              >
+                                                <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                                                <div className="flex-1 min-w-0">
+                                                  <span className="text-xs sm:text-sm font-medium text-gray-500">Lời giải:</span>
+                                                  <div className="mt-0.5 space-y-1">
+                                                    {solutionUrls.map((url, idx) => {
+                                                      const rawName = url.split('/').pop() || url
+                                                      const fileName = rawName.split('?')[0] || rawName
+                                                      return (
+                                                        <a
+                                                          key={idx}
+                                                          href={url}
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          className="block text-sm sm:text-base text-blue-600 hover:underline break-all"
+                                                          title={url}
+                                                        >
+                                                          {solutionUrls.length > 1 ? `File lời giải ${idx + 1}` : fileName}
+                                                        </a>
+                                                      )
+                                                    })}
+                                                  </div>
+                                                </div>
                                               </div>
-                                            </div>
-                                          )}
+                                            )
+                                          })()}
                                         </div>
 
                                         {/* Bài làm học sinh - Full width section */}
@@ -1523,73 +1649,166 @@ export default function HomeSection({
                                           <div className="flex flex-col gap-2 sm:gap-3">
                                             <div className="flex items-center gap-2 sm:gap-3">
                                               <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
-                                              <span className="text-xs sm:text-sm font-medium text-gray-500">Bài làm HS:</span>
+                                              <span className="text-xs sm:text-sm font-medium text-gray-500">Bài làm học sinh:</span>
                                             </div>
                                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 pl-6 sm:pl-8">
-                                              {item.uploadedFileName || item.studentSolutionFileUrl ? (
-                                                <a
-                                                  href={item.studentSolutionFileUrl || '#'}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="text-sm sm:text-base text-blue-600 hover:underline break-all flex-1 min-w-0"
-                                                  title={item.studentSolutionFileUrl}
-                                                >
-                                                  {item.uploadedFileName || 'Bài làm học sinh'}
-                                                </a>
-                                              ) : (
-                                                <span className="text-sm sm:text-base text-gray-400 flex-1">Chưa có bài làm</span>
-                                              )}
-                                              {/* Nút upload */}
-                                              <label
-                                                className={`inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg border-2 border-primary-500 ${
-                                                  item.uploadedFileName || item.studentSolutionFileUrl
-                                                    ? 'bg-primary-50 text-primary-700 hover:bg-primary-100'
-                                                    : 'bg-primary-500 text-white hover:bg-primary-600 shadow-md'
-                                                } font-semibold text-sm sm:text-base transition-colors ${
-                                                  homeworkUploading === item.id
-                                                    ? 'cursor-wait opacity-60'
-                                                    : 'cursor-pointer'
-                                                }`}
-                                                title={item.uploadedFileName || item.studentSolutionFileUrl ? "Cập nhật bài làm" : "Upload bài làm"}
-                                              >
-                                                {homeworkUploading === item.id ? (
-                                                  <>
-                                                    <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
-                                                    <span>Đang tải...</span>
-                          </>
-                        ) : (
-                                                  <>
-                                                    <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
-                                                    <span className="whitespace-nowrap">{item.uploadedFileName || item.studentSolutionFileUrl ? 'Cập nhật' : 'Upload bài làm'}</span>
-                                                  </>
-                                                )}
-                                                <input
-                                                  type="file"
-                                                  className="hidden"
-                                                  accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                                  onChange={async (e) => {
-                                                    const file = e.target.files?.[0]
-                                                    if (!file) return
-                                                    if (!onUploadHomeworkFile) {
-                                                      alert('Chức năng upload chưa sẵn sàng. Vui lòng thử lại sau.')
-                                                      e.target.value = ''
-                                                      return
-                                                    }
-                                                    setHomeworkUploading(item.id)
-                                                    try {
-                                                      await onUploadHomeworkFile(item.id, file)
-                                                      onUploadSuccess()
-                                                    } catch (error) {
-                                                      console.error('Upload failed:', error)
-                                                      alert('Không thể upload file. Vui lòng thử lại.')
-                                                    } finally {
-                                                      setHomeworkUploading(null)
-                                                      e.target.value = ''
-                                                    }
-                                                  }}
-                                                  disabled={homeworkUploading === item.id}
-                                                />
-                                              </label>
+                                              <div className="flex-1 min-w-0 space-y-2">
+                                                {(() => {
+                                                  const urls =
+                                                    (item as any).studentSolutionFileUrls ||
+                                                    (item.studentSolutionFileUrl ? splitFileUrls(item.studentSolutionFileUrl) : [])
+
+                                                  if (urls.length === 0) {
+                                                    return (
+                                                      <span className="text-sm sm:text-base text-gray-400 block">
+                                                        Chưa có bài làm
+                                                      </span>
+                                                    )
+                                                  }
+
+                                                  return (
+                                                    <>
+                                                      {urls.map((url: string, idx: number) => {
+                                                        const fileName = url.split('/').pop() || 'Bài làm học sinh'
+                                                        return (
+                                                          <div key={idx} className="flex items-center gap-2">
+                                                            <a
+                                                              href={url}
+                                                              target="_blank"
+                                                              rel="noopener noreferrer"
+                                                              className="text-sm sm:text-base text-blue-600 hover:underline break-all flex-1 min-w-0"
+                                                              title={url}
+                                                            >
+                                                              {urls.length > 1 ? `Bài làm ${idx + 1}` : fileName}
+                                                            </a>
+                                                            {onUploadHomeworkFile && onDeleteHomeworkFile && (
+                                                              <>
+                                                                <label
+                                                                  className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 cursor-pointer hover:bg-primary-50"
+                                                                  title="Thay thế file"
+                                                                >
+                                                                  <Upload className="w-3.5 h-3.5" />
+                                                                  <input
+                                                                    type="file"
+                                                                    className="hidden"
+                                                                    accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                                    onChange={async (e) => {
+                                                                      const file = e.target.files?.[0]
+                                                                      if (!file || !onUploadHomeworkFile) return
+                                                                      try {
+                                                                        await onUploadHomeworkFile(item.id, file, idx)
+                                                                        onUploadSuccess()
+                                                                      } catch (error) {
+                                                                        console.error('Upload failed:', error)
+                                                                        alert('Không thể upload file. Vui lòng thử lại.')
+                                                                      } finally {
+                                                                        e.target.value = ''
+                                                                      }
+                                                                    }}
+                                                                  />
+                                                                </label>
+                                                                <button
+                                                                  type="button"
+                                                                  className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-red-300 text-red-600 flex-shrink-0 hover:bg-red-50"
+                                                                  title="Xóa file"
+                                                                  onClick={async () => {
+                                                                    try {
+                                                                      await onDeleteHomeworkFile(item.id, idx)
+                                                                      onUploadSuccess()
+                                                                    } catch (error) {
+                                                                      console.error('Delete homework file error:', error)
+                                                                      alert('Không thể xóa file. Vui lòng thử lại.')
+                                                                    }
+                                                                  }}
+                                                                >
+                                                                  <X className="w-3.5 h-3.5" />
+                                                                </button>
+                                                              </>
+                                                            )}
+                                                          </div>
+                                                        )
+                                                      })}
+                                                      {onUploadHomeworkFile && (
+                                                        <label
+                                                          className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-primary-300 text-primary-600 text-xs cursor-pointer hover:bg-primary-50"
+                                                          title="Thêm file mới"
+                                                        >
+                                                          <Plus className="w-3 h-3" />
+                                                          <span>Thêm file</span>
+                                                          <input
+                                                            type="file"
+                                                            className="hidden"
+                                                            accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                            onChange={async (e) => {
+                                                              const file = e.target.files?.[0]
+                                                              if (!file || !onUploadHomeworkFile) return
+                                                              try {
+                                                                await onUploadHomeworkFile(item.id, file)
+                                                                onUploadSuccess()
+                                                              } catch (error) {
+                                                                console.error('Upload failed:', error)
+                                                                alert('Không thể upload file. Vui lòng thử lại.')
+                                                              } finally {
+                                                                e.target.value = ''
+                                                              }
+                                                            }}
+                                                          />
+                                                        </label>
+                                                      )}
+                                                    </>
+                                                  )
+                                                })()}
+                                              </div>
+                                              {/* Nếu chưa có file nào thì hiển thị nút upload lớn bên phải */}
+                                              {(() => {
+                                                const hasFiles =
+                                                  (item as any).studentSolutionFileUrls?.length ||
+                                                  (item.studentSolutionFileUrl ? splitFileUrls(item.studentSolutionFileUrl).length : 0)
+
+                                                if (hasFiles || !onUploadHomeworkFile) return null
+
+                                                return (
+                                                  <label
+                                                    className={`inline-flex items-center justify-center gap-2 w-full sm:w-auto px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg border-2 border-primary-500 bg-primary-500 text-white hover:bg-primary-600 shadow-md font-semibold text-sm sm:text-base flex-shrink-0 transition-colors ${
+                                                      homeworkUploading === item.id ? 'cursor-wait opacity-60' : 'cursor-pointer'
+                                                    }`}
+                                                    title="Upload bài làm"
+                                                  >
+                                                    {homeworkUploading === item.id ? (
+                                                      <>
+                                                        <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+                                                        <span>Đang tải...</span>
+                                                      </>
+                                                    ) : (
+                                                      <>
+                                                        <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                        <span className="whitespace-nowrap">Upload bài làm</span>
+                                                      </>
+                                                    )}
+                                                    <input
+                                                      type="file"
+                                                      className="hidden"
+                                                      accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                      onChange={async (e) => {
+                                                        const file = e.target.files?.[0]
+                                                        if (!file || !onUploadHomeworkFile) return
+                                                        setHomeworkUploading(item.id)
+                                                        try {
+                                                          await onUploadHomeworkFile(item.id, file)
+                                                          onUploadSuccess()
+                                                        } catch (error) {
+                                                          console.error('Upload failed:', error)
+                                                          alert('Không thể upload file. Vui lòng thử lại.')
+                                                        } finally {
+                                                          setHomeworkUploading(null)
+                                                          e.target.value = ''
+                                                        }
+                                                      }}
+                                                      disabled={homeworkUploading === item.id}
+                                                    />
+                                                  </label>
+                                                )
+                                              })()}
                                             </div>
                                           </div>
                                         </div>
@@ -1615,46 +1834,17 @@ export default function HomeSection({
                             )
                           }
                           
-                          // Khi chưa có bài tập, hiển thị khung upload
+                          // Khi chưa có bài tập, chỉ hiển thị thông báo
                           return (
                             <div className="border-l-4 border-primary-500 bg-white rounded-lg shadow-sm overflow-hidden p-6">
                               <div className="flex flex-col items-center justify-center py-8">
                                 <FileText className="w-16 h-16 text-gray-300 mb-4" />
-                                <p className="text-base font-semibold text-gray-600 mb-4">Chưa có bài tập nào hôm nay</p>
-                                <label
-                                  className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border-2 border-primary-500 bg-primary-500 text-white font-semibold text-base hover:bg-primary-600 transition-colors cursor-pointer shadow-md"
-                                  title="Upload bài làm"
-                                >
-                                  <Upload className="w-5 h-5" />
-                                  <span>Upload bài làm</span>
-                                  <input
-                                    type="file"
-                                    className="hidden"
-                                    accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                    onChange={async (e) => {
-                                      const file = e.target.files?.[0]
-                                      if (!file) return
-                                      if (!onUploadHomeworkFile) {
-                                        alert('Chức năng upload chưa sẵn sàng. Vui lòng thử lại sau.')
-                                        e.target.value = ''
-                                        return
-                                      }
-                                      const tempId = `temp-${Date.now()}`
-                                      setHomeworkUploading(tempId)
-                                      try {
-                                        await onUploadHomeworkFile(tempId, file)
-                                        onUploadSuccess()
-                                      } catch (error) {
-                                        console.error('Upload failed:', error)
-                                        alert('Không thể upload file. Vui lòng thử lại.')
-                                      } finally {
-                                        setHomeworkUploading(null)
-                                        e.target.value = ''
-                                      }
-                                    }}
-                                    disabled={!!homeworkUploading}
-                                  />
-                                </label>
+                                <p className="text-base font-semibold text-gray-600 mb-2">
+                                  Chưa có bài tập nào hôm nay
+                                </p>
+                                <p className="text-sm text-gray-400">
+                                  Giáo viên giao bài tập thì khu vực này sẽ hiển thị chi tiết để bạn nộp bài.
+                                </p>
                               </div>
                             </div>
                           )

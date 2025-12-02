@@ -57,6 +57,17 @@ const CopyLinkButton = ({ link }: { link: string }) => {
   )
 }
 
+// Helper hiển thị text nhiều dòng theo ký tự xuống dòng \n
+const renderMultilineText = (text: string) => {
+  const lines = text.split('\n')
+  return lines.map((line, index) => (
+    <span key={index}>
+      {line}
+      {index < lines.length - 1 && <br />}
+    </span>
+  ))
+}
+
 export default function MonthlyCalendar({ schedules, onJoinClass, tutorInfoMap = {} }: MonthlyCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date())
@@ -448,7 +459,9 @@ export default function MonthlyCalendar({ schedules, onJoinClass, tutorInfoMap =
                       {/* Kinh nghiệm */}
                       <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">KINH NGHIỆM</p>
-                        <p className="text-sm sm:text-base font-semibold text-gray-900 break-words">{tutorProfile.experience || 'Chưa cập nhật'}</p>
+                        <p className="text-sm sm:text-base font-semibold text-gray-900 break-words">
+                          {renderMultilineText(tutorProfile.experience || 'Chưa cập nhật')}
+                        </p>
                       </div>
                       
                       {/* Liên hệ */}
@@ -552,7 +565,9 @@ export default function MonthlyCalendar({ schedules, onJoinClass, tutorInfoMap =
                       <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">GIỚI THIỆU</p>
                         <p className="text-sm sm:text-base text-gray-700 leading-relaxed">
-                          {tutorProfile.bio || tutorProfile.moreInfo || 'Thông tin đang được bổ sung.'}
+                          {renderMultilineText(
+                            tutorProfile.bio || tutorProfile.moreInfo || 'Thông tin đang được bổ sung.',
+                          )}
                         </p>
                       </div>
                     </div>

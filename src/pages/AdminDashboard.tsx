@@ -2298,7 +2298,7 @@ useEffect(() => {
                     placeholder="Nhập trình độ hiện tại"
                   />
                 ) : (
-                  <p className="text-sm text-gray-700 leading-relaxed">{selectedStudent.currentLevel}</p>
+                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{selectedStudent.currentLevel}</p>
                 )}
               </div>
               <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-inner">
@@ -2385,7 +2385,7 @@ useEffect(() => {
                             <p className="text-xs text-gray-600">{selectedStudent.parentInfo[parent.emailKey]}</p>
                           )}
                           {selectedStudent.parentInfo[parent.requestKey] && (
-                            <p className="text-xs italic text-gray-500">{selectedStudent.parentInfo[parent.requestKey]}</p>
+                            <p className="text-xs italic text-gray-500 whitespace-pre-line">{selectedStudent.parentInfo[parent.requestKey]}</p>
                           )}
                         </div>
                       )}
@@ -2443,7 +2443,16 @@ useEffect(() => {
 
             <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-inner">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">Ghi chú tổng quan</p>
-              <p className="text-sm text-gray-700 leading-relaxed">{selectedStudent.notes || 'Chưa có ghi chú'}</p>
+              {isStudentEditing ? (
+                <textarea
+                  className="w-full px-4 py-3 text-sm min-h-[120px] bg-white border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-500 transition-all resize-y"
+                  value={studentEditData?.notes ?? ''}
+                  onChange={(e) => handleStudentEditFieldChange('notes', e.target.value)}
+                  placeholder="Nhập ghi chú tổng quan"
+                />
+              ) : (
+                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{selectedStudent.notes || 'Chưa có ghi chú'}</p>
+              )}
               </div>
             </div>
             </>
@@ -2718,7 +2727,7 @@ useEffect(() => {
                       onChange={(e) => handleTutorFieldChange('experience', e.target.value)} 
                     />
                   ) : (
-                    <p className="text-sm font-semibold text-gray-900 leading-relaxed mt-2">{selectedTutor.experience}</p>
+                    <p className="text-sm font-semibold text-gray-900 leading-relaxed mt-2 whitespace-pre-line">{selectedTutor.experience}</p>
                   )}
                 </div>
                 <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
@@ -2877,7 +2886,7 @@ useEffect(() => {
                     onChange={(e) => handleTutorFieldChange('bio', e.target.value)} 
                   />
                 ) : (
-                  <p className="text-sm text-gray-700 leading-relaxed mt-2">{selectedTutor.bio}</p>
+                  <p className="text-sm text-gray-700 leading-relaxed mt-2 whitespace-pre-line">{selectedTutor.bio}</p>
                 )}
               </div>
             </div>

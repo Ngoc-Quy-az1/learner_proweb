@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Layout } from '../components/common'
 import { TutorSidebar, ChecklistItem, MonthlyCalendar, ScheduleItem } from '../components/dashboard'
-import { Users, Calendar, Plus, Clock, UserCircle, Copy, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Upload, Search, Loader2, Layers, Folder, Lightbulb, PenTool } from 'lucide-react'
+import { Users, Calendar, Plus, Clock, UserCircle, Copy, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Upload, Search, Loader2, Layers, Folder, Lightbulb, PenTool, Mail, Phone, School, GraduationCap, MapPin, Edit2, X } from 'lucide-react'
 import { format, isToday, differenceInYears } from 'date-fns'
 import { useAuth } from '../contexts/AuthContext'
 import { apiCall, API_BASE_URL } from '../config/api'
@@ -21,6 +21,7 @@ import {
 import { TutorDashboardContext } from '../contexts/TutorDashboardContext'
 import type { TutorInfo } from '../components/student/types'
 import { getCookie } from '../utils/cookies'
+import { appendFileUrls, splitFileUrls, joinFileUrls } from '../utils/fileUrlHelper'
 interface TutorSchedule {
   id: string
   studentId: string
@@ -377,6 +378,18 @@ interface DashboardStudent extends StudentInfo {
 }
 
 
+// Helper function to parse URLs from string or array
+const parseFileUrls = (urls: string | string[] | undefined | null): string[] => {
+  if (!urls) return []
+  if (Array.isArray(urls)) {
+    return urls.filter((url: string) => url && url.trim() !== '').map((url: string) => String(url).trim()).filter(Boolean)
+  }
+  if (typeof urls === 'string') {
+    return splitFileUrls(urls)
+  }
+  return []
+}
+
 export default function TutorDashboard() {
   const { user } = useAuth()
   const [tutorProfile, setTutorProfile] = useState<TutorInfo | null>(null)
@@ -441,6 +454,7 @@ export default function TutorDashboard() {
   const [copiedScheduleLink, setCopiedScheduleLink] = useState<string | null>(null)
   const [selectedScheduleSlotId, setSelectedScheduleSlotId] = useState<string | null>(null)
   const [quickViewStudentId, setQuickViewStudentId] = useState<string | null>(null)
+  const [selectedStudentSchedule, setSelectedStudentSchedule] = useState<string | null>(null)
   const [expandedQuickViewAssignmentId, setExpandedQuickViewAssignmentId] = useState<string | null>(null)
   const [editingQuickViewAssignmentId, setEditingQuickViewAssignmentId] = useState<string | null>(null)
   const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, AssignmentTaskApiItem[]>>({})
@@ -510,6 +524,7 @@ export default function TutorDashboard() {
       name?: string
     }>
   }>({})
+  const [homeworkFormUploadErrors, setHomeworkFormUploadErrors] = useState<Record<number, string | null>>({})
   const deadlineInputRef = useRef<HTMLInputElement>(null)
 
   // Ẩn native calendar picker indicator
@@ -643,6 +658,7 @@ const [assignmentReviewsLoading, setAssignmentReviewsLoading] = useState(false)
   const [assignments, setAssignments] = useState<AssignmentApiItem[]>([])
   const [assignmentsLoading, setAssignmentsLoading] = useState(false)
   const [assignmentsError, setAssignmentsError] = useState<string | null>(null)
+  const FILE_SIZE_ERROR_MESSAGE = 'File không được vượt quá 15MB'
   const [assignmentFetchTrigger, setAssignmentFetchTrigger] = useState(0)
 
   const students = useMemo<DashboardStudent[]>(() => {
@@ -1802,6 +1818,21 @@ const quickViewData = useMemo(() => {
 
       // Chuẩn bị payload theo API schema
       const homeworkStatus = homeworkItem.result ? mapResultToHomeworkStatus(homeworkItem.result) : 'undone'
+
+      // Chuẩn hoá assignmentUrl & solutionUrl thành mảng theo yêu cầu API
+      const rawAssignment = (homeworkItem as any).assignmentUrl
+      const rawSolution = (homeworkItem as any).tutorSolution
+
+      const assignmentUrls: string[] =
+        Array.isArray(rawAssignment)
+          ? (rawAssignment as string[]).filter((u) => u && u.trim() !== '')
+          : splitFileUrls(typeof rawAssignment === 'string' ? rawAssignment : '')
+
+      const solutionUrls: string[] =
+        Array.isArray(rawSolution)
+          ? (rawSolution as string[]).filter((u) => u && u.trim() !== '')
+          : splitFileUrls(typeof rawSolution === 'string' ? rawSolution : '')
+
       const payload: any = {
         name: homeworkItem.task || undefined,
         description: homeworkItem.note || undefined,
@@ -1811,8 +1842,9 @@ const quickViewData = useMemo(() => {
         status: homeworkStatus, // Homework status: 'in-progress', 'completed', 'undone'
         tasks: [{
           name: homeworkItem.task || undefined,
-          assignmentUrl: homeworkItem.assignmentUrl || undefined,
-          solutionUrl: homeworkItem.tutorSolution || undefined,
+          // API yêu cầu các field URL là mảng
+          assignmentUrl: assignmentUrls.length > 0 ? assignmentUrls : undefined,
+          solutionUrl: solutionUrls.length > 0 ? solutionUrls : undefined,
           answerURL: homeworkItem.studentSolutionFile || undefined,
           status: homeworkItem.result ? mapResultToTaskStatus(homeworkItem.result) : 'undone',
           description: homeworkItem.note || undefined
@@ -1958,13 +1990,27 @@ const quickViewData = useMemo(() => {
         subject: homeworkFormSubject,
         tasks: homeworkFormData.tasks
           .filter(task => task.name.trim()) // Chỉ lấy các task có tên
-          .map(task => ({
-            name: task.name,
-            assignmentUrl: task.assignmentUrl || undefined,
-            solutionUrl: task.solutionUrl || undefined,
-            status: 'undone', // Mặc định undone khi mới tạo
-            description: task.description || undefined
-          })) 
+          .map(task => {
+            const rawAssignment = (task as any).assignmentUrl
+            const rawSolution = (task as any).solutionUrl
+
+            const assignmentUrls: string[] = Array.isArray(rawAssignment)
+              ? (rawAssignment as string[]).filter(u => u && u.trim() !== '')
+              : splitFileUrls(typeof rawAssignment === 'string' ? rawAssignment : '')
+
+            const solutionUrls: string[] = Array.isArray(rawSolution)
+              ? (rawSolution as string[]).filter(u => u && u.trim() !== '')
+              : splitFileUrls(typeof rawSolution === 'string' ? rawSolution : '')
+
+            return {
+              name: task.name,
+              // Gửi dạng mảng như bạn mong muốn
+              assignmentUrl: assignmentUrls.length > 0 ? assignmentUrls : undefined,
+              solutionUrl: solutionUrls.length > 0 ? solutionUrls : undefined,
+              status: 'undone', // Mặc định undone khi mới tạo
+              description: task.description || undefined
+            }
+          }) 
       }
 
       const response = await apiCall<{ id: string }>('/homeworks', {
@@ -2126,7 +2172,8 @@ const quickViewData = useMemo(() => {
       // Refresh danh sách homework
       setAssignmentFetchTrigger((prev) => prev + 1)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể tạo bài tập về nhà. Vui lòng thử lại.'
+      const rawMessage = error instanceof Error ? error.message : 'Không thể tạo bài tập về nhà. Vui lòng thử lại.'
+      const message = rawMessage === 'Failed to fetch' ? FILE_SIZE_ERROR_MESSAGE : rawMessage
       setAssignmentsError(message)
     } finally {
       setSubmittingHomework(false)
@@ -2175,14 +2222,73 @@ const quickViewData = useMemo(() => {
     }))
   }
 
+  // Helpers quản lý danh sách URL file cho từng task trong form bài tập về nhà
+  const getHomeworkTaskFileUrls = (taskIndex: number, field: 'assignmentUrl' | 'solutionUrl'): string[] => {
+    const task = homeworkFormData.tasks[taskIndex]
+    if (!task) return []
+    const rawValue = (task as any)[field]
+
+    // Hỗ trợ cả 2 dạng:
+    // - string: nhiều URL nối bằng \n (định dạng cũ)
+    // - string[]: mảng URL (định dạng mới)
+    if (Array.isArray(rawValue)) {
+      return rawValue as string[]
+    }
+    if (typeof rawValue === 'string') {
+      return splitFileUrls(rawValue)
+    }
+    return []
+  }
+
+  const updateHomeworkTaskFileUrl = (
+    taskIndex: number,
+    field: 'assignmentUrl' | 'solutionUrl',
+    urlIndex: number,
+    value: string
+  ) => {
+    const urls = [...getHomeworkTaskFileUrls(taskIndex, field)]
+    urls[urlIndex] = value
+    handleHomeworkTaskChange(taskIndex, field, urls as any)
+  }
+
+  const addHomeworkTaskFileUrl = (taskIndex: number, field: 'assignmentUrl' | 'solutionUrl') => {
+    const urls = [...getHomeworkTaskFileUrls(taskIndex, field)]
+    // Thêm một slot trống để user có thể dán link hoặc upload từ thiết bị
+    urls.push('')
+    handleHomeworkTaskChange(taskIndex, field, urls as any)
+  }
+
+  const removeHomeworkTaskFileUrl = (
+    taskIndex: number,
+    field: 'assignmentUrl' | 'solutionUrl',
+    urlIndex: number
+  ) => {
+    const urls = getHomeworkTaskFileUrls(taskIndex, field)
+    const nextUrls = urls.filter((_, idx) => idx !== urlIndex)
+    handleHomeworkTaskChange(taskIndex, field, nextUrls as any)
+  }
+
   // Hàm upload file cho homework task
   const handleHomeworkTaskFileUpload = async (
     taskIndex: number,
     field: 'assignmentUrl' | 'solutionUrl',
-    files: FileList | null
+    files: FileList | null,
+    fileIndex?: number
   ) => {
     if (!files || files.length === 0) return
     const file = files[0]
+    const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
+    
+    // Kiểm tra kích thước file
+    if (file.size > MAX_FILE_SIZE) {
+      // Hiển thị lỗi ngay dưới trường "File bài tập" trong form tạo bài tập
+      setHomeworkFormUploadErrors(prev => ({
+        ...prev,
+        [taskIndex]: 'File không được vượt quá 15MB',
+      }))
+      return
+    }
+    
     const uploadKey = `homework-task-${taskIndex}-${field}`
     setTaskFileUploadingKey(uploadKey)
     try {
@@ -2208,10 +2314,26 @@ const quickViewData = useMemo(() => {
       if (!fileUrl) {
         throw new Error('Không nhận được link file sau khi tải lên.')
       }
-      handleHomeworkTaskChange(taskIndex, field, fileUrl)
+
+      // Nếu có fileIndex -> thay thế URL ở vị trí đó, nếu không thì thêm mới
+      const currentUrls = [...getHomeworkTaskFileUrls(taskIndex, field)]
+      if (typeof fileIndex === 'number' && fileIndex >= 0 && fileIndex < currentUrls.length) {
+        currentUrls[fileIndex] = fileUrl
+      } else {
+        currentUrls.push(fileUrl)
+      }
+      // Khi đã có URL thật, loại bỏ các dòng rỗng để tránh gửi dữ liệu thừa
+      const cleanedUrls = currentUrls.filter((u) => u && u.trim() !== '')
+      handleHomeworkTaskChange(taskIndex, field, cleanedUrls as any)
+      // Xóa lỗi upload (nếu trước đó có)
+      setHomeworkFormUploadErrors(prev => {
+        const next = { ...prev }
+        delete next[taskIndex]
+        return next
+      })
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Không thể tải file. Vui lòng thử lại.'
+      const rawMessage = error instanceof Error ? error.message : 'Không thể tải file. Vui lòng thử lại.'
+      const message = rawMessage === 'Failed to fetch' ? FILE_SIZE_ERROR_MESSAGE : rawMessage
       setAssignmentsError(message)
     } finally {
       setTaskFileUploadingKey(null)
@@ -2244,17 +2366,30 @@ const quickViewData = useMemo(() => {
   const handleHomeworkFileUpload = async (
     homeworkId: string,
     field: 'assignmentUrl' | 'tutorSolution' | 'studentSolutionFile',
-    files: FileList | null
+    files: FileList | null,
+    fileIndex?: number
   ) => {
     if (!files || files.length === 0) return
-    const file = files[0]
+    const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
+    
+    // Kiểm tra kích thước từng file
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].size > MAX_FILE_SIZE) {
+        setAssignmentsError(FILE_SIZE_ERROR_MESSAGE)
+        return
+      }
+    }
+    
     const uploadKey = `${homeworkId}-${field}`
     setTaskFileUploadingKey(uploadKey)
     try {
+      // Upload tất cả files
       const formData = new FormData()
-      formData.append('file', file)
+      for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i])
+      }
       const accessToken = getCookie('accessToken')
-      const response = await fetch(`${API_BASE_URL}/files/upload`, {
+      const response = await fetch(`${API_BASE_URL}/files/upload-multiple`, {
         method: 'POST',
         headers: {
           ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
@@ -2266,33 +2401,67 @@ const quickViewData = useMemo(() => {
         throw new Error(errorData.message || 'Không thể tải file. Vui lòng thử lại.')
       }
       const data = await response.json()
-      const fileUrl =
-        data?.url ||
-        data?.file?.url ||
-        (Array.isArray(data?.files) ? data.files[0]?.url : null)
-      if (!fileUrl) {
+      // Lấy tất cả URLs từ response
+      const uploadedUrls: string[] = []
+      
+      if (Array.isArray(data?.files)) {
+        data.files.forEach((file: any) => {
+          if (file?.url) uploadedUrls.push(file.url)
+        })
+      } else if (Array.isArray(data?.file)) {
+        data.file.forEach((file: any) => {
+          if (file?.url) uploadedUrls.push(file.url)
+        })
+      } else if (Array.isArray(data?.urls)) {
+        uploadedUrls.push(...data.urls.filter(Boolean))
+      } else if (data?.url) {
+        uploadedUrls.push(data.url)
+      } else if (data?.file?.url) {
+        uploadedUrls.push(data.file.url)
+      }
+
+      if (uploadedUrls.length === 0) {
         throw new Error('Không nhận được link file sau khi tải lên.')
       }
+
       // Tìm studentId và subject từ homework item
       let foundStudentId: string | null = null
       let foundSubject: string | null = null
+      let existingUrl = ''
       for (const [sid, subjects] of Object.entries(homeworkItemsByStudentAndSubject)) {
         for (const [subj, items] of Object.entries(subjects)) {
-          if (items.some(item => item.id === homeworkId)) {
+          const item = items.find(item => item.id === homeworkId)
+          if (item) {
             foundStudentId = sid
             foundSubject = subj
+            existingUrl = (item[field] as string) || ''
             break
           }
         }
         if (foundStudentId) break
       }
       if (foundStudentId && foundSubject) {
+        // Tách URL hiện có thành mảng để xử lý thêm/sửa
+        const existingUrls = splitFileUrls(existingUrl)
+        let newUrls: string[]
+
+        if (typeof fileIndex === 'number' && fileIndex >= 0 && fileIndex < existingUrls.length) {
+          // Thay thế URL tại vị trí cụ thể
+          const updated = [...existingUrls]
+          updated[fileIndex] = uploadedUrls[0] || existingUrls[fileIndex]
+          newUrls = updated
+        } else {
+          // Thêm mới tất cả URL upload vào danh sách
+          newUrls = appendFileUrls('', [...existingUrls, ...uploadedUrls]).split('\n')
+        }
+
+        const newUrlString = joinFileUrls(newUrls)
         // Cập nhật state với file URL
-        await handleHomeworkChange(foundStudentId, foundSubject, homeworkId, field, fileUrl)
+        await handleHomeworkChange(foundStudentId, foundSubject, homeworkId, field, newUrlString)
       }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Không thể tải file. Vui lòng thử lại.'
+      const rawMessage = error instanceof Error ? error.message : 'Không thể tải file. Vui lòng thử lại.'
+      const message = rawMessage === 'Failed to fetch' ? FILE_SIZE_ERROR_MESSAGE : rawMessage
       setAssignmentsError(message)
     } finally {
       setTaskFileUploadingKey(null)
@@ -2345,9 +2514,10 @@ const quickViewData = useMemo(() => {
     const handleUploadFileWrapper = (
       homeworkId: string,
       field: 'assignmentUrl' | 'tutorSolution' | 'studentSolutionFile',
-      files: FileList | null
+      files: FileList | null,
+      fileIndex?: number
     ) => {
-      handleHomeworkFileUpload(homeworkId, field, files)
+      handleHomeworkFileUpload(homeworkId, field, files, fileIndex)
     }
 
     return (
@@ -2432,7 +2602,7 @@ const quickViewData = useMemo(() => {
       note: '',
       dueDate: resolvedDueDate,
       exercises: [
-        { id: `exercise-${Date.now()}`, title: '', requirement: '', estimatedTime: '', note: '', assignmentUrl: '' },
+        { id: `exercise-${Date.now()}`, title: '', requirement: '', estimatedTime: '', note: '', assignmentUrls: [] },
       ],
     })
     setShowChecklistForm(true)
@@ -2468,14 +2638,36 @@ const quickViewData = useMemo(() => {
       setAssignmentsError(null)
 
       // Map exercises to tasks (không upload files ở thời điểm tạo)
-      const tasksWithFiles = checklistForm.exercises.map((exercise, index) => ({
+      const tasksWithFiles = checklistForm.exercises.map((exercise, index) => {
+        // Convert assignmentUrls to array format
+        let assignmentUrl: string[] | undefined = undefined
+        if (exercise.assignmentUrls && exercise.assignmentUrls.length > 0) {
+          // Filter out empty URLs
+          const validUrls = exercise.assignmentUrls.filter(url => url && url.trim() !== '')
+          if (validUrls.length > 0) {
+            assignmentUrl = validUrls
+          }
+        } else if ((exercise as any).assignmentUrl) {
+          // Backward compatibility: if assignmentUrl exists as string, convert to array
+          const urlString = (exercise as any).assignmentUrl
+          if (typeof urlString === 'string' && urlString.trim()) {
+            // Split by \n if it's a string with multiple URLs
+            const urls = urlString.split('\n').filter(url => url.trim() !== '')
+            if (urls.length > 0) {
+              assignmentUrl = urls
+            }
+          }
+        }
+        
+        return {
         name: exercise.title || `Bài ${index + 1}`,
         description: exercise.requirement || undefined,
         note: exercise.note || undefined,
         estimatedTime: exercise.estimatedTime ? Number(exercise.estimatedTime) : undefined,
-        assignmentUrl: exercise.assignmentUrl || undefined,
+          assignmentUrl: assignmentUrl || undefined,
         status: 'pending' as AssignmentTaskStatus,
-      }))
+        }
+      })
 
       // Lấy supplementaryMaterials từ schedule (tài liệu phụ huynh đã gửi)
       const supplementaryMaterials: Array<{ name: string; url: string; requirement?: string }> = 
@@ -2576,7 +2768,13 @@ const quickViewData = useMemo(() => {
           status: assignment.status,
           // Backend không cho phép field "id" trong từng task và yêu cầu estimatedTime >= 1,
           // nên ta chuẩn hóa lại payload tại đây.
-          tasks: draftTasks.map((task) => ({
+          tasks: draftTasks.map((task) => {
+            // Convert URLs from string to array format
+            const assignmentUrls = parseFileUrls(task.assignmentUrl)
+            const answerUrls = parseFileUrls(task.answerURL)
+            const solutionUrls = parseFileUrls(task.solutionUrl)
+            
+            return {
             name: task.name,
             description: task.description,
             status: mapTaskStatusToApi(task.status),
@@ -2586,10 +2784,11 @@ const quickViewData = useMemo(() => {
                 ? Math.max(task.estimatedTime, 1)
                 : 1,
             actualTime: typeof task.actualTime === 'number' ? task.actualTime : undefined,
-            assignmentUrl: task.assignmentUrl,
-            answerURL: task.answerURL,
-            solutionUrl: task.solutionUrl,
-          })),
+              assignmentUrl: assignmentUrls.length > 0 ? assignmentUrls : undefined,
+              answerURL: answerUrls.length > 0 ? answerUrls : undefined,
+              solutionUrl: solutionUrls.length > 0 ? solutionUrls : undefined,
+            }
+          }),
         }),
       })
 
@@ -2721,21 +2920,87 @@ const quickViewData = useMemo(() => {
     })
   }
 
+  // Update a specific file URL in the array
+  const updateAssignmentTaskFileUrl = (
+    assignmentKey: string,
+    taskIndex: number,
+    field: 'assignmentUrl' | 'answerURL' | 'solutionUrl',
+    fileIndex: number,
+    newUrl: string
+  ) => {
+    setAssignmentDrafts((prev) => {
+      const draftList = prev[assignmentKey] ? [...prev[assignmentKey]] : []
+      const currentTask = draftList[taskIndex] ? { ...draftList[taskIndex] } : { id: `task-${taskIndex}` }
+      const currentValue = currentTask[field] || ''
+      const urls = parseFileUrls(currentValue)
+      urls[fileIndex] = newUrl.trim()
+      const newValue = urls.join('\n')
+      draftList[taskIndex] = {
+        ...currentTask,
+        [field]: newValue,
+      }
+      return {
+        ...prev,
+        [assignmentKey]: draftList,
+      }
+    })
+  }
+
+  // Remove a file from the array
+  const removeAssignmentTaskFile = (
+    assignmentKey: string,
+    taskIndex: number,
+    field: 'assignmentUrl' | 'answerURL' | 'solutionUrl',
+    fileIndex: number
+  ) => {
+    setAssignmentDrafts((prev) => {
+      const draftList = prev[assignmentKey] ? [...prev[assignmentKey]] : []
+      const currentTask = draftList[taskIndex] ? { ...draftList[taskIndex] } : { id: `task-${taskIndex}` }
+      const currentValue = currentTask[field] || ''
+      const urls = parseFileUrls(currentValue)
+      urls.splice(fileIndex, 1)
+      const newValue = urls.length > 0 ? urls.join('\n') : ''
+      draftList[taskIndex] = {
+        ...currentTask,
+        [field]: newValue || undefined,
+      }
+      return {
+        ...prev,
+        [assignmentKey]: draftList,
+      }
+    })
+  }
+
+  // Upload file to replace a specific file or add new
   const handleAssignmentTaskFileUpload = async (
     assignmentKey: string,
     taskIndex: number,
     field: 'assignmentUrl' | 'answerURL' | 'solutionUrl',
-    files: FileList | null
+    files: FileList | null,
+    fileIndex?: number // Optional: index to replace, undefined to add new
   ) => {
     if (!files || files.length === 0) return
-    const file = files[0]
-    const uploadKey = `${assignmentKey}-${taskIndex}-${field}`
+    const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
+    
+    // Kiểm tra kích thước từng file
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].size > MAX_FILE_SIZE) {
+        setAssignmentsError('File không được vượt quá 15MB')
+        return
+      }
+    }
+    
+    const uploadKey = fileIndex !== undefined 
+      ? `${assignmentKey}-${taskIndex}-${field}-${fileIndex}`
+      : `${assignmentKey}-${taskIndex}-${field}`
     setTaskFileUploadingKey(uploadKey)
     try {
+      // Upload file đầu tiên (chỉ upload 1 file mỗi lần khi thay thế)
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('files', files[0])
+      
       const accessToken = getCookie('accessToken')
-      const response = await fetch(`${API_BASE_URL}/files/upload`, {
+      const response = await fetch(`${API_BASE_URL}/files/upload-multiple`, {
         method: 'POST',
         headers: {
           ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
@@ -2747,14 +3012,55 @@ const quickViewData = useMemo(() => {
         throw new Error(errorData.message || 'Không thể tải file. Vui lòng thử lại.')
       }
       const data = await response.json()
-      const fileUrl =
-        data?.url ||
-        data?.file?.url ||
-        (Array.isArray(data?.files) ? data.files[0]?.url : null)
-      if (!fileUrl) {
+      // Lấy URL từ response
+      let uploadedUrl: string | null = null
+      
+      if (Array.isArray(data?.files) && data.files.length > 0) {
+        uploadedUrl = data.files[0]?.url || null
+      } else if (Array.isArray(data?.file) && data.file.length > 0) {
+        uploadedUrl = data.file[0]?.url || null
+      } else if (Array.isArray(data?.urls) && data.urls.length > 0) {
+        uploadedUrl = data.urls[0] || null
+      } else if (data?.url) {
+        uploadedUrl = data.url
+      } else if (data?.file?.url) {
+        uploadedUrl = data.file.url
+      }
+
+      if (!uploadedUrl) {
         throw new Error('Không nhận được link file sau khi tải lên.')
       }
-      handleAssignmentTaskFieldChange(assignmentKey, taskIndex, field, fileUrl)
+
+      // Lấy giá trị hiện tại từ assignmentDrafts (nếu đang chỉnh sửa) hoặc từ assignment gốc
+      let currentValue = ''
+      const draftList = assignmentDrafts[assignmentKey]
+      if (draftList && draftList[taskIndex]) {
+        // Lấy từ draft nếu có
+        currentValue = draftList[taskIndex][field] || ''
+      } else {
+        // Lấy từ assignment gốc
+      const assignment = assignments.find(a => {
+        const aId = a._id || a.id
+        const studentId = typeof a.studentId === 'object' ? a.studentId?._id : a.studentId
+        const scheduleId = typeof a.scheduleId === 'object' ? a.scheduleId?._id : a.scheduleId
+        return `${studentId}-${scheduleId}` === assignmentKey || aId === assignmentKey
+      })
+      const task = assignment?.tasks?.[taskIndex]
+        currentValue = task?.[field] || ''
+      }
+      
+      const urls = parseFileUrls(currentValue)
+      
+      if (fileIndex !== undefined) {
+        // Replace file at specific index
+        urls[fileIndex] = uploadedUrl
+      } else {
+        // Add new file
+        urls.push(uploadedUrl)
+      }
+      
+      const newUrlString = urls.join('\n')
+      handleAssignmentTaskFieldChange(assignmentKey, taskIndex, field, newUrlString)
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Không thể tải file. Vui lòng thử lại.'
@@ -3039,7 +3345,7 @@ const quickViewData = useMemo(() => {
   const renderHomeSection = () => {
     return (
       <div className="h-full space-y-4">
-        {assignmentsError && (
+        {assignmentsError && assignmentsError !== FILE_SIZE_ERROR_MESSAGE && (
           <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700">
             {assignmentsError}
           </div>
@@ -3329,10 +3635,14 @@ const quickViewData = useMemo(() => {
                       <div className="rounded-2xl border-2 border-primary-100 bg-white p-6 space-y-4 shadow-sm">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                                   <div>
-     
-                            <h3 className="text-2xl font-bold text-gray-900">
-                              {activeStudentInfo?.name || activeSchedule.student}
-                            </h3>
+                            <button
+                              onClick={() => setSelectedStudentSchedule(activeSchedule.id)}
+                              className="text-left hover:opacity-80 transition-opacity"
+                            >
+                              <h3 className="text-2xl font-bold text-gray-900 hover:text-primary-600 transition-colors">
+                                {activeStudentInfo?.name || activeSchedule.student}
+                              </h3>
+                            </button>
                                     </div>
                           <div className="flex flex-col sm:flex-row sm:items-end gap-3 w-full sm:w-auto">
                             <div className="flex flex-col flex-1">
@@ -3956,13 +4266,20 @@ const quickViewData = useMemo(() => {
                                                   <Folder className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
                                                   <div className="flex-1 min-w-0">
                                                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">File bài tập</p>
-                                                    {task.assignmentUrl ? (
-                                                      <a href={task.assignmentUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">
-                                                        Xem file
+                                                    {(() => {
+                                                      const urls = parseFileUrls(task.assignmentUrl)
+                                                      return urls.length > 0 ? (
+                                                        <div className="flex flex-col gap-1">
+                                                          {urls.map((url: string, idx: number) => (
+                                                            <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">
+                                                              {urls.length > 1 ? `Xem file ${idx + 1}` : 'Xem file'}
                                                       </a>
+                                                          ))}
+                                                        </div>
                                                     ) : (
                                                       <span className="text-xs text-gray-400">—</span>
-                                                    )}
+                                                      )
+                                                    })()}
                                                   </div>
                                                 </div>
                                                 
@@ -3971,13 +4288,20 @@ const quickViewData = useMemo(() => {
                                                   <Folder className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
                                                   <div className="flex-1 min-w-0">
                                                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">Bài làm học sinh</p>
-                                                    {task.answerURL ? (
-                                                      <a href={task.answerURL} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">
-                                                        Bài làm học sinh
+                                                    {(() => {
+                                                      const urls = parseFileUrls(task.answerURL)
+                                                      return urls.length > 0 ? (
+                                                        <div className="flex flex-col gap-1">
+                                                          {urls.map((url: string, idx: number) => (
+                                                            <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">
+                                                              {urls.length > 1 ? `Bài làm ${idx + 1}` : 'Bài làm học sinh'}
                                                       </a>
+                                                          ))}
+                                                        </div>
                                                     ) : (
                                                       <span className="text-xs text-gray-400">—</span>
-                                                    )}
+                                                      )
+                                                    })()}
                                                   </div>
                                                 </div>
                                                 
@@ -3986,13 +4310,20 @@ const quickViewData = useMemo(() => {
                                                   <Lightbulb className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
                                                   <div className="flex-1 min-w-0">
                                                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">File lời giải</p>
-                                                    {task.solutionUrl ? (
-                                                      <a href={task.solutionUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">
-                                                        File lời giải
+                                                    {(() => {
+                                                      const urls = parseFileUrls(task.solutionUrl)
+                                                      return urls.length > 0 ? (
+                                                        <div className="flex flex-col gap-1">
+                                                          {urls.map((url: string, idx: number) => (
+                                                            <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">
+                                                              {urls.length > 1 ? `File lời giải ${idx + 1}` : 'File lời giải'}
                                                       </a>
+                                                          ))}
+                                                        </div>
                                                     ) : (
                                                       <span className="text-xs text-gray-400">—</span>
-                                                    )}
+                                                      )
+                                                    })()}
                                                   </div>
                                                 </div>
                                                 
@@ -4145,38 +4476,84 @@ const quickViewData = useMemo(() => {
                                                       )}
                                                     </td>
                                                     <td className="px-4 py-3 text-center">
-                                                      {isEditing ? (
-                                                        <div className="flex items-center justify-center gap-2 min-w-0">
+                                                      {isEditing ? (() => {
+                                                        const urls = parseFileUrls(task.assignmentUrl)
+                                                        return (
+                                                          <div className="flex flex-col gap-2 items-center min-w-[200px]">
+                                                            {urls.map((url: string, idx: number) => {
+                                                              const uploadKey = `${assignmentKey}-${taskIndex}-assignmentUrl-${idx}`
+                                                              const isUploading = taskFileUploadingKey === uploadKey
+                                                              return (
+                                                                <div key={idx} className="flex items-center gap-1 w-full">
                                                           <input
-                                                            value={task.assignmentUrl || ''}
+                                                                    value={url}
                                                             onChange={(e) =>
-                                                              handleAssignmentTaskFieldChange(
+                                                                      updateAssignmentTaskFileUrl(
                                                                 assignmentKey,
                                                                 taskIndex,
                                                                 'assignmentUrl',
+                                                                        idx,
                                                                 e.target.value
                                                               )
                                                             }
-                                                            className="w-24 max-w-[140px] border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
+                                                                    className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                                                             placeholder="Link file bài tập"
-                                                            title={task.assignmentUrl || ''}
+                                                                    title={url}
                                                           />
                                                           <label
                                                             className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
-                                                              taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl`
+                                                                      isUploading
                                                                 ? 'cursor-wait opacity-60'
                                                                 : 'cursor-pointer hover:bg-primary-50'
                                                             }`}
-                                                            title={
+                                                                    title={isUploading ? 'Đang upload...' : 'Tải file thay thế'}
+                                                                  >
+                                                                    {isUploading ? (
+                                                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                    ) : (
+                                                                      <Edit2 className="w-3.5 h-3.5" />
+                                                                    )}
+                                                                    <input
+                                                                      type="file"
+                                                                      className="hidden"
+                                                                      accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                                      onChange={(e) => {
+                                                                        handleAssignmentTaskFileUpload(
+                                                                          assignmentKey,
+                                                                          taskIndex,
+                                                                          'assignmentUrl',
+                                                                          e.target.files,
+                                                                          idx
+                                                                        )
+                                                                        e.target.value = ''
+                                                                      }}
+                                                                    />
+                                                                  </label>
+                                                                  <button
+                                                                    onClick={() => removeAssignmentTaskFile(assignmentKey, taskIndex, 'assignmentUrl', idx)}
+                                                                    className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-red-300 text-red-600 flex-shrink-0 hover:bg-red-50"
+                                                                    title="Xóa file"
+                                                                  >
+                                                                    <X className="w-3.5 h-3.5" />
+                                                                  </button>
+                                                                </div>
+                                                              )
+                                                            })}
+                                                            <label
+                                                              className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-primary-300 text-primary-600 text-xs ${
                                                               taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl`
-                                                                ? 'Đang upload...'
-                                                                : 'Upload tài liệu'
-                                                            }
+                                                                  ? 'cursor-wait opacity-60'
+                                                                  : 'cursor-pointer hover:bg-primary-50'
+                                                              }`}
+                                                              title={taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl` ? 'Đang upload...' : 'Thêm file mới'}
                                                           >
                                                             {taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl` ? (
-                                                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                <Loader2 className="w-3 h-3 animate-spin" />
                                                             ) : (
-                                                              <Upload className="w-3.5 h-3.5" />
+                                                                <>
+                                                                  <Plus className="w-3 h-3" />
+                                                                  <span>Thêm file</span>
+                                                                </>
                                                             )}
                                                             <input
                                                               type="file"
@@ -4194,56 +4571,117 @@ const quickViewData = useMemo(() => {
                                                             />
                                                           </label>
                                                         </div>
-                                                      ) : task.assignmentUrl ? (
-                                                        <a href={task.assignmentUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-primary-600 hover:underline text-xs font-medium" title={task.assignmentUrl}>
-                                                          Xem file
+                                                        )
+                                                      })() : (() => {
+                                                        const urls = parseFileUrls(task.assignmentUrl)
+                                                        return urls.length > 0 ? (
+                                                          <div className="flex flex-col gap-1 items-center">
+                                                            {urls.map((url: string, idx: number) => (
+                                                              <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="inline-block text-primary-600 hover:underline text-xs font-medium" title={url}>
+                                                                {urls.length > 1 ? `File ${idx + 1}` : 'Xem file'}
                                                         </a>
+                                                            ))}
+                                                          </div>
                                                       ) : (
                                                         <span className="text-xs text-gray-400">—</span>
-                                                      )}
+                                                        )
+                                                      })()}
                                                     </td>
                                                     <td className="px-4 py-3 text-center">
-                                                      {task.answerURL ? (
-                                                        <a href={task.answerURL} target="_blank" rel="noopener noreferrer" className="inline-block text-primary-600 hover:underline text-xs font-medium" title={task.answerURL}>
-                                                          Bài làm học sinh
+                                                      {(() => {
+                                                        const urls = parseFileUrls(task.answerURL)
+                                                        return urls.length > 0 ? (
+                                                          <div className="flex flex-col gap-1 items-center">
+                                                            {urls.map((url: string, idx: number) => (
+                                                              <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="inline-block text-primary-600 hover:underline text-xs font-medium" title={url}>
+                                                                {urls.length > 1 ? `Bài làm ${idx + 1}` : 'Bài làm học sinh'}
                                                         </a>
+                                                            ))}
+                                                          </div>
                                                       ) : (
                                                         <span className="text-xs text-gray-400">—</span>
-                                                      )}
+                                                        )
+                                                      })()}
                                                     </td>
                                                     <td className="px-4 py-3 text-center">
-                                                      {isEditing ? (
-                                                        <div className="flex items-center justify-center gap-2 min-w-0">
+                                                      {isEditing ? (() => {
+                                                        const urls = parseFileUrls(task.solutionUrl)
+                                                        return (
+                                                          <div className="flex flex-col gap-2 items-center min-w-[200px]">
+                                                            {urls.map((url: string, idx: number) => {
+                                                              const uploadKey = `${assignmentKey}-${taskIndex}-solutionUrl-${idx}`
+                                                              const isUploading = taskFileUploadingKey === uploadKey
+                                                              return (
+                                                                <div key={idx} className="flex items-center gap-1 w-full">
                                                           <input
-                                                            value={task.solutionUrl || ''}
+                                                                    value={url}
                                                             onChange={(e) =>
-                                                              handleAssignmentTaskFieldChange(
+                                                                      updateAssignmentTaskFileUrl(
                                                                 assignmentKey,
                                                                 taskIndex,
                                                                 'solutionUrl',
+                                                                        idx,
                                                                 e.target.value
                                                               )
                                                             }
-                                                            className="w-24 max-w-[140px] border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
+                                                                    className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                                                             placeholder="Link lời giải"
-                                                            title={task.solutionUrl || ''}
+                                                                    title={url}
                                                           />
                                                           <label
                                                             className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
-                                                              taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl`
+                                                                      isUploading
                                                                 ? 'cursor-wait opacity-60'
                                                                 : 'cursor-pointer hover:bg-primary-50'
                                                             }`}
-                                                            title={
+                                                                    title={isUploading ? 'Đang upload...' : 'Tải file thay thế'}
+                                                                  >
+                                                                    {isUploading ? (
+                                                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                    ) : (
+                                                                      <Edit2 className="w-3.5 h-3.5" />
+                                                                    )}
+                                                                    <input
+                                                                      type="file"
+                                                                      className="hidden"
+                                                                      accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                                      onChange={(e) => {
+                                                                        handleAssignmentTaskFileUpload(
+                                                                          assignmentKey,
+                                                                          taskIndex,
+                                                                          'solutionUrl',
+                                                                          e.target.files,
+                                                                          idx
+                                                                        )
+                                                                        e.target.value = ''
+                                                                      }}
+                                                                    />
+                                                                  </label>
+                                                                  <button
+                                                                    onClick={() => removeAssignmentTaskFile(assignmentKey, taskIndex, 'solutionUrl', idx)}
+                                                                    className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-red-300 text-red-600 flex-shrink-0 hover:bg-red-50"
+                                                                    title="Xóa file"
+                                                                  >
+                                                                    <X className="w-3.5 h-3.5" />
+                                                                  </button>
+                                                                </div>
+                                                              )
+                                                            })}
+                                                            <label
+                                                              className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-primary-300 text-primary-600 text-xs ${
                                                               taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl`
-                                                                ? 'Đang upload...'
-                                                                : 'Upload lời giải'
-                                                            }
+                                                                  ? 'cursor-wait opacity-60'
+                                                                  : 'cursor-pointer hover:bg-primary-50'
+                                                              }`}
+                                                              title={taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl` ? 'Đang upload...' : 'Thêm file mới'}
                                                           >
                                                             {taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl` ? (
-                                                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                <Loader2 className="w-3 h-3 animate-spin" />
                                                             ) : (
-                                                              <Upload className="w-3.5 h-3.5" />
+                                                                <>
+                                                                  <Plus className="w-3 h-3" />
+                                                                  <span>Thêm file</span>
+                                                                </>
                                                             )}
                                                             <input
                                                               type="file"
@@ -4261,13 +4699,21 @@ const quickViewData = useMemo(() => {
                                                             />
                                                           </label>
                                                         </div>
-                                                      ) : task.solutionUrl ? (
-                                                        <a href={task.solutionUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-primary-600 hover:underline text-xs font-medium" title={task.solutionUrl}>
-                                                          File lời giải
+                                                        )
+                                                      })() : (() => {
+                                                        const urls = parseFileUrls(task.solutionUrl)
+                                                        return urls.length > 0 ? (
+                                                          <div className="flex flex-col gap-1 items-center">
+                                                            {urls.map((url: string, idx: number) => (
+                                                              <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="inline-block text-primary-600 hover:underline text-xs font-medium" title={url}>
+                                                                {urls.length > 1 ? `File ${idx + 1}` : 'File lời giải'}
                                                         </a>
+                                                            ))}
+                                                          </div>
                                                       ) : (
                                                         <span className="text-xs text-gray-400">—</span>
-                                                      )}
+                                                        )
+                                                      })()}
                                                     </td>
                                                     <td className="px-4 py-3 text-center">
                                                       {isEditing ? (
@@ -4436,6 +4882,295 @@ const quickViewData = useMemo(() => {
 
         </div>
       </div>
+
+      {/* Student Detail Modal */}
+      {selectedStudentSchedule && (() => {
+        const schedule = tutorSchedules.find((s) => s.id === selectedStudentSchedule)
+        if (!schedule) return null
+        const studentInfo = studentInfoMap[schedule.studentId]
+        const studentDetail = studentInfoDetailsMap[schedule.studentId]
+        const displayStudentName = studentInfo?.name || schedule.student || 'Học sinh đang được cập nhật'
+        const studentInitial = displayStudentName.charAt(0)?.toUpperCase() || 'H'
+        
+        // Helper function to render multiline text
+        const renderMultilineText = (text: string) => {
+          const lines = text.split('\n')
+          return lines.map((line, index) => (
+            <span key={index}>
+              {line}
+              {index < lines.length - 1 && <br />}
+            </span>
+          ))
+        }
+
+        return (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
+            onClick={() => setSelectedStudentSchedule(null)}
+          >
+            <div
+              className="bg-white rounded-2xl sm:rounded-[32px] shadow-2xl max-w-4xl w-full max-h-[96vh] sm:max-h-[92vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-white border-b border-gray-100 px-4 sm:px-8 py-4 sm:py-6 flex items-center justify-between z-10">
+                <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-gray-900">Thông tin chi tiết Học sinh</h2>
+                <button
+                  onClick={() => setSelectedStudentSchedule(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 ml-2"
+                >
+                  <span className="text-xl sm:text-2xl">&times;</span>
+                </button>
+              </div>
+
+              <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+                <div className="border-b border-gray-200 pb-2"></div>
+
+                {(studentInfo || studentDetail) ? (
+                  <>
+                    {/* Main Profile Card */}
+                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 border border-gray-100 rounded-2xl sm:rounded-3xl bg-gray-50 p-4 sm:p-6">
+                      <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl overflow-hidden border-2 border-primary-100 shadow-lg flex-shrink-0 bg-gradient-to-br from-primary-500 to-primary-600 text-white text-2xl sm:text-4xl font-bold flex items-center justify-center">
+                        {studentInfo?.avatarUrl ? (
+                          <img src={studentInfo.avatarUrl} alt={displayStudentName} className="w-full h-full object-cover" />
+                        ) : (
+                          studentInitial
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-1 sm:space-y-2 text-center sm:text-left">
+                        <p className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-[0.2em]">HỌC SINH</p>
+                        <h3 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-gray-900 break-words">{displayStudentName}</h3>
+                        <p className="text-base sm:text-lg text-gray-500">
+                          {studentDetail?.grade || studentDetail?.academicLevel || studentInfo?.grade || ''} · {studentDetail?.school || 'Chưa cập nhật'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Trường học và Lớp học */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">TRƯỜNG HỌC</p>
+                        <div className="flex items-center gap-2">
+                          <School className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <p className="text-sm sm:text-base font-semibold text-gray-900">
+                            {studentDetail?.school || 'Chưa cập nhật'}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">LỚP HỌC</p>
+                        <div className="flex items-center gap-2">
+                          <GraduationCap className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <p className="text-sm sm:text-base font-semibold text-gray-900">
+                            {studentDetail?.grade || studentDetail?.academicLevel || studentInfo?.grade || 'Chưa cập nhật'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Liên hệ và Địa chỉ */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">LIÊN HỆ</p>
+                        <div className="space-y-1">
+                          {studentInfo?.phone && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                              <p className="text-sm sm:text-base font-semibold text-gray-900 break-all">{studentInfo.phone}</p>
+                            </div>
+                          )}
+                          {studentInfo?.email && (
+                            <div className="flex items-start gap-2">
+                              <Mail className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                              <p className="text-sm sm:text-base font-semibold text-gray-900 break-all">{studentInfo.email}</p>
+                            </div>
+                          )}
+                          {!studentInfo?.phone && !studentInfo?.email && (
+                            <p className="text-sm sm:text-base font-semibold text-gray-900">Chưa cập nhật</p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">ĐỊA CHỈ</p>
+                        <div className="flex items-start gap-2">
+                          <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                          <p className="text-sm sm:text-base font-semibold text-gray-900 break-words">
+                            {studentInfo?.address || 'Chưa cập nhật'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Phụ huynh */}
+                    {(studentDetail?.parent1Name || studentDetail?.parent2Name) && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                        {studentDetail?.parent1Name && (
+                          <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">PHỤ HUYNH 1</p>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <UserCircle className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                <p className="text-sm sm:text-base font-semibold text-gray-900">
+                                  {studentDetail.parent1Name}
+                                </p>
+                              </div>
+                              {studentDetail?.parent1Email && (
+                                <div className="flex items-start gap-2">
+                                  <Mail className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                                  <p className="text-sm sm:text-base font-semibold text-gray-900 break-all">
+                                    {studentDetail.parent1Email}
+                                  </p>
+                                </div>
+                              )}
+                              {studentDetail?.parent1Number && (
+                                <div className="flex items-center gap-2">
+                                  <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                  <p className="text-sm sm:text-base font-semibold text-gray-900 break-all">
+                                    {studentDetail.parent1Number}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {studentDetail?.parent2Name && (
+                          <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">PHỤ HUYNH 2</p>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <UserCircle className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                <p className="text-sm sm:text-base font-semibold text-gray-900">
+                                  {studentDetail.parent2Name}
+                                </p>
+                              </div>
+                              {studentDetail?.parent2Email && (
+                                <div className="flex items-start gap-2">
+                                  <Mail className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                                  <p className="text-sm sm:text-base font-semibold text-gray-900 break-all">
+                                    {studentDetail.parent2Email}
+                                  </p>
+                                </div>
+                              )}
+                              {studentDetail?.parent2Number && (
+                                <div className="flex items-center gap-2">
+                                  <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                  <p className="text-sm sm:text-base font-semibold text-gray-900 break-all">
+                                    {studentDetail.parent2Number}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Môn yêu thích */}
+                    {studentDetail?.favoriteSubjects && studentDetail.favoriteSubjects.length > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                        <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">MÔN YÊU THÍCH</p>
+                          <div className="flex flex-wrap gap-2">
+                            {studentDetail.favoriteSubjects.map((subject: string, idx: number) => (
+                              <span
+                                key={idx}
+                                className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-semibold text-white bg-yellow-500"
+                              >
+                                {subject}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Thế mạnh và Điểm cần cải thiện */}
+                    {(studentDetail?.strengths?.length || studentDetail?.improvements?.length) && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                        {studentDetail?.strengths && studentDetail.strengths.length > 0 && (
+                          <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">THẾ MẠNH</p>
+                            <div className="flex flex-wrap gap-2">
+                              {studentDetail.strengths.map((strength, idx) => (
+                                <span
+                                  key={idx}
+                                  className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-semibold text-primary-600 bg-primary-50 border border-primary-200"
+                                >
+                                  {strength}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {studentDetail?.improvements && studentDetail.improvements.length > 0 && (
+                          <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2">ĐIỂM CẦN CẢI THIỆN</p>
+                            <div className="flex flex-wrap gap-2">
+                              {studentDetail.improvements.map((improvement, idx) => (
+                                <span
+                                  key={idx}
+                                  className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200"
+                                >
+                                  {improvement}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Yêu cầu từ phụ huynh và Ghi chú */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                      {/* Yêu cầu từ phụ huynh */}
+                      {(studentDetail?.parent1Request || studentDetail?.parent2Request) && (
+                        <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">YÊU CẦU TỪ PHỤ HUYNH</p>
+                          <div className="space-y-2">
+                            {studentDetail?.parent1Request && (
+                              <div>
+                                <p className="text-xs font-semibold text-gray-700 mb-1">Phụ huynh 1:</p>
+                                <p className="text-sm sm:text-base text-gray-700 leading-relaxed whitespace-pre-line">
+                                  {renderMultilineText(studentDetail.parent1Request)}
+                                </p>
+                              </div>
+                            )}
+                            {studentDetail?.parent2Request && (
+                              <div>
+                                <p className="text-xs font-semibold text-gray-700 mb-1">Phụ huynh 2:</p>
+                                <p className="text-sm sm:text-base text-gray-700 leading-relaxed whitespace-pre-line">
+                                  {renderMultilineText(studentDetail.parent2Request)}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Ghi chú */}
+                      {studentDetail?.notes && (
+                        <div className="p-4 sm:p-5 border rounded-xl sm:rounded-2xl bg-white shadow-sm">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.3em] mb-2 sm:mb-3">GHI CHÚ TỔNG QUAN</p>
+                          <p className="text-sm sm:text-base text-gray-700 leading-relaxed whitespace-pre-line">
+                            {renderMultilineText(studentDetail.notes)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-4 border border-dashed border-gray-300 rounded-xl sm:rounded-2xl bg-gray-50 text-sm text-gray-600">
+                    Hệ thống đang cập nhật thông tin chi tiết của học sinh này.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
     );
   }
@@ -5069,7 +5804,7 @@ const renderChecklistSection = () => {
 
     return (
       <div className="h-full space-y-4">
-        {assignmentsError && (
+        {assignmentsError && assignmentsError !== FILE_SIZE_ERROR_MESSAGE && (
           <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700">
             {assignmentsError}
           </div>
@@ -5307,7 +6042,7 @@ const renderChecklistSection = () => {
                       )}
 
                       {/* Bài tập về nhà */}
-                      {quickViewAssignments.length > 0 && activeSchedule && (() => {
+                      {activeSchedule && (() => {
                         const studentId = activeSchedule.studentId
                         const subjectMap = homeworkItemsByStudentAndSubject[studentId] || {}
                         
@@ -5344,9 +6079,10 @@ const renderChecklistSection = () => {
                         const handleUploadFileWrapper = (
                           homeworkId: string,
                           field: 'assignmentUrl' | 'tutorSolution' | 'studentSolutionFile',
-                          files: FileList | null
+                          files: FileList | null,
+                          fileIndex?: number
                         ) => {
-                          handleHomeworkFileUpload(homeworkId, field, files)
+                          handleHomeworkFileUpload(homeworkId, field, files, fileIndex)
                         }
 
                         return (
@@ -5363,7 +6099,7 @@ const renderChecklistSection = () => {
                             onAddHomework={handleAddHomework}
                             onUploadFile={handleUploadFileWrapper}
                             taskFileUploadingKey={taskFileUploadingKey}
-                            canEdit={canEdit}
+                            canEdit={true}
                             resolveSubjectName={getSubjectDisplayName}
                           />
                         )
@@ -5601,12 +6337,12 @@ const renderChecklistSection = () => {
                     Deadline <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
+                    {/* Input date ẩn để dùng date picker native, luôn lưu giá trị yyyy-MM-dd */}
                     <input
                       ref={deadlineInputRef}
                       id="homework-deadline-input"
                       type="date"
                       value={homeworkFormData.deadline ? (() => {
-                        // Chuyển đổi sang local date để tránh lỗi timezone
                         const date = new Date(homeworkFormData.deadline)
                         const year = date.getFullYear()
                         const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -5621,67 +6357,55 @@ const renderChecklistSection = () => {
                       })()}
                       onChange={(e) => {
                         if (e.target.value) {
-                          // Parse date string trực tiếp để tránh timezone issues
                           const [year, month, day] = e.target.value.split('-').map(Number)
                           const date = new Date(year, month - 1, day)
-                          date.setHours(0, 0, 0, 0) // Set giờ mặc định 0h
+                          date.setHours(0, 0, 0, 0)
                           setHomeworkFormData(prev => ({ ...prev, deadline: date.toISOString() }))
                           if (homeworkFormErrors.deadline) {
                             setHomeworkFormErrors(prev => ({ ...prev, deadline: undefined }))
                           }
                         } else {
-                          // Nếu không chọn, mặc định là ngày hôm nay
                           const today = new Date()
                           today.setHours(0, 0, 0, 0)
                           setHomeworkFormData(prev => ({ ...prev, deadline: today.toISOString() }))
                         }
                       }}
-                      onClick={(e) => {
-                        // Đảm bảo click vào input sẽ mở date picker
-                        const target = e.target as HTMLInputElement
-                        if (target && 'showPicker' in target && typeof (target as any).showPicker === 'function') {
-                          try {
-                            (target as any).showPicker()
-                          } catch (err) {
-                            // Browser không hỗ trợ showPicker(), bỏ qua
-                            console.log('showPicker not supported')
-                          }
-                        }
-                      }}
-                      className={`w-full border-2 rounded-xl px-5 py-3 pr-12 text-base focus:ring-2 focus:ring-primary-500 focus:border-primary-500 cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none ${
-                        homeworkFormErrors.deadline ? 'border-red-500' : 'border-gray-300'
-                      }`}
-                      style={{ 
-                        WebkitAppearance: 'none',
-                        appearance: 'none'
-                      }}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
+
+                    {/* Ô hiển thị ngày với định dạng dd/MM/yyyy */}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
                         if (deadlineInputRef.current) {
-                          deadlineInputRef.current.focus()
-                          // Thử nhiều cách để mở date picker
+                          // Mở date picker native nếu hỗ trợ
                           if ('showPicker' in deadlineInputRef.current && typeof (deadlineInputRef.current as any).showPicker === 'function') {
                             try {
                               (deadlineInputRef.current as any).showPicker()
-                            } catch (err) {
-                              // Fallback: trigger click event
+                            } catch {
                               deadlineInputRef.current.click()
                             }
                           } else {
-                            // Fallback: trigger click event
                             deadlineInputRef.current.click()
                           }
                         }
                       }}
-                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-primary-500 cursor-pointer flex items-center justify-center bg-transparent border-none p-0"
-                      style={{ pointerEvents: 'auto' }}
-                      aria-label="Chọn ngày"
+                      className={`w-full border-2 rounded-xl px-5 py-3 pr-12 text-base flex items-center justify-between text-left bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                        homeworkFormErrors.deadline ? 'border-red-500' : 'border-gray-300'
+                      }`}
                     >
-                      <Calendar className="w-5 h-5" />
+                      <span className="text-gray-700">
+                        {(() => {
+                          const baseDate = homeworkFormData.deadline ? new Date(homeworkFormData.deadline) : new Date()
+                          const day = String(baseDate.getDate()).padStart(2, '0')
+                          const month = String(baseDate.getMonth() + 1).padStart(2, '0')
+                          const year = baseDate.getFullYear()
+                          return `${day}/${month}/${year}`
+                        })()}
+                      </span>
+                      <Calendar className="w-5 h-5 text-gray-400" />
                     </button>
                   </div>
                   {homeworkFormErrors.deadline && (
@@ -5754,43 +6478,87 @@ const renderChecklistSection = () => {
                         </div>
 
                         <div>
-                          <label className="block text-base font-bold text-gray-700 mb-2">File bài tập</label>
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="text"
-                              value={task.assignmentUrl}
-                              onChange={(e) => handleHomeworkTaskChange(index, 'assignmentUrl', e.target.value)}
-                              className="flex-1 border-2 border-gray-300 rounded-xl px-5 py-3 text-base focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                              placeholder="Link file bài tập"
-                            />
-                            <label
-                              className={`inline-flex items-center justify-center w-12 h-12 rounded-full border-2 border-primary-300 text-primary-600 flex-shrink-0 ${
-                                taskFileUploadingKey === `homework-task-${index}-assignmentUrl`
-                                  ? 'cursor-wait opacity-60'
-                                  : 'cursor-pointer hover:bg-primary-50'
-                              }`}
-                              title={
-                                taskFileUploadingKey === `homework-task-${index}-assignmentUrl`
-                                  ? 'Đang upload...'
-                                  : 'Upload file bài tập'
-                              }
-                            >
-                              {taskFileUploadingKey === `homework-task-${index}-assignmentUrl` ? (
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                              ) : (
-                                <Upload className="w-5 h-5" />
-                              )}
-                              <input
-                                type="file"
-                                className="hidden"
-                                accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                onChange={(e) => {
-                                  handleHomeworkTaskFileUpload(index, 'assignmentUrl', e.target.files)
-                                  e.target.value = ''
-                                }}
-                              />
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="block text-base font-bold text-gray-700">
+                              File bài tập
                             </label>
+                            <button
+                              type="button"
+                              onClick={() => addHomeworkTaskFileUrl(index, 'assignmentUrl')}
+                              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-primary-600 bg-primary-50 hover:bg-primary-100 border border-primary-100"
+                            >
+                              <Plus className="w-4 h-4" />
+                              <span>Thêm file</span>
+                            </button>
                           </div>
+                          <div className="space-y-2">
+                            {getHomeworkTaskFileUrls(index, 'assignmentUrl').map((url, urlIndex) => (
+                              <div key={urlIndex} className="flex items-center gap-2 sm:gap-3">
+                                <input
+                                  type="text"
+                                  value={url}
+                                  onChange={(e) =>
+                                    updateHomeworkTaskFileUrl(
+                                      index,
+                                      'assignmentUrl',
+                                      urlIndex,
+                                      e.target.value
+                                    )
+                                  }
+                                  className="flex-1 border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                  placeholder="Link file bài tập"
+                                />
+                                <label
+                                  className={`inline-flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg border border-primary-300 text-primary-600 bg-white flex-shrink-0 shadow-sm ${
+                                    taskFileUploadingKey === `homework-task-${index}-assignmentUrl-${urlIndex}`
+                                      ? 'cursor-wait opacity-60'
+                                      : 'cursor-pointer hover:bg-primary-50'
+                                  }`}
+                                  title={
+                                    taskFileUploadingKey === `homework-task-${index}-assignmentUrl-${urlIndex}`
+                                      ? 'Đang upload...'
+                                      : 'Tải file thay thế'
+                                  }
+                                >
+                                  {taskFileUploadingKey ===
+                                  `homework-task-${index}-assignmentUrl-${urlIndex}` ? (
+                                    <Loader2 className="w-4 h-4 sm:w-4 sm:h-4 animate-spin" />
+                                  ) : (
+                                    <Upload className="w-4 h-4 sm:w-4 sm:h-4" />
+                                  )}
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                    onChange={(e) => {
+                                      handleHomeworkTaskFileUpload(
+                                        index,
+                                        'assignmentUrl',
+                                        e.target.files,
+                                        urlIndex
+                                      )
+                                      e.target.value = ''
+                                    }}
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    removeHomeworkTaskFileUrl(index, 'assignmentUrl', urlIndex)
+                                  }
+                                  className="inline-flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg border border-red-300 text-red-500 bg-white flex-shrink-0 hover:bg-red-50 shadow-sm"
+                                  title="Xóa file"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          {homeworkFormUploadErrors[index] && (
+                            <p className="text-xs text-red-500 mt-1">
+                              {homeworkFormUploadErrors[index]}
+                            </p>
+                          )}
                         </div>
 
                       </div>

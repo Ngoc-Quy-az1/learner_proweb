@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
-import { ChevronUp, ChevronDown, Link as LinkIcon, Upload } from 'lucide-react'
+import { ChevronUp, ChevronDown, Link as LinkIcon, X, Edit2, Plus, Upload } from 'lucide-react'
+import { splitFileUrls } from '../../utils/fileUrlHelper'
 import { API_BASE_URL } from '../../config/api'
 import { getCookie } from '../../utils/cookies'
 
@@ -9,7 +10,7 @@ export interface TutorChecklistExercise {
   requirement: string
   estimatedTime: string
   note: string
-  assignmentUrl?: string
+  assignmentUrls?: string[] // Changed to array for better file management
 }
 
 export interface ChecklistFormData {
@@ -127,10 +128,14 @@ export default function ChecklistForm({
   onSubmit,
   onClose,
 }: ChecklistFormProps) {
-  const [uploadingAssignments, setUploadingAssignments] = useState<Record<string, boolean>>({})
-  const [uploadErrors, setUploadErrors] = useState<Record<string, string | null>>({})
+  const [uploadingFiles, setUploadingFiles] = useState<Record<string, boolean>>({}) // exerciseId-fileIndex -> uploading
+  const [clickingUpload, setClickingUpload] = useState<Record<string, boolean>>({}) // exerciseId-fileIndex -> clicking
+  const [clickingAddFile, setClickingAddFile] = useState<Record<string, boolean>>({}) // exerciseId -> clicking add file button
+  const [uploadErrors, setUploadErrors] = useState<Record<string, string | null>>({}) // exerciseId-fileIndex -> error message
   const availableSubjects = getSubjectsByGrade(selectedStudentGrade)
   const studentSchedules = schedulesByStudent[formData.studentId] || []
+  
+  const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
 
   // Hiển thị nhãn khung giờ: chỉ giờ + buổi (sáng / trưa / tối)
   const getScheduleDisplayLabel = (label: string): string => {
@@ -187,22 +192,96 @@ export default function ChecklistForm({
     filteredSchedules.map((s) => s.id).join(','),
     formData.scheduleId,
   ])
-  const handleExerciseChange = (index: number, field: keyof TutorChecklistExercise, value: string | File | null) => {
+  const handleExerciseChange = (index: number, field: keyof TutorChecklistExercise, value: string | string[] | File | null) => {
     const nextExercises = [...formData.exercises]
     nextExercises[index] = { ...nextExercises[index], [field]: value }
     onFormChange({ ...formData, exercises: nextExercises })
   }
 
-  const handleAssignmentFileUpload = async (index: number, fileList: FileList | null) => {
+  // Initialize assignmentUrls from assignmentUrl (for backward compatibility)
+  useEffect(() => {
+    const needsUpdate = formData.exercises.some(ex => {
+      // If assignmentUrl exists but assignmentUrls doesn't, need to convert
+      return (ex as any).assignmentUrl && !ex.assignmentUrls
+    })
+    
+    if (needsUpdate) {
+      const updatedExercises = formData.exercises.map(ex => {
+        if ((ex as any).assignmentUrl && !ex.assignmentUrls) {
+          const urls = splitFileUrls((ex as any).assignmentUrl)
+          const { assignmentUrl, ...rest } = ex as any
+          return { ...rest, assignmentUrls: urls }
+        }
+        return ex
+      })
+      onFormChange({ ...formData, exercises: updatedExercises })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Only run once on mount
+
+  const adjustEstimatedTime = (index: number, delta: number) => {
+    const nextExercises = [...formData.exercises]
+    const currentValue = parseInt(nextExercises[index]?.estimatedTime?.toString() || '0', 10) || 0
+    const updatedValue = Math.max(0, currentValue + delta)
+    nextExercises[index] = {
+      ...nextExercises[index],
+      estimatedTime: updatedValue === 0 ? '' : `${updatedValue}`,
+    }
+    onFormChange({ ...formData, exercises: nextExercises })
+  }
+
+  const addExercise = () => {
+    onFormChange({
+      ...formData,
+      exercises: [
+        ...formData.exercises,
+        { id: `exercise-${Date.now()}`, title: '', requirement: '', estimatedTime: '', note: '', assignmentUrls: [] },
+      ],
+    })
+  }
+
+  const addEmptyFileRow = (exerciseIndex: number) => {
+    const exercise = formData.exercises[exerciseIndex]
+    const currentUrls = exercise.assignmentUrls || []
+    // Set flag để tránh xóa dòng trống khi blur
+    setClickingAddFile(prev => ({ ...prev, [exercise.id]: true }))
+    handleExerciseChange(exerciseIndex, 'assignmentUrls', [...currentUrls, ''])
+    // Clear flag sau một chút
+    setTimeout(() => {
+      setClickingAddFile(prev => {
+        const next = { ...prev }
+        delete next[exercise.id]
+        return next
+      })
+    }, 300)
+  }
+
+  const removeFile = (exerciseIndex: number, fileIndex: number) => {
+    const exercise = formData.exercises[exerciseIndex]
+    const currentUrls = exercise.assignmentUrls || []
+    const newUrls = currentUrls.filter((_, idx) => idx !== fileIndex)
+    handleExerciseChange(exerciseIndex, 'assignmentUrls', newUrls)
+  }
+
+  const handleFileUpload = async (exerciseIndex: number, fileIndex: number, fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
-    const file = fileList[0]
-    const exercise = formData.exercises[index]
+    const exercise = formData.exercises[exerciseIndex]
     if (!exercise) return
 
-    setUploadingAssignments((prev) => ({ ...prev, [exercise.id]: true }))
-    setUploadErrors((prev) => ({ ...prev, [exercise.id]: null }))
+    const file = fileList[0]
+    const uploadKey = `${exercise.id}-${fileIndex}`
+    
+    // Validation đã được kiểm tra ở onChange của input, nhưng kiểm tra lại để chắc chắn
+    if (file.size > MAX_FILE_SIZE) {
+      setUploadErrors((prev) => ({ ...prev, [uploadKey]: 'File không được vượt quá 15MB' }))
+      return
+    }
+    
+    setUploadingFiles((prev) => ({ ...prev, [uploadKey]: true }))
+    setUploadErrors((prev) => ({ ...prev, [uploadKey]: null }))
 
     try {
+      // Upload file đầu tiên (chỉ upload 1 file mỗi lần)
       const uploadPayload = new FormData()
       uploadPayload.append('files', file)
 
@@ -221,45 +300,42 @@ export default function ChecklistForm({
       }
 
       const data = await response.json()
-      const uploadedUrl =
-        data?.files?.[0]?.url ||
-        data?.file?.[0]?.url ||
-        data?.urls?.[0] ||
-        data?.url ||
-        data?.file?.url
+      // Lấy URL từ response
+      let uploadedUrl: string | null = null
+      
+      if (Array.isArray(data?.files) && data.files.length > 0) {
+        uploadedUrl = data.files[0]?.url || null
+      } else if (Array.isArray(data?.file) && data.file.length > 0) {
+        uploadedUrl = data.file[0]?.url || null
+      } else if (Array.isArray(data?.urls) && data.urls.length > 0) {
+        uploadedUrl = data.urls[0] || null
+      } else if (data?.url) {
+        uploadedUrl = data.url
+      } else if (data?.file?.url) {
+        uploadedUrl = data.file.url
+      }
 
       if (!uploadedUrl) {
         throw new Error('Không nhận được đường dẫn file từ máy chủ.')
       }
 
-      handleExerciseChange(index, 'assignmentUrl', uploadedUrl)
+      // Cập nhật URL tại vị trí fileIndex (thay thế nếu đã có, thêm mới nếu chưa có)
+      const currentUrls = exercise.assignmentUrls || []
+      const newUrls = [...currentUrls]
+      if (fileIndex < newUrls.length) {
+        newUrls[fileIndex] = uploadedUrl
+      } else {
+        newUrls.push(uploadedUrl)
+      }
+      handleExerciseChange(exerciseIndex, 'assignmentUrls', newUrls)
+      setUploadErrors((prev) => ({ ...prev, [uploadKey]: null }))
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Tải file thất bại. Vui lòng thử lại.'
-      setUploadErrors((prev) => ({ ...prev, [exercise.id]: message }))
+      console.error('Upload file error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Tải file thất bại. Vui lòng thử lại.'
+      setUploadErrors((prev) => ({ ...prev, [uploadKey]: errorMessage }))
     } finally {
-      setUploadingAssignments((prev) => ({ ...prev, [exercise.id]: false }))
+      setUploadingFiles((prev) => ({ ...prev, [uploadKey]: false }))
     }
-  }
-
-  const adjustEstimatedTime = (index: number, delta: number) => {
-    const nextExercises = [...formData.exercises]
-    const currentValue = parseInt(nextExercises[index]?.estimatedTime?.toString() || '0', 10) || 0
-    const updatedValue = Math.max(0, currentValue + delta)
-    nextExercises[index] = {
-      ...nextExercises[index],
-      estimatedTime: updatedValue === 0 ? '' : `${updatedValue}`,
-    }
-    onFormChange({ ...formData, exercises: nextExercises })
-  }
-
-  const addExercise = () => {
-    onFormChange({
-      ...formData,
-      exercises: [
-        ...formData.exercises,
-        { id: `exercise-${Date.now()}`, title: '', requirement: '', estimatedTime: '', note: '', assignmentUrl: '' },
-      ],
-    })
   }
 
   const removeExercise = (index: number) => {
@@ -472,53 +548,200 @@ export default function ChecklistForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">
-                      File bài tập (assignmentUrl)
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-gray-600">
+                        File bài tập
                     </label>
+                      <button
+                        onClick={() => addEmptyFileRow(idx)}
+                        className="text-xs font-semibold text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Thêm file
+                      </button>
+                    </div>
                     <div className="flex flex-col gap-2">
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <div className="flex-1 flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
-                          <LinkIcon className="w-4 h-4 text-gray-400" />
+                      {/* Danh sách file */}
+                      {exercise.assignmentUrls && exercise.assignmentUrls.length > 0 ? (
+                        <div className="space-y-2">
+                          {exercise.assignmentUrls.map((url, fileIndex) => {
+                            const isEmpty = !url || url.trim() === ''
+                            const uploadKey = `${exercise.id}-${fileIndex}`
+                            const isUploading = uploadingFiles[uploadKey] || false
+                            
+                            return (
+                              <div key={fileIndex} className="flex flex-col gap-1">
+                                <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 bg-white">
+                                  <LinkIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                {isEmpty ? (
+                                  <>
                           <input
-                            value={exercise.assignmentUrl || ''}
-                            onChange={(e) => handleExerciseChange(idx, 'assignmentUrl', e.target.value)}
-                            placeholder="Dán link file bài tập hoặc tải từ máy"
+                                      type="text"
+                                      value={url}
+                                      onChange={(e) => {
+                                        const exercise = formData.exercises[idx]
+                                        const currentUrls = exercise.assignmentUrls || []
+                                        const newUrls = [...currentUrls]
+                                        newUrls[fileIndex] = e.target.value
+                                        handleExerciseChange(idx, 'assignmentUrls', newUrls)
+                                      }}
+                                      onBlur={(e) => {
+                                        const uploadKey = `${exercise.id}-${fileIndex}`
+                                        // Delay để tránh xóa khi click vào upload button hoặc nút thêm file
+                                        setTimeout(() => {
+                                          if (!clickingUpload[uploadKey] && !clickingAddFile[exercise.id]) {
+                                            const input = e.target as HTMLInputElement
+                                            if (!input.value.trim()) {
+                                              removeFile(idx, fileIndex)
+                                            }
+                                          }
+                                          setClickingUpload(prev => {
+                                            const next = { ...prev }
+                                            delete next[uploadKey]
+                                            return next
+                                          })
+                                        }, 150)
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault()
+                                          e.currentTarget.blur()
+                                        }
+                                      }}
                             className="flex-1 text-sm outline-none"
-                          />
-                          {exercise.assignmentUrl && (
-                            <a
-                              href={exercise.assignmentUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs font-semibold text-primary-600 hover:underline"
-                            >
-                              Xem
-                            </a>
-                          )}
-                        </div>
+                                      placeholder="Nhập URL file bài tập"
+                                    />
+                                    <label
+                                      className={`p-1.5 rounded transition cursor-pointer ${
+                                        isUploading
+                                          ? 'text-gray-400 cursor-wait'
+                                          : 'text-primary-600 hover:bg-primary-50'
+                                      }`}
+                                      title="Tải file từ thiết bị"
+                                      onMouseDown={(e) => {
+                                        e.stopPropagation()
+                                        const uploadKey = `${exercise.id}-${fileIndex}`
+                                        setClickingUpload(prev => ({ ...prev, [uploadKey]: true }))
+                                      }}
+                                    >
+                                      {isUploading ? (
+                                        <div className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                                      ) : (
+                                        <Upload className="w-4 h-4" />
+                                      )}
+                                      <input
+                                        type="file"
+                                        accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                        className="hidden"
+                                        onChange={(event) => {
+                                          handleFileUpload(idx, fileIndex, event.target.files)
+                                          event.target.value = ''
+                                        }}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                        }}
+                                        disabled={isUploading}
+                                      />
+                                    </label>
+                                    <button
+                                      onClick={() => removeFile(idx, fileIndex)}
+                                      className="p-1.5 text-red-500 hover:bg-red-50 rounded transition"
+                                      title="Xóa dòng"
+                                      disabled={isUploading}
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                      className="flex-1 text-sm text-primary-600 hover:underline break-all"
+                                      title={url}
+                                >
+                                      {url.length > 60 ? `${url.substring(0, 60)}...` : url}
+                                </a>
                         <label
-                          className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border-2 border-dashed ${
-                            uploadingAssignments[exercise.id]
-                              ? 'border-gray-300 text-gray-500 cursor-wait'
-                              : 'border-primary-300 text-primary-600 cursor-pointer hover:bg-primary-50'
-                          } text-sm font-semibold transition`}
-                        >
+                                      className={`p-1.5 rounded transition cursor-pointer ${
+                                        isUploading
+                                          ? 'text-gray-400 cursor-wait'
+                                          : 'text-primary-600 hover:bg-primary-50'
+                                      }`}
+                                      title="Tải file mới thay thế"
+                                      onMouseDown={(e) => {
+                                        e.stopPropagation()
+                                        const uploadKey = `${exercise.id}-${fileIndex}`
+                                        setClickingUpload(prev => ({ ...prev, [uploadKey]: true }))
+                                      }}
+                                    >
+                                      {isUploading ? (
+                                        <div className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                                      ) : (
                           <Upload className="w-4 h-4" />
-                          {uploadingAssignments[exercise.id] ? 'Đang tải...' : 'Tải file'}
+                                      )}
                           <input
                             type="file"
                             accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                             className="hidden"
                             onChange={(event) => {
-                              handleAssignmentFileUpload(idx, event.target.files)
+                                          const files = event.target.files
+                                          if (files && files.length > 0) {
+                                            const file = files[0]
+                                            const uploadKey = `${exercise.id}-${fileIndex}`
+                                            // Kiểm tra kích thước file trước khi upload
+                                            if (file.size > MAX_FILE_SIZE) {
+                                              setUploadErrors((prev) => ({ ...prev, [uploadKey]: 'File không được vượt quá 15MB' }))
+                                              event.target.value = ''
+                                              return
+                                            }
+                                            // Clear error trước khi upload
+                                            setUploadErrors((prev) => ({ ...prev, [uploadKey]: null }))
+                                            handleFileUpload(idx, fileIndex, files)
+                                          }
                               event.target.value = ''
                             }}
-                            disabled={uploadingAssignments[exercise.id]}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                        }}
+                                        disabled={isUploading}
                           />
                         </label>
+                                    <button
+                                      onClick={() => {
+                                        const exercise = formData.exercises[idx]
+                                        const currentUrls = exercise.assignmentUrls || []
+                                        const newUrls = [...currentUrls]
+                                        newUrls[fileIndex] = ''
+                                        handleExerciseChange(idx, 'assignmentUrls', newUrls)
+                                      }}
+                                      className="p-1.5 text-gray-500 hover:bg-gray-50 rounded transition"
+                                      title="Sửa URL"
+                                      disabled={isUploading}
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => removeFile(idx, fileIndex)}
+                                      className="p-1.5 text-red-500 hover:bg-red-50 rounded transition"
+                                      title="Xóa file"
+                                      disabled={isUploading}
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                )}
+                                </div>
+                                {uploadErrors[uploadKey] && (
+                                  <p className="text-xs text-red-500 px-1">{uploadErrors[uploadKey]}</p>
+                                )}
+                              </div>
+                            )
+                          })}
                       </div>
-                      {uploadErrors[exercise.id] && (
-                        <p className="text-xs text-red-500">{uploadErrors[exercise.id]}</p>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">Chưa có file nào. Nhấn "Thêm file" để thêm file mới.</p>
                       )}
                     </div>
                   </div>

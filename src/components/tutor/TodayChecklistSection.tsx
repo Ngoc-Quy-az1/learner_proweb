@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
-import { Plus, Upload, Loader2, ChevronDown, ChevronUp, Layers, Clock, Folder, Lightbulb, PenTool } from 'lucide-react'
+import { Plus, Upload, Loader2, ChevronDown, ChevronUp, Layers, Clock, Folder, Lightbulb, PenTool, Edit2, X } from 'lucide-react'
 import type { AssignmentApiItem } from '../../pages/TutorDashboard'
+import { splitFileUrls } from '../../utils/fileUrlHelper'
 
 type TodayAssignmentStatus = 'pending' | 'in-progress' | 'completed'
 
@@ -51,10 +52,23 @@ interface TodayChecklistSectionProps {
     assignmentKey: string,
     taskIndex: number,
     field: 'assignmentUrl' | 'answerURL' | 'solutionUrl',
-    files: FileList | null
+    files: FileList | null,
+    fileIndex?: number // Optional: index to replace, undefined to add new
   ) => void
   isStudentMode?: boolean // Student can only upload answerURL and change status
   onStatusChange?: (assignmentKey: string, taskIndex: number, status: TodayAssignmentStatus) => void
+}
+
+// Helper function to parse URLs from string or array
+const parseFileUrls = (urls: string | string[] | undefined | null): string[] => {
+  if (!urls) return []
+  if (Array.isArray(urls)) {
+    return urls.filter((url: string) => url && url.trim() !== '').map((url: string) => String(url).trim()).filter(Boolean)
+  }
+  if (typeof urls === 'string') {
+    return splitFileUrls(urls)
+  }
+  return []
 }
 
 // Helper function to extract subject from checklist name or description
@@ -154,6 +168,82 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
   onStatusChange,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false)
+  const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
+  const [uploadErrors, setUploadErrors] = useState<Record<string, string | null>>({})
+
+  // Helper: tìm assignment theo key để đọc lại danh sách task hiện tại
+  const resolveTasksForAssignment = (assignmentKey: string): TodayAssignmentTask[] => {
+    if (assignmentDrafts[assignmentKey]) {
+      return assignmentDrafts[assignmentKey]
+    }
+
+    const found = assignments.find((assignment, index) => {
+      const key =
+        assignment.id ||
+        (assignment as any)._id ||
+        `${assignment.subject || 'subject'}-${selectedStudentId}-${index}`
+      return key === assignmentKey
+    })
+
+    if (!found) return []
+    return ((found as any).tasks || []) as TodayAssignmentTask[]
+  }
+
+  const buildUpdatedUrlValue = (
+    current: string | string[] | undefined | null,
+    urlIndex: number,
+    nextUrl: string | null
+  ): string | null => {
+    const urls = parseFileUrls(current)
+
+    if (nextUrl === null) {
+      // remove
+      if (urlIndex >= 0 && urlIndex < urls.length) {
+        urls.splice(urlIndex, 1)
+      }
+    } else {
+      if (urlIndex >= 0 && urlIndex < urls.length) {
+        urls[urlIndex] = nextUrl
+      } else if (urlIndex === urls.length) {
+        urls.push(nextUrl)
+      }
+    }
+
+    if (urls.length === 0) return null
+    // Lưu dạng chuỗi; splitFileUrls sẽ parse lại (ngắt theo xuống dòng / dấu phân cách)
+    return urls.join('\n')
+  }
+
+  const updateTaskFileUrl = (
+    assignmentKey: string,
+    taskIndex: number,
+    field: 'assignmentUrl' | 'answerURL' | 'solutionUrl',
+    urlIndex: number,
+    nextUrl: string
+  ) => {
+    const tasks = resolveTasksForAssignment(assignmentKey)
+    const task = tasks[taskIndex]
+    if (!task) return
+
+    const currentValue = task[field] as string | string[] | undefined | null
+    const updated = buildUpdatedUrlValue(currentValue, urlIndex, nextUrl)
+    onChangeTaskField(assignmentKey, taskIndex, field, updated)
+  }
+
+  const removeTaskFile = (
+    assignmentKey: string,
+    taskIndex: number,
+    field: 'assignmentUrl' | 'answerURL' | 'solutionUrl',
+    urlIndex: number
+  ) => {
+    const tasks = resolveTasksForAssignment(assignmentKey)
+    const task = tasks[taskIndex]
+    if (!task) return
+
+    const currentValue = task[field] as string | string[] | undefined | null
+    const updated = buildUpdatedUrlValue(currentValue, urlIndex, null)
+    onChangeTaskField(assignmentKey, taskIndex, field, updated)
+  }
 
   const renderTimeInput = (
     value: number | undefined,
@@ -213,7 +303,7 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
         )}
       </div>
       {isExpanded && assignments.length > 0 ? (
-        <div className="space-y-3 sm:space-y-4">
+        <div className="space-y-4">
           {assignments.map((assignment, index) => {
             const assignmentKey =
               assignment.id ||
@@ -675,51 +765,133 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                   <Folder className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
                                   <div className="flex-1 min-w-0">
                                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">File bài tập</p>
-                                    {isEditing && !isStudentMode ? (
-                                      <div className="flex items-center gap-2">
-                                        <input
-                                          value={task.assignmentUrl || ''}
-                                          onChange={(e) =>
-                                            onChangeTaskField(assignmentKey, taskIndex, 'assignmentUrl', e.target.value)
-                                          }
-                                          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                                          placeholder="Link file bài tập"
-                                        />
-                                        <label
-                                          className={`inline-flex items-center justify-center w-8 h-8 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
-                                            taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl`
-                                              ? 'cursor-wait opacity-60'
-                                              : 'cursor-pointer hover:bg-primary-50'
-                                          }`}
-                                        >
-                                          {taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl` ? (
-                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                          ) : (
-                                            <Upload className="w-3.5 h-3.5" />
+                                    {isEditing && !isStudentMode ? (() => {
+                                      const urls = parseFileUrls(task.assignmentUrl)
+                                      return (
+                                        <div className="flex flex-col gap-2">
+                                          {urls.map((url: string, idx: number) => {
+                                            const uploadKey = `${assignmentKey}-${taskIndex}-assignmentUrl-${idx}`
+                                            const isUploading = taskFileUploadingKey === uploadKey
+                                            return (
+                                              <div key={idx} className="flex items-center gap-1">
+                                                <input
+                                                  value={url}
+                                                  onChange={(e) =>
+                                                    updateTaskFileUrl(assignmentKey, taskIndex, 'assignmentUrl', idx, e.target.value)
+                                                  }
+                                                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                                  placeholder="Link file bài tập"
+                                                />
+                                                <label
+                                                  className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
+                                                    isUploading
+                                                      ? 'cursor-wait opacity-60'
+                                                      : 'cursor-pointer hover:bg-primary-50'
+                                                  }`}
+                                                  title={isUploading ? 'Đang upload...' : 'Tải file thay thế'}
+                                                >
+                                                  {isUploading ? (
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                  ) : (
+                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                  )}
+                                                <input
+                                                  type="file"
+                                                  className="hidden"
+                                                  accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                  onChange={(e) => {
+                                                    const file = e.target.files?.[0]
+                                                    const key = `${assignmentKey}-${taskIndex}-assignmentUrl`
+                                                    if (file && file.size > MAX_FILE_SIZE) {
+                                                      setUploadErrors(prev => ({
+                                                        ...prev,
+                                                        [key]: 'File không được vượt quá 15MB',
+                                                      }))
+                                                      e.target.value = ''
+                                                      return
+                                                    }
+                                                    setUploadErrors(prev => {
+                                                      const next = { ...prev }
+                                                      delete next[key]
+                                                      return next
+                                                    })
+                                                    onUploadTaskFile(assignmentKey, taskIndex, 'assignmentUrl', e.target.files, idx)
+                                                    e.target.value = ''
+                                                  }}
+                                                />
+                                                </label>
+                                                <button
+                                                  onClick={() => removeTaskFile(assignmentKey, taskIndex, 'assignmentUrl', idx)}
+                                                  className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-red-300 text-red-600 flex-shrink-0 hover:bg-red-50"
+                                                  title="Xóa file"
+                                                >
+                                                  <X className="w-3.5 h-3.5" />
+                                                </button>
+                                              </div>
+                                            )
+                                          })}
+                                          <label
+                                            className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-primary-300 text-primary-600 text-xs ${
+                                              taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl`
+                                                ? 'cursor-wait opacity-60'
+                                                : 'cursor-pointer hover:bg-primary-50'
+                                            }`}
+                                            title={taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl` ? 'Đang upload...' : 'Thêm file mới'}
+                                          >
+                                            {taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl` ? (
+                                              <Loader2 className="w-3 h-3 animate-spin" />
+                                            ) : (
+                                              <>
+                                                <Plus className="w-3 h-3" />
+                                                <span>Thêm file</span>
+                                              </>
+                                            )}
+                                            <input
+                                              type="file"
+                                              className="hidden"
+                                              accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                              onChange={(e) => {
+                                                const file = e.target.files?.[0]
+                                                const key = `${assignmentKey}-${taskIndex}-assignmentUrl`
+                                                if (file && file.size > MAX_FILE_SIZE) {
+                                                  setUploadErrors(prev => ({
+                                                    ...prev,
+                                                    [key]: 'File không được vượt quá 15MB',
+                                                  }))
+                                                  e.target.value = ''
+                                                  return
+                                                }
+                                                setUploadErrors(prev => {
+                                                  const next = { ...prev }
+                                                  delete next[key]
+                                                  return next
+                                                })
+                                                onUploadTaskFile(assignmentKey, taskIndex, 'assignmentUrl', e.target.files)
+                                                e.target.value = ''
+                                              }}
+                                            />
+                                          </label>
+                                          {uploadErrors[`${assignmentKey}-${taskIndex}-assignmentUrl`] && (
+                                            <p className="text-[11px] text-red-500 mt-1">
+                                              {uploadErrors[`${assignmentKey}-${taskIndex}-assignmentUrl`]}
+                                            </p>
                                           )}
-                                          <input
-                                            type="file"
-                                            className="hidden"
-                                            accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                            onChange={(e) => {
-                                              onUploadTaskFile(assignmentKey, taskIndex, 'assignmentUrl', e.target.files)
-                                              e.target.value = ''
-                                            }}
-                                          />
-                                        </label>
-                                      </div>
-                                    ) : task.assignmentUrl ? (
-                                      <a
-                                        href={task.assignmentUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-sm text-primary-600 hover:underline break-all"
-                                      >
-                                        Xem file
-                                      </a>
-                                    ) : (
-                                      <span className="text-xs text-gray-400">—</span>
-                                    )}
+                                        </div>
+                                      )
+                                    })() : (() => {
+                                      const urls = parseFileUrls(task.assignmentUrl)
+                                      return urls.length > 0 ? (
+                                        <div className="flex flex-col gap-1">
+                                          {urls.map((url: string, idx: number) => (
+                                            <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">
+                                              {urls.length > 1 ? `Xem file ${idx + 1}` : 'Xem file'}
+                                            </a>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">—</span>
+                                      )
+                                    })()}
                                   </div>
                                 </div>
                               )}
@@ -753,51 +925,98 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                         }}
                                       />
                                     </label>
-                                  ) : isEditing && !isStudentMode ? (
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        value={task.answerURL || ''}
-                                        onChange={(e) =>
-                                          onChangeTaskField(assignmentKey, taskIndex, 'answerURL', e.target.value)
-                                        }
-                                        className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                                        placeholder="Link bài làm"
-                                      />
-                                      <label
-                                        className={`inline-flex items-center justify-center w-8 h-8 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
-                                          taskFileUploadingKey === `${assignmentKey}-${taskIndex}-answerURL`
-                                            ? 'cursor-wait opacity-60'
-                                            : 'cursor-pointer hover:bg-primary-50'
-                                        }`}
-                                      >
-                                        {taskFileUploadingKey === `${assignmentKey}-${taskIndex}-answerURL` ? (
-                                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                        ) : (
-                                          <Upload className="w-3.5 h-3.5" />
-                                        )}
-                                        <input
-                                          type="file"
-                                          className="hidden"
-                                          accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                          onChange={(e) => {
-                                            onUploadTaskFile(assignmentKey, taskIndex, 'answerURL', e.target.files)
-                                            e.target.value = ''
-                                          }}
-                                        />
-                                      </label>
-                                    </div>
-                                  ) : task.answerURL ? (
-                                    <a
-                                      href={task.answerURL}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-sm text-primary-600 hover:underline break-all"
-                                    >
-                                      Bài làm học sinh
-                                    </a>
-                                  ) : (
-                                    <span className="text-xs text-gray-400">—</span>
-                                  )}
+                                  ) : isEditing && !isStudentMode ? (() => {
+                                    const urls = parseFileUrls(task.answerURL)
+                                    return (
+                                      <div className="flex flex-col gap-2">
+                                        {urls.map((url: string, idx: number) => {
+                                          const uploadKey = `${assignmentKey}-${taskIndex}-answerURL-${idx}`
+                                          const isUploading = taskFileUploadingKey === uploadKey
+                                          return (
+                                            <div key={idx} className="flex items-center gap-1">
+                                              <input
+                                                value={url}
+                                                onChange={(e) =>
+                                                  updateTaskFileUrl(assignmentKey, taskIndex, 'answerURL', idx, e.target.value)
+                                                }
+                                                className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                                placeholder="Link bài làm"
+                                              />
+                                              <label
+                                                className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
+                                                  isUploading
+                                                    ? 'cursor-wait opacity-60'
+                                                    : 'cursor-pointer hover:bg-primary-50'
+                                                }`}
+                                                title={isUploading ? 'Đang upload...' : 'Tải file thay thế'}
+                                              >
+                                                {isUploading ? (
+                                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                ) : (
+                                                  <Edit2 className="w-3.5 h-3.5" />
+                                                )}
+                                                <input
+                                                  type="file"
+                                                  className="hidden"
+                                                  accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                  onChange={(e) => {
+                                                    onUploadTaskFile(assignmentKey, taskIndex, 'answerURL', e.target.files, idx)
+                                                    e.target.value = ''
+                                                  }}
+                                                />
+                                              </label>
+                                              <button
+                                                onClick={() => removeTaskFile(assignmentKey, taskIndex, 'answerURL', idx)}
+                                                className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-red-300 text-red-600 flex-shrink-0 hover:bg-red-50"
+                                                title="Xóa file"
+                                              >
+                                                <X className="w-3.5 h-3.5" />
+                                              </button>
+                                            </div>
+                                          )
+                                        })}
+                                        <label
+                                          className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-primary-300 text-primary-600 text-xs ${
+                                            taskFileUploadingKey === `${assignmentKey}-${taskIndex}-answerURL`
+                                              ? 'cursor-wait opacity-60'
+                                              : 'cursor-pointer hover:bg-primary-50'
+                                          }`}
+                                          title={taskFileUploadingKey === `${assignmentKey}-${taskIndex}-answerURL` ? 'Đang upload...' : 'Thêm file mới'}
+                                        >
+                                          {taskFileUploadingKey === `${assignmentKey}-${taskIndex}-answerURL` ? (
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                          ) : (
+                                            <>
+                                              <Plus className="w-3 h-3" />
+                                              <span>Thêm file</span>
+                                            </>
+                                          )}
+                                          <input
+                                            type="file"
+                                            className="hidden"
+                                            accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                            onChange={(e) => {
+                                              onUploadTaskFile(assignmentKey, taskIndex, 'answerURL', e.target.files)
+                                              e.target.value = ''
+                                            }}
+                                          />
+                                        </label>
+                                      </div>
+                                    )
+                                  })() : (() => {
+                                    const urls = parseFileUrls(task.answerURL)
+                                    return urls.length > 0 ? (
+                                      <div className="flex flex-col gap-1">
+                                        {urls.map((url: string, idx: number) => (
+                                          <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">
+                                            {urls.length > 1 ? `Bài làm ${idx + 1}` : 'Bài làm học sinh'}
+                                          </a>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <span className="text-xs text-gray-400">—</span>
+                                    )
+                                  })()}
                                 </div>
                               </div>
                               
@@ -807,51 +1026,98 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                   <Lightbulb className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
                                   <div className="flex-1 min-w-0">
                                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em] mb-1">File lời giải</p>
-                                    {isEditing && !isStudentMode ? (
-                                      <div className="flex items-center gap-2">
-                                        <input
-                                          value={task.solutionUrl || ''}
-                                          onChange={(e) =>
-                                            onChangeTaskField(assignmentKey, taskIndex, 'solutionUrl', e.target.value)
-                                          }
-                                          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                                          placeholder="Link lời giải"
-                                        />
-                                        <label
-                                          className={`inline-flex items-center justify-center w-8 h-8 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
-                                            taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl`
-                                              ? 'cursor-wait opacity-60'
-                                              : 'cursor-pointer hover:bg-primary-50'
-                                          }`}
-                                        >
-                                          {taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl` ? (
-                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                          ) : (
-                                            <Upload className="w-3.5 h-3.5" />
-                                          )}
-                                          <input
-                                            type="file"
-                                            className="hidden"
-                                            accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                            onChange={(e) => {
-                                              onUploadTaskFile(assignmentKey, taskIndex, 'solutionUrl', e.target.files)
-                                              e.target.value = ''
-                                            }}
-                                          />
-                                        </label>
-                                      </div>
-                                    ) : task.solutionUrl ? (
-                                      <a
-                                        href={task.solutionUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-sm text-primary-600 hover:underline break-all"
-                                      >
-                                        File lời giải
-                                      </a>
-                                    ) : (
-                                      <span className="text-xs text-gray-400">—</span>
-                                    )}
+                                    {isEditing && !isStudentMode ? (() => {
+                                      const urls = parseFileUrls(task.solutionUrl)
+                                      return (
+                                        <div className="flex flex-col gap-2">
+                                          {urls.map((url: string, idx: number) => {
+                                            const uploadKey = `${assignmentKey}-${taskIndex}-solutionUrl-${idx}`
+                                            const isUploading = taskFileUploadingKey === uploadKey
+                                            return (
+                                              <div key={idx} className="flex items-center gap-1">
+                                                <input
+                                                  value={url}
+                                                  onChange={(e) =>
+                                                    updateTaskFileUrl(assignmentKey, taskIndex, 'solutionUrl', idx, e.target.value)
+                                                  }
+                                                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                                  placeholder="Link lời giải"
+                                                />
+                                                <label
+                                                  className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
+                                                    isUploading
+                                                      ? 'cursor-wait opacity-60'
+                                                      : 'cursor-pointer hover:bg-primary-50'
+                                                  }`}
+                                                  title={isUploading ? 'Đang upload...' : 'Tải file thay thế'}
+                                                >
+                                                  {isUploading ? (
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                  ) : (
+                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                  )}
+                                                  <input
+                                                    type="file"
+                                                    className="hidden"
+                                                    accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                    onChange={(e) => {
+                                                      onUploadTaskFile(assignmentKey, taskIndex, 'solutionUrl', e.target.files, idx)
+                                                      e.target.value = ''
+                                                    }}
+                                                  />
+                                                </label>
+                                                <button
+                                                  onClick={() => removeTaskFile(assignmentKey, taskIndex, 'solutionUrl', idx)}
+                                                  className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-red-300 text-red-600 flex-shrink-0 hover:bg-red-50"
+                                                  title="Xóa file"
+                                                >
+                                                  <X className="w-3.5 h-3.5" />
+                                                </button>
+                                              </div>
+                                            )
+                                          })}
+                                          <label
+                                            className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-primary-300 text-primary-600 text-xs ${
+                                              taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl`
+                                                ? 'cursor-wait opacity-60'
+                                                : 'cursor-pointer hover:bg-primary-50'
+                                            }`}
+                                            title={taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl` ? 'Đang upload...' : 'Thêm file mới'}
+                                          >
+                                            {taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl` ? (
+                                              <Loader2 className="w-3 h-3 animate-spin" />
+                                            ) : (
+                                              <>
+                                                <Plus className="w-3 h-3" />
+                                                <span>Thêm file</span>
+                                              </>
+                                            )}
+                                            <input
+                                              type="file"
+                                              className="hidden"
+                                              accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                              onChange={(e) => {
+                                                onUploadTaskFile(assignmentKey, taskIndex, 'solutionUrl', e.target.files)
+                                                e.target.value = ''
+                                              }}
+                                            />
+                                          </label>
+                                        </div>
+                                      )
+                                    })() : (() => {
+                                      const urls = parseFileUrls(task.solutionUrl)
+                                      return urls.length > 0 ? (
+                                        <div className="flex flex-col gap-1">
+                                          {urls.map((url: string, idx: number) => (
+                                            <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-600 hover:underline break-all">
+                                              {urls.length > 1 ? `File lời giải ${idx + 1}` : 'File lời giải'}
+                                            </a>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">—</span>
+                                      )
+                                    })()}
                                   </div>
                                 </div>
                               )}
@@ -1031,71 +1297,99 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                     )}
                                   </td>
                                   <td className="px-4 py-3 text-center">
-                                    {isEditing && !isStudentMode ? (
-                                      <div className="flex items-center justify-center gap-2 min-w-0">
-                                        <input
-                                          value={task.assignmentUrl || ''}
-                                          onChange={(e) =>
-                                            onChangeTaskField(
-                                              assignmentKey,
-                                              taskIndex,
-                                              'assignmentUrl',
-                                              e.target.value
+                                    {isEditing && !isStudentMode ? (() => {
+                                      const urls = parseFileUrls(task.assignmentUrl)
+                                      return (
+                                        <div className="flex flex-col gap-2 items-center min-w-[200px]">
+                                          {urls.map((url: string, idx: number) => {
+                                            const uploadKey = `${assignmentKey}-${taskIndex}-assignmentUrl-${idx}`
+                                            const isUploading = taskFileUploadingKey === uploadKey
+                                            return (
+                                              <div key={idx} className="flex items-center gap-1 w-full">
+                                                <input
+                                                  value={url}
+                                                  onChange={(e) =>
+                                                    updateTaskFileUrl(assignmentKey, taskIndex, 'assignmentUrl', idx, e.target.value)
+                                                  }
+                                                  className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                                  placeholder="Link file bài tập"
+                                                  title={url}
+                                                />
+                                                <label
+                                                  className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
+                                                    isUploading
+                                                      ? 'cursor-wait opacity-60'
+                                                      : 'cursor-pointer hover:bg-primary-50'
+                                                  }`}
+                                                  title={isUploading ? 'Đang upload...' : 'Tải file thay thế'}
+                                                >
+                                                  {isUploading ? (
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                  ) : (
+                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                  )}
+                                                  <input
+                                                    type="file"
+                                                    className="hidden"
+                                                    accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                    onChange={(e) => {
+                                                      onUploadTaskFile(assignmentKey, taskIndex, 'assignmentUrl', e.target.files, idx)
+                                                      e.target.value = ''
+                                                    }}
+                                                  />
+                                                </label>
+                                                <button
+                                                  onClick={() => removeTaskFile(assignmentKey, taskIndex, 'assignmentUrl', idx)}
+                                                  className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-red-300 text-red-600 flex-shrink-0 hover:bg-red-50"
+                                                  title="Xóa file"
+                                                >
+                                                  <X className="w-3.5 h-3.5" />
+                                                </button>
+                                              </div>
                                             )
-                                          }
-                                          className="w-24 max-w-[140px] border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
-                                          placeholder="Link file bài tập"
-                                          title={task.assignmentUrl || ''}
-                                        />
-                                        <label
-                                          className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
-                                            taskFileUploadingKey ===
-                                            `${assignmentKey}-${taskIndex}-assignmentUrl`
-                                              ? 'cursor-wait opacity-60'
-                                              : 'cursor-pointer hover:bg-primary-50'
-                                          }`}
-                                          title={
-                                            taskFileUploadingKey ===
-                                            `${assignmentKey}-${taskIndex}-assignmentUrl`
-                                              ? 'Đang upload...'
-                                              : 'Upload tài liệu'
-                                          }
-                                        >
-                                          {taskFileUploadingKey ===
-                                          `${assignmentKey}-${taskIndex}-assignmentUrl` ? (
-                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                          ) : (
-                                            <Upload className="w-3.5 h-3.5" />
-                                          )}
-                                          <input
-                                            type="file"
-                                            className="hidden"
-                                            accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                            onChange={(e) => {
-                                              onUploadTaskFile(
-                                                assignmentKey,
-                                                taskIndex,
-                                                'assignmentUrl',
-                                                e.target.files
-                                              )
-                                              e.target.value = ''
-                                            }}
-                                          />
-                                        </label>
-                                      </div>
-                                    ) : task.assignmentUrl ? (
-                                      <a
-                                        href={task.assignmentUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-block text-primary-600 hover:underline text-xs font-medium"
-                                        title={task.assignmentUrl}
-                                      >
-                                        Xem file
-                                      </a>
-                                    ) : (
-                                      <span className="text-xs text-gray-400">—</span>
-                                    )}
+                                          })}
+                                          <label
+                                            className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-primary-300 text-primary-600 text-xs ${
+                                              taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl`
+                                                ? 'cursor-wait opacity-60'
+                                                : 'cursor-pointer hover:bg-primary-50'
+                                            }`}
+                                            title={taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl` ? 'Đang upload...' : 'Thêm file mới'}
+                                          >
+                                            {taskFileUploadingKey === `${assignmentKey}-${taskIndex}-assignmentUrl` ? (
+                                              <Loader2 className="w-3 h-3 animate-spin" />
+                                            ) : (
+                                              <>
+                                                <Plus className="w-3 h-3" />
+                                                <span>Thêm file</span>
+                                              </>
+                                            )}
+                                            <input
+                                              type="file"
+                                              className="hidden"
+                                              accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                              onChange={(e) => {
+                                                onUploadTaskFile(assignmentKey, taskIndex, 'assignmentUrl', e.target.files)
+                                                e.target.value = ''
+                                              }}
+                                            />
+                                          </label>
+                                        </div>
+                                      )
+                                    })() : (() => {
+                                      const urls = parseFileUrls(task.assignmentUrl)
+                                      return urls.length > 0 ? (
+                                        <div className="flex flex-col gap-1 items-center">
+                                          {urls.map((url: string, idx: number) => (
+                                            <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="inline-block text-primary-600 hover:underline text-xs font-medium" title={url}>
+                                              {urls.length > 1 ? `File ${idx + 1}` : 'Xem file'}
+                                            </a>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">—</span>
+                                      )
+                                    })()}
                                   </td>
                                   <td className="px-4 py-3 text-center">
                                     {isStudentMode && !task.answerURL ? (
@@ -1135,138 +1429,194 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                           }}
                                         />
                                       </label>
-                                    ) : isEditing && !isStudentMode ? (
-                                      <div className="flex items-center justify-center gap-2 min-w-0">
-                                        <input
-                                          value={task.answerURL || ''}
-                                          onChange={(e) =>
-                                            onChangeTaskField(
-                                              assignmentKey,
-                                              taskIndex,
-                                              'answerURL',
-                                              e.target.value
+                                    ) : isEditing && !isStudentMode ? (() => {
+                                      const urls = parseFileUrls(task.answerURL)
+                                      return (
+                                        <div className="flex flex-col gap-2 items-center min-w-[200px]">
+                                          {urls.map((url: string, idx: number) => {
+                                            const uploadKey = `${assignmentKey}-${taskIndex}-answerURL-${idx}`
+                                            const isUploading = taskFileUploadingKey === uploadKey
+                                            return (
+                                              <div key={idx} className="flex items-center gap-1 w-full">
+                                                <input
+                                                  value={url}
+                                                  onChange={(e) =>
+                                                    updateTaskFileUrl(assignmentKey, taskIndex, 'answerURL', idx, e.target.value)
+                                                  }
+                                                  className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                                  placeholder="Link bài làm"
+                                                  title={url}
+                                                />
+                                                <label
+                                                  className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
+                                                    isUploading
+                                                      ? 'cursor-wait opacity-60'
+                                                      : 'cursor-pointer hover:bg-primary-50'
+                                                  }`}
+                                                  title={isUploading ? 'Đang upload...' : 'Tải file thay thế'}
+                                                >
+                                                  {isUploading ? (
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                  ) : (
+                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                  )}
+                                                  <input
+                                                    type="file"
+                                                    className="hidden"
+                                                    accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                    onChange={(e) => {
+                                                      onUploadTaskFile(assignmentKey, taskIndex, 'answerURL', e.target.files, idx)
+                                                      e.target.value = ''
+                                                    }}
+                                                  />
+                                                </label>
+                                                <button
+                                                  onClick={() => removeTaskFile(assignmentKey, taskIndex, 'answerURL', idx)}
+                                                  className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-red-300 text-red-600 flex-shrink-0 hover:bg-red-50"
+                                                  title="Xóa file"
+                                                >
+                                                  <X className="w-3.5 h-3.5" />
+                                                </button>
+                                              </div>
                                             )
-                                          }
-                                          className="w-24 max-w-[140px] border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
-                                          placeholder="Link bài làm"
-                                          title={task.answerURL || ''}
-                                        />
-                                        <label
-                                          className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
-                                            taskFileUploadingKey ===
-                                            `${assignmentKey}-${taskIndex}-answerURL`
-                                              ? 'cursor-wait opacity-60'
-                                              : 'cursor-pointer hover:bg-primary-50'
-                                          }`}
-                                          title={
-                                            taskFileUploadingKey ===
-                                            `${assignmentKey}-${taskIndex}-answerURL`
-                                              ? 'Đang upload...'
-                                              : 'Upload bài làm'
-                                          }
-                                        >
-                                          {taskFileUploadingKey ===
-                                          `${assignmentKey}-${taskIndex}-answerURL` ? (
-                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                          ) : (
-                                            <Upload className="w-3.5 h-3.5" />
-                                          )}
-                                          <input
-                                            type="file"
-                                            className="hidden"
-                                            accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                            onChange={(e) => {
-                                              onUploadTaskFile(
-                                                assignmentKey,
-                                                taskIndex,
-                                                'answerURL',
-                                                e.target.files
-                                              )
-                                              e.target.value = ''
-                                            }}
-                                          />
-                                        </label>
-                                      </div>
-                                    ) : task.answerURL ? (
-                                      <a
-                                        href={task.answerURL}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-block text-primary-600 hover:underline text-xs font-medium"
-                                        title={task.answerURL}
-                                      >
-                                        Bài làm học sinh
-                                      </a>
-                                    ) : (
-                                      <span className="text-xs text-gray-400">—</span>
-                                    )}
+                                          })}
+                                          <label
+                                            className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-primary-300 text-primary-600 text-xs ${
+                                              taskFileUploadingKey === `${assignmentKey}-${taskIndex}-answerURL`
+                                                ? 'cursor-wait opacity-60'
+                                                : 'cursor-pointer hover:bg-primary-50'
+                                            }`}
+                                            title={taskFileUploadingKey === `${assignmentKey}-${taskIndex}-answerURL` ? 'Đang upload...' : 'Thêm file mới'}
+                                          >
+                                            {taskFileUploadingKey === `${assignmentKey}-${taskIndex}-answerURL` ? (
+                                              <Loader2 className="w-3 h-3 animate-spin" />
+                                            ) : (
+                                              <>
+                                                <Plus className="w-3 h-3" />
+                                                <span>Thêm file</span>
+                                              </>
+                                            )}
+                                            <input
+                                              type="file"
+                                              className="hidden"
+                                              accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                              onChange={(e) => {
+                                                onUploadTaskFile(assignmentKey, taskIndex, 'answerURL', e.target.files)
+                                                e.target.value = ''
+                                              }}
+                                            />
+                                          </label>
+                                        </div>
+                                      )
+                                    })() : (() => {
+                                      const urls = parseFileUrls(task.answerURL)
+                                      return urls.length > 0 ? (
+                                        <div className="flex flex-col gap-1 items-center">
+                                          {urls.map((url: string, idx: number) => (
+                                            <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="inline-block text-primary-600 hover:underline text-xs font-medium" title={url}>
+                                              {urls.length > 1 ? `Bài làm ${idx + 1}` : 'Bài làm học sinh'}
+                                            </a>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">—</span>
+                                      )
+                                    })()}
                                   </td>
                                   <td className="px-4 py-3 text-center">
-                                    {isEditing && !isStudentMode ? (
-                                      <div className="flex items-center justify-center gap-2 min-w-0">
-                                        <input
-                                          value={task.solutionUrl || ''}
-                                          onChange={(e) =>
-                                            onChangeTaskField(
-                                              assignmentKey,
-                                              taskIndex,
-                                              'solutionUrl',
-                                              e.target.value
+                                    {isEditing && !isStudentMode ? (() => {
+                                      const urls = parseFileUrls(task.solutionUrl)
+                                      return (
+                                        <div className="flex flex-col gap-2 items-center min-w-[200px]">
+                                          {urls.map((url: string, idx: number) => {
+                                            const uploadKey = `${assignmentKey}-${taskIndex}-solutionUrl-${idx}`
+                                            const isUploading = taskFileUploadingKey === uploadKey
+                                            return (
+                                              <div key={idx} className="flex items-center gap-1 w-full">
+                                                <input
+                                                  value={url}
+                                                  onChange={(e) =>
+                                                    updateTaskFileUrl(assignmentKey, taskIndex, 'solutionUrl', idx, e.target.value)
+                                                  }
+                                                  className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                                  placeholder="Link lời giải"
+                                                  title={url}
+                                                />
+                                                <label
+                                                  className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
+                                                    isUploading
+                                                      ? 'cursor-wait opacity-60'
+                                                      : 'cursor-pointer hover:bg-primary-50'
+                                                  }`}
+                                                  title={isUploading ? 'Đang upload...' : 'Tải file thay thế'}
+                                                >
+                                                  {isUploading ? (
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                  ) : (
+                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                  )}
+                                                  <input
+                                                    type="file"
+                                                    className="hidden"
+                                                    accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                                    onChange={(e) => {
+                                                      onUploadTaskFile(assignmentKey, taskIndex, 'solutionUrl', e.target.files, idx)
+                                                      e.target.value = ''
+                                                    }}
+                                                  />
+                                                </label>
+                                                <button
+                                                  onClick={() => removeTaskFile(assignmentKey, taskIndex, 'solutionUrl', idx)}
+                                                  className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-red-300 text-red-600 flex-shrink-0 hover:bg-red-50"
+                                                  title="Xóa file"
+                                                >
+                                                  <X className="w-3.5 h-3.5" />
+                                                </button>
+                                              </div>
                                             )
-                                          }
-                                          className="w-24 max-w-[140px] border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500 truncate"
-                                          placeholder="Link lời giải"
-                                          title={task.solutionUrl || ''}
-                                        />
-                                        <label
-                                          className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
-                                            taskFileUploadingKey ===
-                                            `${assignmentKey}-${taskIndex}-solutionUrl`
-                                              ? 'cursor-wait opacity-60'
-                                              : 'cursor-pointer hover:bg-primary-50'
-                                          }`}
-                                          title={
-                                            taskFileUploadingKey ===
-                                            `${assignmentKey}-${taskIndex}-solutionUrl`
-                                              ? 'Đang upload...'
-                                              : 'Upload lời giải'
-                                          }
-                                        >
-                                          {taskFileUploadingKey ===
-                                          `${assignmentKey}-${taskIndex}-solutionUrl` ? (
-                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                          ) : (
-                                            <Upload className="w-3.5 h-3.5" />
-                                          )}
-                                          <input
-                                            type="file"
-                                            className="hidden"
-                                            accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                            onChange={(e) => {
-                                              onUploadTaskFile(
-                                                assignmentKey,
-                                                taskIndex,
-                                                'solutionUrl',
-                                                e.target.files
-                                              )
-                                              e.target.value = ''
-                                            }}
-                                          />
-                                        </label>
-                                      </div>
-                                    ) : task.solutionUrl ? (
-                                      <a
-                                        href={task.solutionUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-block text-primary-600 hover:underline text-xs font-medium"
-                                        title={task.solutionUrl}
-                                      >
-                                        File lời giải
-                                      </a>
-                                    ) : (
-                                      <span className="text-xs text-gray-400">—</span>
-                                    )}
+                                          })}
+                                          <label
+                                            className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg border border-dashed border-primary-300 text-primary-600 text-xs ${
+                                              taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl`
+                                                ? 'cursor-wait opacity-60'
+                                                : 'cursor-pointer hover:bg-primary-50'
+                                            }`}
+                                            title={taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl` ? 'Đang upload...' : 'Thêm file mới'}
+                                          >
+                                            {taskFileUploadingKey === `${assignmentKey}-${taskIndex}-solutionUrl` ? (
+                                              <Loader2 className="w-3 h-3 animate-spin" />
+                                            ) : (
+                                              <>
+                                                <Plus className="w-3 h-3" />
+                                                <span>Thêm file</span>
+                                              </>
+                                            )}
+                                            <input
+                                              type="file"
+                                              className="hidden"
+                                              accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                              onChange={(e) => {
+                                                onUploadTaskFile(assignmentKey, taskIndex, 'solutionUrl', e.target.files)
+                                                e.target.value = ''
+                                              }}
+                                            />
+                                          </label>
+                                        </div>
+                                      )
+                                    })() : (() => {
+                                      const urls = parseFileUrls(task.solutionUrl)
+                                      return urls.length > 0 ? (
+                                        <div className="flex flex-col gap-1 items-center">
+                                          {urls.map((url: string, idx: number) => (
+                                            <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="inline-block text-primary-600 hover:underline text-xs font-medium" title={url}>
+                                              {urls.length > 1 ? `File ${idx + 1}` : 'File lời giải'}
+                                            </a>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">—</span>
+                                      )
+                                    })()}
                                   </td>
                                   <td className="px-4 py-3 text-center">
                                     {(isEditing || isStudentMode) ? (
@@ -1319,8 +1669,8 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
           })}
         </div>
       ) : isExpanded ? (
-        <div className="text-center py-6 sm:py-8">
-          <p className="text-sm sm:text-base text-gray-500">Chưa có checklist nào cho buổi học này</p>
+        <div className="text-center py-8">
+          <p className="text-sm text-gray-500">Chưa có checklist nào cho buổi học này</p>
           {/* Nút tạo checklist nằm ở phần thông tin nhanh bên trên, không đặt ở đây */}
         </div>
       ) : null}

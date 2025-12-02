@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useState } from 'react'
 import { format } from 'date-fns'
-import { Plus, ChevronUp, ChevronDown, Upload, Loader2 } from 'lucide-react'
+import { Plus, ChevronUp, ChevronDown, Loader2, FileText, X, Edit2, Calendar } from 'lucide-react'
+import { splitFileUrls } from '../../utils/fileUrlHelper'
 
 export interface HomeworkItem {
   id: string
@@ -36,7 +37,8 @@ interface HomeworkSectionProps {
   onUploadFile?: (
     homeworkId: string,
     field: 'assignmentUrl' | 'tutorSolution' | 'studentSolutionFile',
-    files: FileList | null
+    files: FileList | null,
+    fileIndex?: number
   ) => void
   taskFileUploadingKey: string | null
   canEdit?: boolean
@@ -102,75 +104,24 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
       ? subjectItems.filter((item) => item.scheduleId === scheduleId)
       : subjectItems
 
-  // Track original values to detect changes
-  const originalValuesRef = useRef<Record<string, Partial<HomeworkItem>>>({})
+  // Track trạng thái đã chỉnh sửa cho từng homework để quyết định hiển thị nút Lưu
+  const [dirtyMap, setDirtyMap] = useState<Record<string, boolean>>({})
 
-  // Initialize original values when items first appear (chỉ lưu lần đầu, không overwrite khi user thay đổi)
-  useEffect(() => {
-    homeworkItems.forEach((item) => {
-      const key = item.id
-      // Chỉ lưu original values nếu chưa có (lần đầu tiên thấy item này)
-      // Sau khi save, original values đã được cập nhật trong handleSave, nên không overwrite ở đây
-      if (!originalValuesRef.current[key]) {
-        // First time seeing this item, save original values
-        originalValuesRef.current[key] = {
-          task: item.task,
-          deadline: item.deadline,
-          assignmentUrl: item.assignmentUrl,
-          studentSolutionFile: item.studentSolutionFile,
-          tutorSolution: item.tutorSolution,
-          difficulty: item.difficulty,
-          result: item.result,
-          note: item.note,
-        }
-      }
-      // Nếu đã có original values, không overwrite (để giữ original values cho việc detect changes)
-      // Sau khi save thành công, original values sẽ được cập nhật trong handleSave
-    })
-  }, [homeworkItems.map((item) => item.id).join(',')])
-
-  // Helper to check if an item has changes
-  const hasChanges = (homework: HomeworkItem): boolean => {
-    const original = originalValuesRef.current[homework.id]
-    // Nếu chưa có original values, không hiển thị nút Lưu (item mới sẽ có original values sau khi mount)
-    if (!original) {
-      return false
-    }
-    
-    // So sánh từng field để phát hiện thay đổi
-    const changed = (
-      homework.task !== original.task ||
-      homework.deadline !== original.deadline ||
-      homework.assignmentUrl !== original.assignmentUrl ||
-      homework.studentSolutionFile !== original.studentSolutionFile ||
-      homework.tutorSolution !== original.tutorSolution ||
-      homework.difficulty !== original.difficulty ||
-      homework.result !== original.result ||
-      homework.note !== original.note
-    )
-    
-    return changed
+  const markDirty = (homeworkId: string) => {
+    setDirtyMap(prev => ({
+      ...prev,
+      [homeworkId]: true,
+    }))
   }
 
   // Handle save and reset tracking
   const handleSave = async (homeworkId: string) => {
-    // Update original values to current values TRƯỚC khi save
-    const current = homeworkItems.find((item) => item.id === homeworkId)
-    if (current) {
-      originalValuesRef.current[homeworkId] = {
-        task: current.task,
-        deadline: current.deadline,
-        assignmentUrl: current.assignmentUrl,
-        studentSolutionFile: current.studentSolutionFile,
-        tutorSolution: current.tutorSolution,
-        difficulty: current.difficulty,
-        result: current.result,
-        note: current.note,
-      }
-    }
-    
-    // Gọi API save (sau khi cập nhật original values, nếu user thay đổi tiếp thì hasChanges sẽ so sánh với original mới)
     await onSaveHomework(subjectKey, homeworkId)
+    // Sau khi lưu thành công, đánh dấu đã sạch -> ẩn nút Lưu
+    setDirtyMap(prev => ({
+      ...prev,
+      [homeworkId]: false,
+    }))
   }
 
   const handleToggle = () => onToggleSection(sectionKey, !isExpanded)
@@ -182,28 +133,36 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
 
   return (
     <div className="rounded-2xl border-2 border-primary-50 bg-white p-4 sm:p-6 shadow-sm">
-      <div className="flex items-center justify-between mb-4 gap-2">
+      {/* Header: chỉ còn tiêu đề + mũi tên thu gọn giống trạng thái ban đầu */}
+      <div className="flex items-center justify-between mb-3 sm:mb-4 gap-2">
         <button
           type="button"
           onClick={handleToggle}
           className="flex items-center justify-between flex-1 text-2xl md:text-3xl font-bold text-gray-900 hover:text-primary-600 transition-colors min-w-0"
         >
           <h4 className="text-left">Bài tập về nhà</h4>
-          {isExpanded ? <ChevronUp className="w-5 h-5 flex-shrink-0 ml-2" /> : <ChevronDown className="w-5 h-5 flex-shrink-0 ml-2" />}
+          {isExpanded ? (
+            <ChevronUp className="w-5 h-5 flex-shrink-0 ml-2" />
+          ) : (
+            <ChevronDown className="w-5 h-5 flex-shrink-0 ml-2" />
+          )}
         </button>
+      </div>
 
-        {canEdit && isExpanded && (
+      {/* Nút thêm bài tập được đẩy xuống dưới header, canh phải, chỉ hiện khi đang mở */}
+      {canEdit && isExpanded && (
+        <div className="flex justify-end mb-3 sm:mb-4">
           <button
             type="button"
             onClick={handleAddHomework}
             disabled={!scheduleId}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold text-primary-600 bg-primary-50 hover:bg-primary-100 disabled:opacity-50 transition flex-shrink-0"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold text-primary-600 bg-primary-50 hover:bg-primary-100 disabled:opacity-50 transition"
           >
             <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Thêm bài tập</span>
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {isExpanded && (
         <>
@@ -225,8 +184,8 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                   hard: 'bg-red-100 text-red-700',
                 }
                 const formattedDeadline = homework.deadline
-                  ? format(new Date(homework.deadline), 'MM/dd/yyyy')
-                  : 'mm/dd/yyyy'
+                  ? format(new Date(homework.deadline), 'dd/MM/yyyy')
+                  : 'dd/MM/yyyy'
                 
                 return (
                   <div
@@ -240,9 +199,10 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                           <input
                             type="text"
                             value={homework.task}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              markDirty(homework.id)
                               onChangeField(subjectKey, homework.id, 'task', e.target.value)
-                            }
+                            }}
                             className="w-full text-base sm:text-lg font-bold text-gray-900 bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-primary-200 p-0 rounded"
                             placeholder="Nhập tên bài tập"
                           />
@@ -252,14 +212,15 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                           {canEdit ? (
                             <select
                               value={homework.result || 'not_done'}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                markDirty(homework.id)
                                 onChangeField(
                                   subjectKey,
                                   homework.id,
                                   'result',
                                   e.target.value as HomeworkItem['result']
                                 )
-                              }
+                              }}
                               className={`text-xs px-2 sm:px-3 py-1.5 sm:py-1 rounded-full font-semibold whitespace-nowrap border-none focus:outline-none focus:ring-0 w-full sm:w-auto ${
                                 homework.result === 'completed'
                                   ? 'bg-green-100 text-green-700'
@@ -293,14 +254,15 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                           {canEdit ? (
                             <select
                               value={homework.difficulty}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                markDirty(homework.id)
                                 onChangeField(
                                   subjectKey,
                                   homework.id,
                                   'difficulty',
                                   e.target.value as HomeworkItem['difficulty']
                                 )
-                              }
+                              }}
                               className="text-xs px-2 sm:px-3 py-1.5 sm:py-1 rounded-full font-semibold bg-yellow-100 text-yellow-700 border-none focus:outline-none focus:ring-0 w-full sm:w-auto"
                             >
                               <option value="easy" className="bg-green-100 text-green-700">Dễ</option>
@@ -316,137 +278,333 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                           )}
                         </div>
                       </div>
-                      <p className="text-sm sm:text-base text-gray-600">
-                        Hạn nộp: {canEdit ? (
-                          <input
-                            type="date"
-                            value={homework.deadline ? format(new Date(homework.deadline), 'yyyy-MM-dd') : ''}
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                const date = new Date(e.target.value)
-                                date.setHours(23, 59, 59)
-                                onChangeField(subjectKey, homework.id, 'deadline', date.toISOString())
-                              }
-                            }}
-                            className="text-sm sm:text-base text-gray-600 border-none bg-transparent focus:outline-none focus:ring-0 p-0"
-                          />
+                      <div className="text-sm sm:text-base text-gray-600 flex items-center gap-2">
+                        <span>Hạn nộp:</span>
+                        {canEdit ? (
+                          <div className="relative inline-flex items-center">
+                            <input
+                              type="date"
+                              value={homework.deadline ? format(new Date(homework.deadline), 'yyyy-MM-dd') : ''}
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  const date = new Date(e.target.value)
+                                  date.setHours(23, 59, 59)
+                                  markDirty(homework.id)
+                                  onChangeField(subjectKey, homework.id, 'deadline', date.toISOString())
+                                }
+                              }}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg border border-gray-300 bg-white shadow-sm text-xs sm:text-sm">
+                              <span className="text-gray-700">{formattedDeadline}</span>
+                              <Calendar className="w-4 h-4 text-gray-400" />
+                            </div>
+                          </div>
                         ) : (
-                          formattedDeadline
+                          <span>{formattedDeadline}</span>
                         )}
-                      </p>
+                      </div>
                     </div>
 
                     {/* Body */}
                     <div className="px-4 sm:px-5 py-4 space-y-4">
-                      {/* Upload Bài tập */}
+                      {/* Upload Bài tập - hỗ trợ nhiều file */}
                       {canEdit && !isStudentMode && onUploadFile && (
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                          {homework.assignmentUrl ? (
-                            <a
-                              href={homework.assignmentUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs sm:text-sm text-primary-600 hover:underline flex-1 truncate break-all"
-                              title={homework.assignmentUrl}
-                            >
-                              {homework.assignmentUrl}
-                            </a>
-                          ) : (
-                            <span className="text-xs sm:text-sm text-gray-400 flex-1">Chưa có file bài tập</span>
-                          )}
-                          <label
-                            className={`inline-flex items-center justify-center w-8 h-8 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
-                              taskFileUploadingKey === `${homework.id}-assignmentUrl`
-                                ? 'cursor-wait opacity-60'
-                                : 'cursor-pointer hover:bg-primary-50'
-                            }`}
-                            title={
-                              taskFileUploadingKey === `${homework.id}-assignmentUrl`
-                                ? 'Đang upload...'
-                                : 'Upload file bài tập'
-                            }
-                          >
-                            {taskFileUploadingKey === `${homework.id}-assignmentUrl` ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Upload className="w-4 h-4" />
-                            )}
-                            <input
-                              type="file"
-                              className="hidden"
-                              accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                              onChange={(e) => {
-                                onUploadFile(homework.id, 'assignmentUrl', e.target.files)
-                                e.target.value = ''
-                              }}
-                            />
+                        <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
+                          <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap flex-shrink-0 mt-1 sm:w-32">
+                            File bài tập
                           </label>
+                          <div className="flex-1 min-w-0 flex flex-col gap-2">
+                            {(() => {
+                              const urls = splitFileUrls(homework.assignmentUrl || '')
+                              return urls.length > 0 ? (
+                                urls.map((url, urlIndex) => {
+                                  const fileName = url.split('/').pop() || url
+                                  return (
+                                  <div
+                                    key={urlIndex}
+                                    className="flex items-center gap-2 sm:gap-3"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (url) {
+                                          window.open(url, '_blank', 'noopener,noreferrer')
+                                        }
+                                      }}
+                                      className="flex-1 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-xs sm:text-sm text-primary-600 hover:bg-primary-50 hover:border-primary-300 text-left truncate"
+                                      title={url}
+                                    >
+                                      <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                                      <span className="truncate">
+                                        {fileName}
+                                      </span>
+                                    </button>
+                                    <label
+                                      className={`inline-flex items-center justify-center w-8 h-8 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
+                                        taskFileUploadingKey === `${homework.id}-assignmentUrl-${urlIndex}`
+                                          ? 'cursor-wait opacity-60'
+                                          : 'cursor-pointer hover:bg-primary-50'
+                                      }`}
+                                      title={
+                                        taskFileUploadingKey === `${homework.id}-assignmentUrl-${urlIndex}`
+                                          ? 'Đang upload...'
+                                          : 'Thay thế file'
+                                      }
+                                    >
+                                      {taskFileUploadingKey === `${homework.id}-assignmentUrl-${urlIndex}` ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <Edit2 className="w-4 h-4" />
+                                      )}
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                        onChange={(e) => {
+                                          onUploadFile(homework.id, 'assignmentUrl', e.target.files, urlIndex)
+                                          e.target.value = ''
+                                        }}
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-red-300 text-red-500 flex-shrink-0 hover:bg-red-50"
+                                      title="Xóa file"
+                                      onClick={() => {
+                                        const currentUrls = splitFileUrls(homework.assignmentUrl || '')
+                                        const nextUrls = currentUrls.filter((_, idx) => idx !== urlIndex)
+                                        const nextValue = nextUrls.join('\n')
+                                        markDirty(homework.id)
+                                        onChangeField(subjectKey, homework.id, 'assignmentUrl', nextValue)
+                                      }}
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                  )
+                                })
+                              ) : (
+                                <span className="text-xs sm:text-sm text-gray-400">Chưa có file bài tập</span>
+                              )
+                            })()}
+                            <label
+                              className={`inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg border border-dashed border-primary-300 text-primary-600 text-xs sm:text-sm ${
+                                taskFileUploadingKey === `${homework.id}-assignmentUrl`
+                                  ? 'cursor-wait opacity-60'
+                                  : 'cursor-pointer hover:bg-primary-50'
+                              }`}
+                              title={
+                                taskFileUploadingKey === `${homework.id}-assignmentUrl`
+                                  ? 'Đang upload...'
+                                  : 'Thêm file bài tập'
+                              }
+                            >
+                              {taskFileUploadingKey === `${homework.id}-assignmentUrl` ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <>
+                                  <Plus className="w-4 h-4" />
+                                  <span>Thêm file</span>
+                                </>
+                              )}
+                              <input
+                                type="file"
+                                className="hidden"
+                                accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                multiple
+                                onChange={(e) => {
+                                  markDirty(homework.id)
+                                  onUploadFile(homework.id, 'assignmentUrl', e.target.files)
+                                  e.target.value = ''
+                                }}
+                              />
+                            </label>
+                          </div>
                         </div>
                       )}
 
                       {/* Bài làm học sinh - Tutor chỉ xem và tải, không upload */}
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                        <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap flex-shrink-0">Bài làm HS:</label>
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          {homework.studentSolutionFile ? (
-                            <a
-                              href={homework.studentSolutionFile}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs sm:text-sm text-primary-600 hover:underline flex-1 truncate break-all"
-                              title={homework.studentSolutionFile}
-                            >
-                              {homework.studentSolutionFile}
-                            </a>
-                          ) : (
-                            <span className="text-xs sm:text-sm text-gray-400 flex-1">Chưa có bài làm</span>
-                          )}
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
+                        <label className="text-xs sm:text-sm font-medium text-gray-700 flex-shrink-0 mt-1 leading-tight sm:w-32">
+                          <span className="block">Bài làm</span>
+                          <span className="block">học sinh</span>
+                        </label>
+                        <div className="flex-1 min-w-0">
+                          {(() => {
+                            const urls = splitFileUrls(homework.studentSolutionFile || '')
+                            if (urls.length === 0) {
+                              return (
+                                <span className="text-xs sm:text-sm text-gray-400 flex-1">
+                                  Chưa có bài làm
+                                </span>
+                              )
+                            }
+                            
+                            return (
+                              <div className="flex flex-col gap-1">
+                                {urls.map((url, idx) => {
+                                  const rawName = url.split('/').pop() || url
+                                  const fileName = rawName.split('?')[0] || rawName
+                                  return (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      onClick={() => {
+                                        if (url) {
+                                          window.open(url, '_blank', 'noopener,noreferrer')
+                                        }
+                                      }}
+                                      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-xs sm:text-sm text-primary-600 hover:bg-primary-50 hover:border-primary-300 text-left truncate"
+                                      title={url}
+                                    >
+                                      <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                                      <span className="truncate">
+                                        {urls.length > 1 ? `Bài làm ${idx + 1}` : fileName}
+                                      </span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )
+                          })()}
                         </div>
                       </div>
 
-                      {/* Link Lời giải */}
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                        <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap flex-shrink-0">Lời giải:</label>
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          {canEdit ? (
-                            <>
-                              <input
-                                type="text"
-                                value={homework.tutorSolution || ''}
-                                onChange={(e) =>
-                                  onChangeField(subjectKey, homework.id, 'tutorSolution', e.target.value)
+                      {/* File Lời giải - hỗ trợ nhiều file giống File bài tập */}
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
+                        <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap flex-shrink-0 mt-1 sm:w-32">
+                          File lời giải
+                        </label>
+                        <div className="flex-1 min-w-0">
+                          {canEdit && onUploadFile ? (
+                            <div className="flex flex-col gap-2">
+                              {(() => {
+                                const urls = splitFileUrls(homework.tutorSolution || '')
+                                return urls.length > 0 ? (
+                                  urls.map((url, urlIndex) => {
+                                    const uploadKey = `${homework.id}-tutorSolution-${urlIndex}`
+                                    const isUploading = taskFileUploadingKey === uploadKey
+                                    const fileName = (url.split('/').pop() || url).split('?')[0]
+
+                                    return (
+                                      <div
+                                        key={urlIndex}
+                                        className="flex items-center gap-2 sm:gap-3"
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (url) {
+                                              window.open(url, '_blank', 'noopener,noreferrer')
+                                            }
+                                          }}
+                                          className="flex-1 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-xs sm:text-sm text-primary-600 hover:bg-primary-50 hover:border-primary-300 text-left truncate"
+                                          title={url}
+                                        >
+                                          <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                                          <span className="truncate">{fileName}</span>
+                                        </button>
+                                        <label
+                                          className={`inline-flex items-center justify-center w-8 h-8 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
+                                            isUploading ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-primary-50'
+                                          }`}
+                                          title={isUploading ? 'Đang upload...' : 'Thay thế file'}
+                                        >
+                                          {isUploading ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : (
+                                            <Edit2 className="w-4 h-4" />
+                                          )}
+                                          <input
+                                            type="file"
+                                            className="hidden"
+                                            accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                            onChange={(e) => {
+                                              onUploadFile(homework.id, 'tutorSolution', e.target.files, urlIndex)
+                                              e.target.value = ''
+                                            }}
+                                          />
+                                        </label>
+                                        <button
+                                          type="button"
+                                          className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-red-300 text-red-500 flex-shrink-0 hover:bg-red-50"
+                                          title="Xóa file"
+                                          onClick={() => {
+                                            const currentUrls = splitFileUrls(homework.tutorSolution || '')
+                                            const nextUrls = currentUrls.filter((_, idx) => idx !== urlIndex)
+                                            const nextValue = nextUrls.join('\n')
+                                            markDirty(homework.id)
+                                            onChangeField(subjectKey, homework.id, 'tutorSolution', nextValue)
+                                          }}
+                                        >
+                                          <X className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    )
+                                  })
+                                ) : (
+                                  <span className="text-xs sm:text-sm text-gray-400">Chưa có file lời giải</span>
+                                )
+                              })()}
+
+                              <label
+                                className={`inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg border border-dashed border-primary-300 text-primary-600 text-xs sm:text-sm ${
+                                  taskFileUploadingKey === `${homework.id}-tutorSolution`
+                                    ? 'cursor-wait opacity-60'
+                                    : 'cursor-pointer hover:bg-primary-50'
+                                }`}
+                                title={
+                                  taskFileUploadingKey === `${homework.id}-tutorSolution`
+                                    ? 'Đang upload...'
+                                    : 'Thêm file lời giải'
                                 }
-                                className="flex-1 text-xs sm:text-sm text-gray-700 px-2 sm:px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
-                                placeholder="Dán link lời giải"
-                              />
-                              {onUploadFile && (
-                                <label
-                                  className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-primary-300 text-primary-600 flex-shrink-0 ${
-                                    taskFileUploadingKey === `${homework.id}-tutorSolution`
-                                      ? 'cursor-wait opacity-60'
-                                      : 'cursor-pointer hover:bg-primary-50'
-                                  }`}
-                                  title="Upload lời giải"
-                                >
-                                  {taskFileUploadingKey === `${homework.id}-tutorSolution` ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <Upload className="w-3.5 h-3.5" />
-                                  )}
-                                  <input
-                                    type="file"
-                                    className="hidden"
-                                    accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                                    onChange={(e) => {
-                                      onUploadFile(homework.id, 'tutorSolution', e.target.files)
-                                      e.target.value = ''
-                                    }}
-                                  />
-                                </label>
-                              )}
-                            </>
+                              >
+                                {taskFileUploadingKey === `${homework.id}-tutorSolution` ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <Plus className="w-4 h-4" />
+                                    <span>Thêm file</span>
+                                  </>
+                                )}
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                                  onChange={(e) => {
+                                    markDirty(homework.id)
+                                    onUploadFile(homework.id, 'tutorSolution', e.target.files)
+                                    e.target.value = ''
+                                  }}
+                                />
+                              </label>
+                            </div>
                           ) : (
-                            <span className="text-xs sm:text-sm text-gray-700 flex-1 break-all">{homework.tutorSolution || '—'}</span>
+                            (() => {
+                              const urls = splitFileUrls(homework.tutorSolution || '')
+                              return urls.length > 0 ? (
+                                <div className="flex flex-col gap-1">
+                                  {urls.map((url, idx) => {
+                                    const fileName = (url.split('/').pop() || url).split('?')[0]
+                                    return (
+                                      <a
+                                        key={idx}
+                                        href={url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs sm:text-sm text-primary-600 hover:underline break-all"
+                                        title={url}
+                                      >
+                                        {urls.length > 1 ? `File lời giải ${idx + 1}` : fileName}
+                                      </a>
+                                    )
+                                  })}
+                                </div>
+                              ) : (
+                                <span className="text-xs sm:text-sm text-gray-400">Chưa có file lời giải</span>
+                              )
+                            })()
                           )}
                         </div>
                       </div>
@@ -458,9 +616,10 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                           <input
                             type="text"
                             value={homework.note || ''}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              markDirty(homework.id)
                               onChangeField(subjectKey, homework.id, 'note', e.target.value)
-                            }
+                            }}
                             className="flex-1 text-xs sm:text-sm text-gray-700 px-2 sm:px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
                             placeholder="Nhận xét"
                           />
@@ -471,9 +630,9 @@ const HomeworkSection: React.FC<HomeworkSectionProps> = ({
                     </div>
 
                     {/* Footer - Action Buttons - Chỉ hiển thị nút Lưu khi có thay đổi */}
-                    {canEdit && (
+                        {canEdit && (
                       <div className="px-4 sm:px-5 py-3 border-t border-gray-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
-                        {hasChanges(homework) && (
+                        {dirtyMap[homework.id] && (
                           <button
                             onClick={() => handleSave(homework.id)}
                             className="w-full sm:w-auto px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-semibold text-xs sm:text-sm transition"

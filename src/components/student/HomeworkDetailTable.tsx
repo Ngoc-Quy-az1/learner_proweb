@@ -17,8 +17,12 @@ export interface HomeworkDetailItem {
   uploadedFileName?: string
   assignmentFileName?: string
   assignmentUrl?: string
+  assignmentUrls?: string[]
+  solutionUrls?: string[]
   studentSolutionFileUrl?: string
+  studentSolutionFileUrls?: string[]
   deadline?: string
+  createdAt?: string
 }
 
 const homeworkResultConfig: Record<
