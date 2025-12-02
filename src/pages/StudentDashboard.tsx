@@ -548,6 +548,26 @@ export default function StudentDashboard() {
     }
   }, [user, scheduleFetchTrigger])
 
+  // Reload toàn bộ danh sách bài tập về nhà từ server để đồng bộ state
+  const reloadHomeworks = async () => {
+    if (!user?.id) return
+    setIsHomeworkLoading(true)
+    setHomeworkError(null)
+    try {
+      const query = new URLSearchParams({
+        studentId: user.id,
+        limit: '200',
+        sortBy: 'deadline:asc',
+      }).toString()
+      const response = await apiCall<HomeworkPaginatedResponse>(`/homeworks?${query}`)
+      setHomeworks(response.results || [])
+    } catch (error) {
+      console.error('Failed to reload homeworks:', error)
+    } finally {
+      setIsHomeworkLoading(false)
+    }
+  }
+
   async function handleDeleteHomeworkFile(taskId: string, fileIndex: number) {
     try {
       // Tìm homework và task tương ứng
@@ -623,6 +643,7 @@ export default function StudentDashboard() {
             return updated
           })
 
+          await reloadHomeworks()
           return
         }
       }
@@ -647,6 +668,7 @@ export default function StudentDashboard() {
         })
         return updated
       })
+      await reloadHomeworks()
     } catch (error) {
       console.error('Failed to delete homework file:', error)
       alert('Không thể xóa file bài làm. Vui lòng thử lại.')
@@ -1222,18 +1244,8 @@ export default function StudentDashboard() {
             return updatedEntries
           })
 
-          // Reload homeworks để cập nhật dữ liệu - trigger fetch lại
-          setIsHomeworkLoading(true)
-          try {
-            const response = await apiCall<HomeworkPaginatedResponse>(`/homeworks?studentId=${user?.id}&limit=200`)
-            if (response.results) {
-              setHomeworks(response.results)
-            }
-          } catch (error) {
-            console.error('Failed to reload homeworks:', error)
-          } finally {
-            setIsHomeworkLoading(false)
-          }
+          // Reload homeworks để cập nhật dữ liệu
+          await reloadHomeworks()
           return
         }
       }
@@ -1432,7 +1444,8 @@ export default function StudentDashboard() {
           const newUrls = existingUrls.filter((_, idx) => idx !== fileIndex)
           
           // Mảng URL để gửi lên backend (API yêu cầu answerURL là array)
-          const newAnswerURLArray = newUrls.length > 0 ? newUrls : undefined
+          // Gửi [] để xóa hết file thay vì undefined (giữ nguyên)
+          const newAnswerURLArray = newUrls
           
           // Cập nhật assignment task với answerURL
           const payload: any = {
@@ -3869,6 +3882,30 @@ export default function StudentDashboard() {
                                                       if (isBusy) return
                                                       const key = `${item.id}-${idx}`
                                                       setStudentHomeworkUploading(key)
+
+                                                      // Cập nhật UI ngay lập tức (optimistic update)
+                                                      setHomeworkDetailItems((prev) => {
+                                                        const updated: Record<string, HomeworkDetailItem[]> = {}
+                                                        Object.entries(prev).forEach(([sessionId, items]) => {
+                                                          updated[sessionId] = items.map((detailItem) => {
+                                                            if (detailItem.id !== item.id) return detailItem
+                                                            const currentUrls =
+                                                              (detailItem as any).studentSolutionFileUrls ||
+                                                              (detailItem.studentSolutionFileUrl
+                                                                ? splitFileUrls(detailItem.studentSolutionFileUrl)
+                                                                : [])
+                                                            const nextUrls = currentUrls.filter((_: string, i: number) => i !== idx)
+                                                            return {
+                                                              ...detailItem,
+                                                              studentSolutionFileUrls: nextUrls,
+                                                              studentSolutionFileUrl:
+                                                                nextUrls.length > 0 ? joinFileUrls(nextUrls) : undefined,
+                                                            }
+                                                          })
+                                                        })
+                                                        return updated
+                                                      })
+
                                                       try {
                                                         await handleDeleteHomeworkFile(item.id, idx)
                                                         setScheduleFetchTrigger((prev) => prev + 1)
