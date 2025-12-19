@@ -306,52 +306,6 @@ export default function ChecklistForm({
     setUploadErrors((prev) => ({ ...prev, [uploadKey]: null }))
 
     try {
-      // Upload file đầu tiên (chỉ upload 1 file mỗi lần)
-      const uploadPayload = new FormData()
-      uploadPayload.append('files', file)
-
-      const accessToken = getCookie('accessToken')
-      const response = await fetch(`${API_BASE_URL}/files/upload-multiple`, {
-        method: 'POST',
-        headers: {
-          ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
-        },
-        body: uploadPayload,
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || 'Không thể tải file. Vui lòng thử lại.')
-      }
-
-      const data = await response.json()
-      // Lấy URL từ response
-      let uploadedUrl: string | null = null
-      
-      if (Array.isArray(data?.files) && data.files.length > 0) {
-        uploadedUrl = data.files[0]?.url || null
-      } else if (Array.isArray(data?.file) && data.file.length > 0) {
-        uploadedUrl = data.file[0]?.url || null
-      } else if (Array.isArray(data?.urls) && data.urls.length > 0) {
-        uploadedUrl = data.urls[0] || null
-      } else if (data?.url) {
-        uploadedUrl = data.url
-      } else if (data?.file?.url) {
-        uploadedUrl = data.file.url
-      }
-
-      if (!uploadedUrl) {
-        throw new Error('Không nhận được đường dẫn file từ máy chủ.')
-      }
-
-      // Cập nhật URL tại vị trí fileIndex (thay thế nếu đã có, thêm mới nếu chưa có)
-      const currentUrls = exercise.assignmentUrls || []
-      const newUrls = [...currentUrls]
-      if (fileIndex < newUrls.length) {
-        newUrls[fileIndex] = uploadedUrl
-      } else {
-        newUrls.push(uploadedUrl)
-      }
       // Process image file before upload
       let processedFile = file
       if (isImageFile(file)) {

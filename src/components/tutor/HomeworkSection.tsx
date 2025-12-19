@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { format } from 'date-fns'
 import { Plus, ChevronUp, ChevronDown, Loader2, FileText, X, Edit2, Calendar } from 'lucide-react'
 import { splitFileUrls } from '../../utils/fileUrlHelper'
-import { processImageFile, isImageFile } from '../../utils/imageProcessor'
 
 export interface HomeworkItem {
   id: string
