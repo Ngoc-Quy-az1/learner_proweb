@@ -1298,7 +1298,29 @@ useEffect(() => {
     if (!file) return
     try {
       setStudentAvatarUploading(true)
-      const url = await uploadFile(file)
+      
+      // Process and compress image before upload
+      const { processImageFile } = await import('../utils/imageProcessor')
+      let processedFile = file
+      try {
+        processedFile = await processImageFile(file, {
+          maxWidth: 800,
+          maxHeight: 800,
+          quality: 0.85,
+          maxSizeMB: 1 // Avatar should be smaller
+        })
+      } catch (error) {
+        console.warn('Image processing failed, using original:', error)
+        // Check original size if processing fails
+        const maxSize = 5 * 1024 * 1024
+        if (file.size > maxSize) {
+          alert(`File "${file.name}" vượt quá 5MB. Vui lòng chọn file nhỏ hơn.`)
+          setStudentAvatarUploading(false)
+          return
+        }
+      }
+      
+      const url = await uploadFile(processedFile)
       setStudentEditData((prev) => (prev ? { ...prev, avatar: url } : prev))
     } catch (error) {
       console.error('Error uploading student avatar:', error)
@@ -1471,7 +1493,29 @@ useEffect(() => {
     if (!file) return
     try {
       setTutorAvatarUploading(true)
-      const url = await uploadFile(file)
+      
+      // Process and compress image before upload
+      const { processImageFile } = await import('../utils/imageProcessor')
+      let processedFile = file
+      try {
+        processedFile = await processImageFile(file, {
+          maxWidth: 800,
+          maxHeight: 800,
+          quality: 0.85,
+          maxSizeMB: 1 // Avatar should be smaller
+        })
+      } catch (error) {
+        console.warn('Image processing failed, using original:', error)
+        // Check original size if processing fails
+        const maxSize = 5 * 1024 * 1024
+        if (file.size > maxSize) {
+          alert(`File "${file.name}" vượt quá 5MB. Vui lòng chọn file nhỏ hơn.`)
+          setTutorAvatarUploading(false)
+          return
+        }
+      }
+      
+      const url = await uploadFile(processedFile)
       setTutorEditData((prev) => (prev ? { ...prev, avatar: url } : prev))
     } catch (error) {
       console.error('Error uploading tutor avatar:', error)

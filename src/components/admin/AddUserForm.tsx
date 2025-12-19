@@ -60,26 +60,45 @@ export default function AddUserForm({ newUser, onUserChange, onClose, onSuccess 
     }
 
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
-    if (!validTypes.includes(file.type)) {
+    const fileExtension = file.name.split('.').pop()?.toLowerCase()
+    const isValidType = validTypes.includes(file.type) || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+    
+    if (!isValidType) {
       alert('Vui lòng chọn file ảnh hợp lệ (PNG, JPG, GIF, WEBP)')
       return
     }
 
-    const maxSize = 5 * 1024 * 1024
-    if (file.size > maxSize) {
-      alert('Kích thước file không được vượt quá 5MB')
-      return
-    }
-
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      setAvatarPreview(reader.result as string)
-    }
-    reader.readAsDataURL(file)
-
     try {
       setUploadingFile(true)
-      const url = await uploadFile(file)
+      
+      // Process and compress image before upload
+      const { processImageFile } = await import('../../utils/imageProcessor')
+      let processedFile = file
+      try {
+        processedFile = await processImageFile(file, {
+          maxWidth: 800,
+          maxHeight: 800,
+          quality: 0.85,
+          maxSizeMB: 1 // Avatar should be smaller
+        })
+      } catch (error) {
+        console.warn('Image processing failed, using original:', error)
+        // Check original size if processing fails
+        const maxSize = 5 * 1024 * 1024
+        if (file.size > maxSize) {
+          alert(`File "${file.name}" vượt quá 5MB. Vui lòng chọn file nhỏ hơn.`)
+          setUploadingFile(false)
+          return
+        }
+      }
+
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string)
+      }
+      reader.readAsDataURL(processedFile)
+
+      const url = await uploadFile(processedFile)
       onUserChange({
         ...newUser,
         avatar: file,

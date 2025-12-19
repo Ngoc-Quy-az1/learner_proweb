@@ -9,6 +9,7 @@ import { apiCall, API_BASE_URL } from '../config/api'
 import { getCookie } from '../utils/cookies'
 import { useAuth } from '../contexts/AuthContext'
 import { splitFileUrls, joinFileUrls } from '../utils/fileUrlHelper'
+import { processImageFile, isImageFile } from '../utils/imageProcessor'
 import { ChecklistDetailTable, MaterialUploadSection, HomeSection, ScheduleSection, type ChecklistDetailItem, type HomeworkDetailItem } from '../components/student'
 import StudentSubjectReviewSection from '../components/student/StudentSubjectReviewSection'
 import StudentSessionEvaluationSection from '../components/student/StudentSessionEvaluationSection'
@@ -1119,9 +1120,25 @@ export default function StudentDashboard() {
 
   const handleUploadHomeworkFile = async (taskId: string, file: File, fileIndex?: number) => {
     try {
+      // Process image files before upload
+      let processedFile = file
+      if (isImageFile(file)) {
+        try {
+          processedFile = await processImageFile(file, {
+            maxWidth: 1920,
+            maxHeight: 1920,
+            quality: 0.8,
+            maxSizeMB: 2
+          })
+        } catch (error) {
+          console.warn('Image processing failed, using original:', error)
+          // Continue with original file if processing fails
+        }
+      }
+      
       // Upload file lên server
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', processedFile)
       const accessToken = getCookie('accessToken')
       const response = await fetch(`${API_BASE_URL}/files/upload`, {
         method: 'POST',
@@ -3996,14 +4013,6 @@ export default function StudentDashboard() {
                                           const file = e.target.files?.[0]
                                           if (!file) return
                                           
-                                          // Kiểm tra kích thước file (15MB)
-                                          const MAX_FILE_SIZE = 15 * 1024 * 1024
-                                          if (file.size > MAX_FILE_SIZE) {
-                                            alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
-                                            e.target.value = ''
-                                            return
-                                          }
-                                          
                                           // Kiểm tra định dạng file
                                           const allowedTypes = [
                                             'application/pdf',
@@ -4031,6 +4040,7 @@ export default function StudentDashboard() {
                                           
                                           setStudentHomeworkUploading(`${item.id}-new`)
                                           try {
+                                            // handleUploadHomeworkFile sẽ tự động xử lý ảnh
                                             await handleUploadHomeworkFile(item.id, file)
                                             setScheduleFetchTrigger((prev) => prev + 1)
                                           } catch (error) {

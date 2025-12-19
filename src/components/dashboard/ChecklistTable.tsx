@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Check, Clock, X, Upload, FileText, Plus, Edit, Trash2, BookOpen } from 'lucide-react'
+import { processImageFile, isImageFile } from '../../utils/imageProcessor'
 
 export interface ChecklistItem {
   id: string
@@ -34,12 +35,51 @@ export default function ChecklistTable({
 }: ChecklistTableProps) {
   const [uploadingId, setUploadingId] = useState<string | null>(null)
 
-  const handleFileUpload = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file && onUpload) {
+    if (!file || !onUpload) return
+    
+    try {
       setUploadingId(id)
-      onUpload(id, file)
+      
+      // Process image files before upload
+      let processedFile = file
+      if (isImageFile(file)) {
+        try {
+          processedFile = await processImageFile(file, {
+            maxWidth: 1920,
+            maxHeight: 1920,
+            quality: 0.8,
+            maxSizeMB: 2
+          })
+        } catch (error) {
+          console.warn('Image processing failed, using original:', error)
+          // Check original size if processing fails
+          const MAX_FILE_SIZE = 15 * 1024 * 1024
+          if (file.size > MAX_FILE_SIZE) {
+            alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+            e.target.value = ''
+            setUploadingId(null)
+            return
+          }
+        }
+      } else {
+        // Kiểm tra kích thước file không phải ảnh (15MB)
+        const MAX_FILE_SIZE = 15 * 1024 * 1024
+        if (file.size > MAX_FILE_SIZE) {
+          alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+          e.target.value = ''
+          setUploadingId(null)
+          return
+        }
+      }
+      
+      onUpload(id, processedFile)
       setTimeout(() => setUploadingId(null), 1000)
+    } catch (error) {
+      console.error('File processing error:', error)
+      alert('Không thể xử lý file. Vui lòng thử lại.')
+      setUploadingId(null)
     }
   }
 

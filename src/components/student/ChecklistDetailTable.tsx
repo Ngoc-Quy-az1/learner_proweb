@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Layers, Clock, Folder, Lightbulb, Plus, X, Edit2, Loader2 } from 'lucide-react'
 import { splitFileUrls } from '../../utils/fileUrlHelper'
+import { processImageFile, isImageFile } from '../../utils/imageProcessor'
 
 export interface ChecklistDetailItem {
   id: string
@@ -61,17 +62,33 @@ export default function ChecklistDetailTable({
     }))
   }
 
-  const triggerUpload = (id: string, file: File, key: string, fileIndex?: number) => {
+  const triggerUpload = async (id: string, file: File, key: string, fileIndex?: number) => {
     setUploadingKey(key)
-    Promise.resolve(onUpload(id, file, fileIndex))
-      .catch((error) => {
-        console.error('Upload checklist file error:', error)
-        const errorMessage = error instanceof Error ? error.message : 'Không thể upload file. Vui lòng kiểm tra kết nối và thử lại.'
-        alert(errorMessage)
-      })
-      .finally(() => {
-        setUploadingKey((prev) => (prev === key ? null : prev))
-      })
+    try {
+      // Process image files before upload
+      let processedFile = file
+      if (isImageFile(file)) {
+        try {
+          processedFile = await processImageFile(file, {
+            maxWidth: 1920,
+            maxHeight: 1920,
+            quality: 0.8,
+            maxSizeMB: 2
+          })
+        } catch (error) {
+          console.warn('Image processing failed, using original file:', error)
+          // Continue with original file if processing fails
+        }
+      }
+      
+      await Promise.resolve(onUpload(id, processedFile, fileIndex))
+    } catch (error) {
+      console.error('Upload checklist file error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Không thể upload file. Vui lòng kiểm tra kết nối và thử lại.'
+      alert(errorMessage)
+    } finally {
+      setUploadingKey((prev) => (prev === key ? null : prev))
+    }
   }
 
   const triggerDelete = (id: string, fileIndex: number, key: string) => {

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { FileText, Download, Upload } from 'lucide-react'
+import { processImageFile, isImageFile } from '../../utils/imageProcessor'
 
 export interface HomeworkDetailItem {
   id: string
@@ -44,15 +45,8 @@ export default function HomeworkDetailTable({
 }: HomeworkDetailTableProps) {
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, string>>({})
 
-  const handleFileChange = (id: string, file?: File) => {
+  const handleFileChange = async (id: string, file?: File) => {
     if (!file) return
-    
-    // Kiểm tra kích thước file (15MB)
-    const MAX_FILE_SIZE = 15 * 1024 * 1024
-    if (file.size > MAX_FILE_SIZE) {
-      alert('File không được vượt quá 15MB. Vui lòng chọn file nhỏ hơn.')
-      return
-    }
     
     // Kiểm tra định dạng file
     const allowedTypes = [
@@ -74,8 +68,41 @@ export default function HomeworkDetailTable({
       return
     }
     
-    setUploadedFiles(prev => ({ ...prev, [id]: file.name }))
-    onUpload(id, file)
+    try {
+      // Process image files before upload
+      let processedFile = file
+      if (isImageFile(file)) {
+        try {
+          processedFile = await processImageFile(file, {
+            maxWidth: 1920,
+            maxHeight: 1920,
+            quality: 0.8,
+            maxSizeMB: 2
+          })
+        } catch (error) {
+          console.warn('Image processing failed, using original:', error)
+          // Check original size if processing fails
+          const MAX_FILE_SIZE = 15 * 1024 * 1024
+          if (file.size > MAX_FILE_SIZE) {
+            alert('File không được vượt quá 15MB. Vui lòng chọn file nhỏ hơn.')
+            return
+          }
+        }
+      } else {
+        // Kiểm tra kích thước file không phải ảnh (15MB)
+        const MAX_FILE_SIZE = 15 * 1024 * 1024
+        if (file.size > MAX_FILE_SIZE) {
+          alert('File không được vượt quá 15MB. Vui lòng chọn file nhỏ hơn.')
+          return
+        }
+      }
+      
+      setUploadedFiles(prev => ({ ...prev, [id]: processedFile.name }))
+      onUpload(id, processedFile)
+    } catch (error) {
+      console.error('File processing error:', error)
+      alert('Không thể xử lý file. Vui lòng thử lại.')
+    }
   }
 
   const getDifficultyDisplay = (difficulty: HomeworkDetailItem['difficulty']) => {

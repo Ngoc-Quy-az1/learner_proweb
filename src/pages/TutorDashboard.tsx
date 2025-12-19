@@ -6,6 +6,7 @@ import { Users, Calendar, Plus, Clock, UserCircle, Copy, ChevronRight, ChevronLe
 import { format, isToday, differenceInYears } from 'date-fns'
 import { useAuth } from '../contexts/AuthContext'
 import { apiCall, API_BASE_URL } from '../config/api'
+import { processImageFile, processImageFiles, isImageFile } from '../utils/imageProcessor'
 import {
   ChecklistForm,
   SubjectEvaluation,
@@ -2277,16 +2278,6 @@ const quickViewData = useMemo(() => {
   ) => {
     if (!files || files.length === 0) return
     const file = files[0]
-    const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
-    
-    // Kiểm tra kích thước file
-    if (file.size > MAX_FILE_SIZE) {
-      setHomeworkFormUploadErrors(prev => ({
-        ...prev,
-        [taskIndex]: `File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`,
-      }))
-      return
-    }
     
     // Kiểm tra định dạng file
     const allowedTypes = [
@@ -2318,8 +2309,44 @@ const quickViewData = useMemo(() => {
     const uploadKey = `homework-task-${taskIndex}-${field}`
     setTaskFileUploadingKey(uploadKey)
     try {
+      // Process image file before upload
+      let processedFile = file
+      if (isImageFile(file)) {
+        try {
+          processedFile = await processImageFile(file, {
+            maxWidth: 1920,
+            maxHeight: 1920,
+            quality: 0.8,
+            maxSizeMB: 2
+          })
+        } catch (error) {
+          console.warn('Image processing failed, using original:', error)
+          // Check original size if processing fails
+          const MAX_FILE_SIZE = 15 * 1024 * 1024
+          if (file.size > MAX_FILE_SIZE) {
+            setHomeworkFormUploadErrors(prev => ({
+              ...prev,
+              [taskIndex]: `File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`,
+            }))
+            setTaskFileUploadingKey(null)
+            return
+          }
+        }
+      } else {
+        // Kiểm tra kích thước file không phải ảnh (15MB)
+        const MAX_FILE_SIZE = 15 * 1024 * 1024
+        if (file.size > MAX_FILE_SIZE) {
+          setHomeworkFormUploadErrors(prev => ({
+            ...prev,
+            [taskIndex]: `File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`,
+          }))
+          setTaskFileUploadingKey(null)
+          return
+        }
+      }
+      
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', processedFile)
       const accessToken = getCookie('accessToken')
       const response = await fetch(`${API_BASE_URL}/files/upload`, {
         method: 'POST',
@@ -2409,10 +2436,18 @@ const quickViewData = useMemo(() => {
     const uploadKey = `${homeworkId}-${field}`
     setTaskFileUploadingKey(uploadKey)
     try {
-      // Upload tất cả files
+      // Process image files before upload
+      const processedFiles = await processImageFiles(Array.from(files), {
+        maxWidth: 1920,
+        maxHeight: 1920,
+        quality: 0.8,
+        maxSizeMB: 2
+      })
+      
+      // Upload tất cả files (đã được xử lý nếu là ảnh)
       const formData = new FormData()
-      for (let i = 0; i < files.length; i++) {
-        formData.append('files', files[i])
+      for (let i = 0; i < processedFiles.length; i++) {
+        formData.append('files', processedFiles[i])
       }
       const accessToken = getCookie('accessToken')
       const response = await fetch(`${API_BASE_URL}/files/upload-multiple`, {

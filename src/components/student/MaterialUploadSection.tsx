@@ -3,6 +3,7 @@ import { Upload, FileText, X, Edit2, Save, XCircle, Eye } from 'lucide-react'
 import { format } from 'date-fns'
 import { apiCall, API_BASE_URL } from '../../config/api'
 import { getCookie } from '../../utils/cookies'
+import { processImageFile, isImageFile } from '../../utils/imageProcessor'
 
 export interface ScheduleMaterialItem {
   id: string
@@ -212,19 +213,50 @@ export default function MaterialUploadSection({
     fetchScheduleMaterials()
   }, [selectedScheduleId, onUploadSuccess])
 
-  const handleMaterialFilesSelected = (fileList: FileList | null) => {
+  const handleMaterialFilesSelected = async (fileList: FileList | null) => {
     if (!fileList) return
     
     const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
     const selectedFiles = Array.from(fileList)
     const invalidFiles: string[] = []
     
-    // Kiểm tra kích thước từng file
-    selectedFiles.forEach((file) => {
-      if (file.size > MAX_FILE_SIZE) {
+    // Process image files first
+    const processedFiles: File[] = []
+    for (const file of selectedFiles) {
+      // Kiểm tra kích thước file gốc
+      if (file.size > MAX_FILE_SIZE && !isImageFile(file)) {
         invalidFiles.push(file.name)
+        continue
       }
-    })
+      
+      // Process image files to reduce size
+      if (isImageFile(file)) {
+        try {
+          const processed = await processImageFile(file, {
+            maxWidth: 1920,
+            maxHeight: 1920,
+            quality: 0.8,
+            maxSizeMB: 2
+          })
+          processedFiles.push(processed)
+        } catch (error) {
+          console.warn('Image processing failed, using original:', error)
+          // If processing fails, check original size
+          if (file.size > MAX_FILE_SIZE) {
+            invalidFiles.push(file.name)
+          } else {
+            processedFiles.push(file)
+          }
+        }
+      } else {
+        // Non-image files, check size only
+        if (file.size > MAX_FILE_SIZE) {
+          invalidFiles.push(file.name)
+        } else {
+          processedFiles.push(file)
+        }
+      }
+    }
     
     // Nếu có file quá lớn, hiển thị thông báo lỗi
     if (invalidFiles.length > 0) {
@@ -236,13 +268,12 @@ export default function MaterialUploadSection({
         : `Các file sau vượt quá 15MB: ${fileList}. Vui lòng chọn file nhỏ hơn.`
       setUploadError(message)
       // Chỉ thêm các file hợp lệ
-      const validFiles = selectedFiles.filter(file => file.size <= MAX_FILE_SIZE)
-      if (validFiles.length > 0) {
+      if (processedFiles.length > 0) {
         setFilesToUpload((prev) => {
-          const newFiles = [...prev, ...validFiles]
+          const newFiles = [...prev, ...processedFiles]
           // Create object URLs for new files
           const newUrls: Record<number, string> = {}
-          validFiles.forEach((file, offset) => {
+          processedFiles.forEach((file, offset) => {
             const index = prev.length + offset
             newUrls[index] = URL.createObjectURL(file)
           })
@@ -255,10 +286,10 @@ export default function MaterialUploadSection({
     
     // Nếu tất cả file đều hợp lệ, thêm vào danh sách
     setFilesToUpload((prev) => {
-      const newFiles = [...prev, ...selectedFiles]
+      const newFiles = [...prev, ...processedFiles]
       // Create object URLs for new files
       const newUrls: Record<number, string> = {}
-      selectedFiles.forEach((file, offset) => {
+      processedFiles.forEach((file, offset) => {
         const index = prev.length + offset
         newUrls[index] = URL.createObjectURL(file)
       })
@@ -442,20 +473,44 @@ export default function MaterialUploadSection({
   const handleReplaceFile = async (materialId: string, materialUrl: string, file: File) => {
     if (!selectedScheduleId) return
 
-    // Kiểm tra kích thước file (15MB)
-    const MAX_FILE_SIZE = 15 * 1024 * 1024
-    if (file.size > MAX_FILE_SIZE) {
-      setUploadError(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
-      setTimeout(() => setUploadError(null), 5000)
-      return
-    }
-
     try {
       setReplacingMaterialId(materialId)
       setUploadError(null)
 
-      // Upload file mới
-      const uploadedFiles = await uploadSupplementaryFiles([file])
+      // Process image files before upload
+      let processedFile = file
+      if (isImageFile(file)) {
+        try {
+          processedFile = await processImageFile(file, {
+            maxWidth: 1920,
+            maxHeight: 1920,
+            quality: 0.8,
+            maxSizeMB: 2
+          })
+        } catch (error) {
+          console.warn('Image processing failed, using original:', error)
+          // Check original size if processing fails
+          const MAX_FILE_SIZE = 15 * 1024 * 1024
+          if (file.size > MAX_FILE_SIZE) {
+            setUploadError(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+            setTimeout(() => setUploadError(null), 5000)
+            setReplacingMaterialId(null)
+            return
+          }
+        }
+      } else {
+        // Kiểm tra kích thước file không phải ảnh (15MB)
+        const MAX_FILE_SIZE = 15 * 1024 * 1024
+        if (file.size > MAX_FILE_SIZE) {
+          setUploadError(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+          setTimeout(() => setUploadError(null), 5000)
+          setReplacingMaterialId(null)
+          return
+        }
+      }
+
+      // Upload file mới (đã được xử lý nếu là ảnh)
+      const uploadedFiles = await uploadSupplementaryFiles([processedFile])
       if (uploadedFiles.length === 0) {
         throw new Error('Không thể tải file mới')
       }

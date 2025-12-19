@@ -27,6 +27,7 @@ import {
   X,
 } from 'lucide-react'
 import MaterialUploadSection from './MaterialUploadSection'
+import { processImageFile, isImageFile } from '../../utils/imageProcessor'
 import StudentSubjectReviewSection from './StudentSubjectReviewSection'
 import StudentSessionEvaluationSection from './StudentSessionEvaluationSection'
 import StudentReportSection from './StudentReportSection'
@@ -1743,14 +1744,6 @@ export default function HomeSection({
                                                               const file = e.target.files?.[0]
                                                               if (!file || !onUploadHomeworkFile) return
                                                               
-                                                              // Kiểm tra kích thước file (15MB)
-                                                              const MAX_FILE_SIZE = 15 * 1024 * 1024
-                                                              if (file.size > MAX_FILE_SIZE) {
-                                                                alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
-                                                                e.target.value = ''
-                                                                return
-                                                              }
-                                                              
                                                               // Kiểm tra định dạng file
                                                               const allowedTypes = [
                                                                 'application/pdf',
@@ -1777,7 +1770,37 @@ export default function HomeSection({
                                                               }
                                                               
                                                               try {
-                                                                await onUploadHomeworkFile(item.id, file)
+                                                                // Process image files before upload
+                                                                let processedFile = file
+                                                                if (isImageFile(file)) {
+                                                                  try {
+                                                                    processedFile = await processImageFile(file, {
+                                                                      maxWidth: 1920,
+                                                                      maxHeight: 1920,
+                                                                      quality: 0.8,
+                                                                      maxSizeMB: 2
+                                                                    })
+                                                                  } catch (error) {
+                                                                    console.warn('Image processing failed, using original:', error)
+                                                                    // Check original size if processing fails
+                                                                    const MAX_FILE_SIZE = 15 * 1024 * 1024
+                                                                    if (file.size > MAX_FILE_SIZE) {
+                                                                      alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+                                                                      e.target.value = ''
+                                                                      return
+                                                                    }
+                                                                  }
+                                                                } else {
+                                                                  // Kiểm tra kích thước file không phải ảnh (15MB)
+                                                                  const MAX_FILE_SIZE = 15 * 1024 * 1024
+                                                                  if (file.size > MAX_FILE_SIZE) {
+                                                                    alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+                                                                    e.target.value = ''
+                                                                    return
+                                                                  }
+                                                                }
+                                                                
+                                                                await onUploadHomeworkFile(item.id, processedFile)
                                                                 onUploadSuccess()
                                                               } catch (error) {
                                                                 console.error('Upload failed:', error)

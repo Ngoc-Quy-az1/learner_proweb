@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Plus, Upload, Loader2, ChevronDown, ChevronUp, Layers, Clock, Folder, Lightbulb, PenTool, Edit2, X } from 'lucide-react'
 import type { AssignmentApiItem } from '../../pages/TutorDashboard'
 import { splitFileUrls } from '../../utils/fileUrlHelper'
+import { processImageFile, isImageFile } from '../../utils/imageProcessor'
 
 type TodayAssignmentStatus = 'pending' | 'in-progress' | 'completed'
 

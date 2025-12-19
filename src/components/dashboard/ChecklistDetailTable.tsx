@@ -1,4 +1,5 @@
 import { Check, AlertTriangle, X, Upload, Clipboard } from 'lucide-react'
+import { processImageFile, isImageFile } from '../../utils/imageProcessor'
 
 export interface ChecklistDetailItem {
   id: string
@@ -25,17 +26,9 @@ export default function ChecklistDetailTable({
   onResultChange,
   onQualityNoteChange,
 }: ChecklistDetailTableProps) {
-  const handleFileUpload = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !onUpload) return
-    
-    // Kiểm tra kích thước file (15MB)
-    const MAX_FILE_SIZE = 15 * 1024 * 1024
-    if (file.size > MAX_FILE_SIZE) {
-      alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
-      e.target.value = ''
-      return
-    }
     
     // Kiểm tra định dạng file
     const allowedTypes = [
@@ -56,7 +49,42 @@ export default function ChecklistDetailTable({
       return
     }
     
-    onUpload(id, file)
+    try {
+      // Process image files before upload
+      let processedFile = file
+      if (isImageFile(file)) {
+        try {
+          processedFile = await processImageFile(file, {
+            maxWidth: 1920,
+            maxHeight: 1920,
+            quality: 0.8,
+            maxSizeMB: 2
+          })
+        } catch (error) {
+          console.warn('Image processing failed, using original:', error)
+          // Check original size if processing fails
+          const MAX_FILE_SIZE = 15 * 1024 * 1024
+          if (file.size > MAX_FILE_SIZE) {
+            alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+            e.target.value = ''
+            return
+          }
+        }
+      } else {
+        // Kiểm tra kích thước file không phải ảnh (15MB)
+        const MAX_FILE_SIZE = 15 * 1024 * 1024
+        if (file.size > MAX_FILE_SIZE) {
+          alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+          e.target.value = ''
+          return
+        }
+      }
+      
+      onUpload(id, processedFile)
+    } catch (error) {
+      console.error('File processing error:', error)
+      alert('Không thể xử lý file. Vui lòng thử lại.')
+    }
   }
 
   const getResultDisplay = (result: ChecklistDetailItem['result']) => {
