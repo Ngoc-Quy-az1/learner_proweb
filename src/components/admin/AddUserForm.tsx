@@ -318,7 +318,29 @@ export default function AddUserForm({ newUser, onUserChange, onClose, onSuccess 
                   disabled={uploadingFile}
                   onChange={(e) => {
                     const file = e.target.files?.[0] ?? null
-                    if (file) handleAddUserAvatarChange(file)
+                    if (!file) return
+                    
+                    // Kiểm tra kích thước file (5MB cho avatar)
+                    const MAX_FILE_SIZE = 5 * 1024 * 1024
+                    if (file.size > MAX_FILE_SIZE) {
+                      alert(`File "${file.name}" vượt quá 5MB. Vui lòng chọn file nhỏ hơn.`)
+                      e.target.value = ''
+                      return
+                    }
+                    
+                    // Kiểm tra định dạng file
+                    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+                    const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                    const isValidType = allowedTypes.includes(file.type) || 
+                      ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                    
+                    if (!isValidType) {
+                      alert(`Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file ảnh (JPG, PNG, GIF, WebP).`)
+                      e.target.value = ''
+                      return
+                    }
+                    
+                    handleAddUserAvatarChange(file)
                   }}
                 />
               </label>

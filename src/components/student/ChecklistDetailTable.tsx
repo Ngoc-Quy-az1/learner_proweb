@@ -66,6 +66,8 @@ export default function ChecklistDetailTable({
     Promise.resolve(onUpload(id, file, fileIndex))
       .catch((error) => {
         console.error('Upload checklist file error:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Không thể upload file. Vui lòng kiểm tra kết nối và thử lại.'
+        alert(errorMessage)
       })
       .finally(() => {
         setUploadingKey((prev) => (prev === key ? null : prev))
@@ -200,11 +202,45 @@ export default function ChecklistDetailTable({
                                         type="file"
                                         className="hidden"
                                         onChange={(e) => {
-                                          if (e.target.files?.[0]) {
-                                            markDirty(item.id)
-                                            triggerUpload(item.id, e.target.files[0], fileKey, idx)
+                                          const file = e.target.files?.[0]
+                                          if (!file) return
+                                          
+                                          // Kiểm tra kích thước file (15MB)
+                                          const MAX_FILE_SIZE = 15 * 1024 * 1024
+                                          if (file.size > MAX_FILE_SIZE) {
+                                            alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
                                             e.target.value = ''
+                                            return
                                           }
+                                          
+                                          // Kiểm tra định dạng file
+                                          const allowedTypes = [
+                                            'application/pdf',
+                                            'image/jpeg',
+                                            'image/jpg',
+                                            'image/png',
+                                            'image/gif',
+                                            'image/webp',
+                                            'application/msword',
+                                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                            'application/vnd.ms-powerpoint',
+                                            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                                            'application/vnd.ms-excel',
+                                            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                          ]
+                                          const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                                          const isValidType = allowedTypes.includes(file.type) || 
+                                            ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                                          
+                                          if (!isValidType) {
+                                            alert(`Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.`)
+                                            e.target.value = ''
+                                            return
+                                          }
+                                          
+                                          markDirty(item.id)
+                                          triggerUpload(item.id, file, fileKey, idx)
+                                          e.target.value = ''
                                         }}
                                         accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                       />
@@ -259,11 +295,45 @@ export default function ChecklistDetailTable({
                                     type="file"
                                     className="hidden"
                                     onChange={(e) => {
-                                      if (e.target.files?.[0]) {
-                                        markDirty(item.id)
-                                        triggerUpload(item.id, e.target.files[0], addKey)
+                                      const file = e.target.files?.[0]
+                                      if (!file) return
+                                      
+                                      // Kiểm tra kích thước file (15MB)
+                                      const MAX_FILE_SIZE = 15 * 1024 * 1024
+                                      if (file.size > MAX_FILE_SIZE) {
+                                        alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
                                         e.target.value = ''
+                                        return
                                       }
+                                      
+                                      // Kiểm tra định dạng file
+                                      const allowedTypes = [
+                                        'application/pdf',
+                                        'image/jpeg',
+                                        'image/jpg',
+                                        'image/png',
+                                        'image/gif',
+                                        'image/webp',
+                                        'application/msword',
+                                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                        'application/vnd.ms-powerpoint',
+                                        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                                        'application/vnd.ms-excel',
+                                        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                      ]
+                                      const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                                      const isValidType = allowedTypes.includes(file.type) || 
+                                        ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                                      
+                                      if (!isValidType) {
+                                        alert(`Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.`)
+                                        e.target.value = ''
+                                        return
+                                      }
+                                      
+                                      markDirty(item.id)
+                                      triggerUpload(item.id, file, addKey)
+                                      e.target.value = ''
                                     }}
                                     accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                   />
@@ -482,11 +552,45 @@ export default function ChecklistDetailTable({
                                           type="file"
                                           className="hidden"
                                           onChange={(e) => {
-                                            if (e.target.files?.[0]) {
-                                              markDirty(item.id)
-                                              triggerUpload(item.id, e.target.files[0], fileKey, idx)
+                                            const file = e.target.files?.[0]
+                                            if (!file) return
+                                            
+                                            // Kiểm tra kích thước file (15MB)
+                                            const MAX_FILE_SIZE = 15 * 1024 * 1024
+                                            if (file.size > MAX_FILE_SIZE) {
+                                              alert('File không được vượt quá 15MB. Vui lòng chọn file nhỏ hơn.')
                                               e.target.value = ''
+                                              return
                                             }
+                                            
+                                            // Kiểm tra định dạng file
+                                            const allowedTypes = [
+                                              'application/pdf',
+                                              'image/jpeg',
+                                              'image/jpg',
+                                              'image/png',
+                                              'image/gif',
+                                              'image/webp',
+                                              'application/msword',
+                                              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                              'application/vnd.ms-powerpoint',
+                                              'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                                              'application/vnd.ms-excel',
+                                              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                            ]
+                                            const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                                            const isValidType = allowedTypes.includes(file.type) || 
+                                              ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                                            
+                                            if (!isValidType) {
+                                              alert('Định dạng file không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.')
+                                              e.target.value = ''
+                                              return
+                                            }
+                                            
+                                            markDirty(item.id)
+                                            triggerUpload(item.id, file, fileKey, idx)
+                                            e.target.value = ''
                                           }}
                                           accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                         />
@@ -542,11 +646,45 @@ export default function ChecklistDetailTable({
                                     type="file"
                                     className="hidden"
                                     onChange={(e) => {
-                                      if (e.target.files?.[0]) {
-                                        markDirty(item.id)
-                                        triggerUpload(item.id, e.target.files[0], addKey)
+                                      const file = e.target.files?.[0]
+                                      if (!file) return
+                                      
+                                      // Kiểm tra kích thước file (15MB)
+                                      const MAX_FILE_SIZE = 15 * 1024 * 1024
+                                      if (file.size > MAX_FILE_SIZE) {
+                                        alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
                                         e.target.value = ''
+                                        return
                                       }
+                                      
+                                      // Kiểm tra định dạng file
+                                      const allowedTypes = [
+                                        'application/pdf',
+                                        'image/jpeg',
+                                        'image/jpg',
+                                        'image/png',
+                                        'image/gif',
+                                        'image/webp',
+                                        'application/msword',
+                                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                        'application/vnd.ms-powerpoint',
+                                        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                                        'application/vnd.ms-excel',
+                                        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                      ]
+                                      const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                                      const isValidType = allowedTypes.includes(file.type) || 
+                                        ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                                      
+                                      if (!isValidType) {
+                                        alert(`Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.`)
+                                        e.target.value = ''
+                                        return
+                                      }
+                                      
+                                      markDirty(item.id)
+                                      triggerUpload(item.id, file, addKey)
+                                      e.target.value = ''
                                     }}
                                     accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                   />

@@ -2146,12 +2146,12 @@ useEffect(() => {
                         const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
                         const maxSize = 5 * 1024 * 1024
                         if (!validTypes.includes(file.type)) {
-                          alert('Vui lòng chọn file ảnh (jpg, png, gif, webp)')
+                          alert(`File "${file.name}" không phải là file ảnh hợp lệ. Vui lòng chọn file ảnh (JPG, PNG, GIF, WebP).`)
                           e.target.value = ''
                           return
                         }
                         if (file.size > maxSize) {
-                          alert('Kích thước ảnh không được vượt quá 5MB')
+                          alert(`File "${file.name}" vượt quá 5MB. Vui lòng chọn file nhỏ hơn.`)
                           e.target.value = ''
                           return
                         }
@@ -2837,13 +2837,16 @@ useEffect(() => {
                               if (!file) return
                               const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
                               const maxSize = 10 * 1024 * 1024 // 10MB
-                              if (!validTypes.includes(file.type)) {
-                                alert('Vui lòng chọn file PDF hoặc Word (.pdf, .doc, .docx)')
+                              const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                              const isValidType = validTypes.includes(file.type) || ['pdf', 'doc', 'docx'].includes(fileExtension || '')
+                              
+                              if (!isValidType) {
+                                alert(`File "${file.name}" không phải là file PDF hoặc Word hợp lệ. Vui lòng chọn file PDF hoặc Word (.pdf, .doc, .docx).`)
                                 e.target.value = ''
                                 return
                               }
                               if (file.size > maxSize) {
-                                alert('Kích thước file không được vượt quá 10MB')
+                                alert(`File "${file.name}" vượt quá 10MB. Vui lòng chọn file nhỏ hơn.`)
                                 e.target.value = ''
                                 return
                               }

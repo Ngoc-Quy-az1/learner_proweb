@@ -214,7 +214,46 @@ export default function MaterialUploadSection({
 
   const handleMaterialFilesSelected = (fileList: FileList | null) => {
     if (!fileList) return
+    
+    const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
     const selectedFiles = Array.from(fileList)
+    const invalidFiles: string[] = []
+    
+    // Kiểm tra kích thước từng file
+    selectedFiles.forEach((file) => {
+      if (file.size > MAX_FILE_SIZE) {
+        invalidFiles.push(file.name)
+      }
+    })
+    
+    // Nếu có file quá lớn, hiển thị thông báo lỗi
+    if (invalidFiles.length > 0) {
+      const fileList = invalidFiles.length === 1 
+        ? invalidFiles[0] 
+        : invalidFiles.join(', ')
+      const message = invalidFiles.length === 1
+        ? `File "${fileList}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`
+        : `Các file sau vượt quá 15MB: ${fileList}. Vui lòng chọn file nhỏ hơn.`
+      setUploadError(message)
+      // Chỉ thêm các file hợp lệ
+      const validFiles = selectedFiles.filter(file => file.size <= MAX_FILE_SIZE)
+      if (validFiles.length > 0) {
+        setFilesToUpload((prev) => {
+          const newFiles = [...prev, ...validFiles]
+          // Create object URLs for new files
+          const newUrls: Record<number, string> = {}
+          validFiles.forEach((file, offset) => {
+            const index = prev.length + offset
+            newUrls[index] = URL.createObjectURL(file)
+          })
+          setFileObjectUrls(prevUrls => ({ ...prevUrls, ...newUrls }))
+          return newFiles
+        })
+      }
+      return
+    }
+    
+    // Nếu tất cả file đều hợp lệ, thêm vào danh sách
     setFilesToUpload((prev) => {
       const newFiles = [...prev, ...selectedFiles]
       // Create object URLs for new files
@@ -226,6 +265,8 @@ export default function MaterialUploadSection({
       setFileObjectUrls(prevUrls => ({ ...prevUrls, ...newUrls }))
       return newFiles
     })
+    // Clear error nếu upload thành công
+    setUploadError(null)
   }
 
   const handleRemovePendingFile = (index: number) => {
@@ -401,6 +442,14 @@ export default function MaterialUploadSection({
   const handleReplaceFile = async (materialId: string, materialUrl: string, file: File) => {
     if (!selectedScheduleId) return
 
+    // Kiểm tra kích thước file (15MB)
+    const MAX_FILE_SIZE = 15 * 1024 * 1024
+    if (file.size > MAX_FILE_SIZE) {
+      setUploadError(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+      setTimeout(() => setUploadError(null), 5000)
+      return
+    }
+
     try {
       setReplacingMaterialId(materialId)
       setUploadError(null)
@@ -503,7 +552,20 @@ export default function MaterialUploadSection({
               className="hidden"
               multiple
               accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-              onChange={(e) => handleMaterialFilesSelected(e.target.files)}
+              onChange={(e) => {
+                handleMaterialFilesSelected(e.target.files)
+                // Reset input để có thể chọn lại file nếu có lỗi
+                if (e.target.files && e.target.files.length > 0) {
+                  const MAX_FILE_SIZE = 15 * 1024 * 1024
+                  const hasInvalidFile = Array.from(e.target.files).some(file => file.size > MAX_FILE_SIZE)
+                  if (hasInvalidFile) {
+                    // Chỉ reset nếu có file không hợp lệ, để giữ lại các file hợp lệ
+                    setTimeout(() => {
+                      e.target.value = ''
+                    }, 100)
+                  }
+                }
+              }}
             />
             <label htmlFor="document-upload" className="cursor-pointer flex flex-col items-center">
               <Upload className="w-16 h-16 text-primary-500 mx-auto mb-4" />
@@ -511,7 +573,7 @@ export default function MaterialUploadSection({
                 Click để chọn tài liệu
               </p>
               <p className="text-sm text-gray-600">
-                PDF, DOC, DOCX, JPG, PNG (tối đa 10MB/tệp)
+                PDF, DOC, DOCX, JPG, PNG (tối đa 15MB/tệp)
               </p>
             </label>
           </div>
@@ -670,7 +732,7 @@ export default function MaterialUploadSection({
                   const isReplacing = replacingMaterialId === material.id
 
                   return (
-                    <div key={material.id} className="p-4 bg-white rounded-xl border-2 border-gray-200 hover:border-primary-300 hover:shadow-md transition-all">
+                    <div key={material.id} className="p-3 sm:p-4 bg-white rounded-xl border-2 border-gray-200 hover:border-primary-300 hover:shadow-md transition-all overflow-hidden">
                       {isEditing ? (
                         <div className="space-y-4">
                           <div>
@@ -756,30 +818,30 @@ export default function MaterialUploadSection({
                           </div>
 
                           {/* Action Buttons */}
-                          <div className="flex items-center gap-2 pt-3 border-t border-gray-200">
+                          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-200">
                             <button
                               onClick={() => handleStartEdit(material)}
-                              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg transition-colors font-semibold text-sm"
+                              className="flex-1 min-w-[80px] sm:min-w-0 flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 sm:py-2.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg transition-colors font-semibold text-xs sm:text-sm"
                               title="Chỉnh sửa"
                             >
-                              <Edit2 className="w-4 h-4" />
-                              <span>Sửa</span>
+                              <Edit2 className="w-4 h-4 flex-shrink-0" />
+                              <span className="hidden sm:inline">Sửa</span>
                             </button>
                             <button
                               onClick={() => window.open(normalizedUrl, '_blank')}
-                              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg transition-colors font-semibold text-sm"
+                              className="flex-1 min-w-[80px] sm:min-w-0 flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 sm:py-2.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg transition-colors font-semibold text-xs sm:text-sm"
                               title="Xem file"
                             >
-                              <Eye className="w-4 h-4" />
-                              <span>Xem</span>
+                              <Eye className="w-4 h-4 flex-shrink-0" />
+                              <span className="hidden sm:inline">Xem</span>
                             </button>
                             <button
                               onClick={() => handleDeleteMaterial(material.url)}
-                              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg transition-colors font-semibold text-sm"
+                              className="flex-1 min-w-[80px] sm:min-w-0 flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 sm:py-2.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg transition-colors font-semibold text-xs sm:text-sm"
                               title="Xóa tài liệu"
                             >
-                              <X className="w-4 h-4" />
-                              <span>Xóa</span>
+                              <X className="w-4 h-4 flex-shrink-0" />
+                              <span className="hidden sm:inline">Xóa</span>
                             </button>
                           </div>
 
@@ -795,8 +857,8 @@ export default function MaterialUploadSection({
                                 const file = e.target.files?.[0]
                                 if (file) {
                                   handleReplaceFile(material.id, material.url, file)
+                                  e.target.value = '' // Reset input
                                 }
-                                e.target.value = '' // Reset input
                               }}
                               disabled={isReplacing}
                             />

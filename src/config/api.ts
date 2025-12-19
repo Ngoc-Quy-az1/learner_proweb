@@ -1,9 +1,7 @@
 // API Configuration
 import { getCookie, setCookie } from '../utils/cookies'
-import { getTokensFromStorage, setTokensInStorage } from '../utils/tabStorage'
 
-// Lấy API_BASE_URL từ biến môi trường, fallback về giá trị mặc định nếu không có
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://47.128.68.241:3000/v1'
+export const API_BASE_URL = 'http://47.128.68.241:3000/v1'
 
 const ACCESS_TOKEN_COOKIE_NAME = 'accessToken'
 let isRefreshing = false
@@ -21,8 +19,7 @@ async function refreshAccessToken(): Promise<string> {
   isRefreshing = true
   refreshPromise = (async () => {
     try {
-      // Get tokens from localStorage with tabId - each tab has its own tokens
-      const tokens = getTokensFromStorage()
+      const tokens = localStorage.getItem('tokens')
       if (!tokens) {
         throw new Error('No refresh token available')
       }
@@ -49,7 +46,7 @@ async function refreshAccessToken(): Promise<string> {
 
       const data = await response.json()
       
-      // Handle response format: { tokens: { access, refresh } } or { access, refresh } }
+      // Handle response format: { tokens: { access, refresh } } or { access, refresh }
       const tokenData = data.tokens || data
       const { access, refresh: newRefresh } = tokenData
       
@@ -57,8 +54,8 @@ async function refreshAccessToken(): Promise<string> {
         throw new Error('Invalid token response format')
       }
 
-      // Update tokens in localStorage with tabId (tab-specific)
-      setTokensInStorage(JSON.stringify({ access, refresh: newRefresh }))
+      // Update tokens in localStorage
+      localStorage.setItem('tokens', JSON.stringify({ access, refresh: newRefresh }))
 
       // Update access token in cookie
       const expiresDate = new Date(access.expires)
@@ -67,8 +64,9 @@ async function refreshAccessToken(): Promise<string> {
 
       return access.token
     } catch (error) {
-      // Don't clear sessionStorage on refresh failure - let each tab handle its own session
-      // Only clear cookie for this tab
+      // Clear tokens on refresh failure
+      localStorage.removeItem('tokens')
+      localStorage.removeItem('user')
       setCookie(ACCESS_TOKEN_COOKIE_NAME, '', -1)
       throw error
     } finally {
@@ -134,22 +132,11 @@ export async function apiCall<T>(
 
       return retryResponse.json()
     } catch (refreshError) {
-      // If refresh fails, check if we still have tokens with tabId
-      // If we do, it might be a temporary network issue - don't clear session
-      // User check is handled by AuthContext
-      const storedTokens = getTokensFromStorage()
-      
-      if (!storedTokens) {
-        // No tokens, clear cookie and throw error
-        setCookie(ACCESS_TOKEN_COOKIE_NAME, '', -1)
-        throw new Error('Session expired. Please login again.')
+      // If refresh fails, redirect to login
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login'
       }
-      
-      // We have tokens but refresh failed - might be temporary
-      // Clear cookie for this tab but keep localStorage
-      // Let the component decide what to do (retry, show error, etc.)
-      setCookie(ACCESS_TOKEN_COOKIE_NAME, '', -1)
-      throw new Error('Failed to refresh session. Please try again.')
+      throw new Error('Session expired. Please login again.')
     }
   }
 
@@ -176,17 +163,6 @@ export async function apiCall<T>(
     throw new Error(errorMessage)
   }
 
-  // Handle empty responses (e.g., DELETE 204 No Content)
-  const responseText = await response.text()
-  if (!responseText) {
-    return undefined as T
-  }
-
-  try {
-    return JSON.parse(responseText)
-  } catch {
-    // If not JSON, return as plain text
-    return responseText as unknown as T
-  }
+  return response.json()
 }
 

@@ -237,7 +237,39 @@ export default function ChecklistTable({
                           type="file"
                           className="hidden"
                           accept="image/*,.pdf"
-                          onChange={(e) => handleFileUpload(item.id, e)}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            
+                            // Kiểm tra kích thước file (15MB)
+                            const MAX_FILE_SIZE = 15 * 1024 * 1024
+                            if (file.size > MAX_FILE_SIZE) {
+                              alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+                              e.target.value = ''
+                              return
+                            }
+                            
+                            // Kiểm tra định dạng file
+                            const allowedTypes = [
+                              'application/pdf',
+                              'image/jpeg',
+                              'image/jpg',
+                              'image/png',
+                              'image/gif',
+                              'image/webp'
+                            ]
+                            const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                            const isValidType = allowedTypes.includes(file.type) || 
+                              ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                            
+                            if (!isValidType) {
+                              alert(`Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF hoặc hình ảnh.`)
+                              e.target.value = ''
+                              return
+                            }
+                            
+                            handleFileUpload(item.id, e)
+                          }}
                           disabled={uploadingId === item.id}
                         />
                         <Upload className={`w-4 h-4 ${uploadingId === item.id ? 'text-primary-400' : 'text-primary-600'}`} />

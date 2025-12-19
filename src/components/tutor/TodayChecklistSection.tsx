@@ -59,6 +59,47 @@ interface TodayChecklistSectionProps {
   onStatusChange?: (assignmentKey: string, taskIndex: number, status: TodayAssignmentStatus) => void
 }
 
+// Helper function để validate file
+const validateFile = (file: File, maxSizeMB: number = 15): { isValid: boolean; error?: string } => {
+  const MAX_FILE_SIZE = maxSizeMB * 1024 * 1024
+  
+  // Kiểm tra kích thước file
+  if (file.size > MAX_FILE_SIZE) {
+    return {
+      isValid: false,
+      error: `File "${file.name}" vượt quá ${maxSizeMB}MB. Vui lòng chọn file nhỏ hơn.`
+    }
+  }
+  
+  // Kiểm tra định dạng file
+  const allowedTypes = [
+    'application/pdf',
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ]
+  const fileExtension = file.name.split('.').pop()?.toLowerCase()
+  const isValidType = allowedTypes.includes(file.type) || 
+    ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+  
+  if (!isValidType) {
+    return {
+      isValid: false,
+      error: `Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.`
+    }
+  }
+  
+  return { isValid: true }
+}
+
 // Helper function to parse URLs from string or array
 const parseFileUrls = (urls: string | string[] | undefined | null): string[] => {
   if (!urls) return []
@@ -801,15 +842,48 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                                   accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                                   onChange={(e) => {
                                                     const file = e.target.files?.[0]
+                                                    if (!file) return
+                                                    
                                                     const key = `${assignmentKey}-${taskIndex}-assignmentUrl`
-                                                    if (file && file.size > MAX_FILE_SIZE) {
+                                                    
+                                                    // Kiểm tra kích thước file (15MB)
+                                                    if (file.size > MAX_FILE_SIZE) {
                                                       setUploadErrors(prev => ({
                                                         ...prev,
-                                                        [key]: 'File không được vượt quá 15MB',
+                                                        [key]: `File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`,
                                                       }))
                                                       e.target.value = ''
                                                       return
                                                     }
+                                                    
+                                                    // Kiểm tra định dạng file
+                                                    const allowedTypes = [
+                                                      'application/pdf',
+                                                      'image/jpeg',
+                                                      'image/jpg',
+                                                      'image/png',
+                                                      'image/gif',
+                                                      'image/webp',
+                                                      'application/msword',
+                                                      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                                      'application/vnd.ms-powerpoint',
+                                                      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                                                      'application/vnd.ms-excel',
+                                                      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                                    ]
+                                                    const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                                                    const isValidType = allowedTypes.includes(file.type) || 
+                                                      ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                                                    
+                                                    if (!isValidType) {
+                                                      setUploadErrors(prev => ({
+                                                        ...prev,
+                                                        [key]: `Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.`,
+                                                      }))
+                                                      e.target.value = ''
+                                                      return
+                                                    }
+                                                    
                                                     setUploadErrors(prev => {
                                                       const next = { ...prev }
                                                       delete next[key]
@@ -920,6 +994,26 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                         className="hidden"
                                         accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                         onChange={(e) => {
+                                          const file = e.target.files?.[0]
+                                          if (!file) return
+                                          
+                                          const key = `${assignmentKey}-${taskIndex}-answerURL`
+                                          const validation = validateFile(file)
+                                          
+                                          if (!validation.isValid) {
+                                            setUploadErrors(prev => ({
+                                              ...prev,
+                                              [key]: validation.error || 'File không hợp lệ',
+                                            }))
+                                            e.target.value = ''
+                                            return
+                                          }
+                                          
+                                          setUploadErrors(prev => {
+                                            const next = { ...prev }
+                                            delete next[key]
+                                            return next
+                                          })
                                           onUploadTaskFile(assignmentKey, taskIndex, 'answerURL', e.target.files)
                                           e.target.value = ''
                                         }}
@@ -996,6 +1090,26 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                             className="hidden"
                                             accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                             onChange={(e) => {
+                                              const file = e.target.files?.[0]
+                                              if (!file) return
+                                              
+                                              const key = `${assignmentKey}-${taskIndex}-answerURL`
+                                              const validation = validateFile(file)
+                                              
+                                              if (!validation.isValid) {
+                                                setUploadErrors(prev => ({
+                                                  ...prev,
+                                                  [key]: validation.error || 'File không hợp lệ',
+                                                }))
+                                                e.target.value = ''
+                                                return
+                                              }
+                                              
+                                              setUploadErrors(prev => {
+                                                const next = { ...prev }
+                                                delete next[key]
+                                                return next
+                                              })
                                               onUploadTaskFile(assignmentKey, taskIndex, 'answerURL', e.target.files)
                                               e.target.value = ''
                                             }}
@@ -1097,6 +1211,26 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                               className="hidden"
                                               accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                               onChange={(e) => {
+                                                const file = e.target.files?.[0]
+                                                if (!file) return
+                                                
+                                                const key = `${assignmentKey}-${taskIndex}-solutionUrl`
+                                                const validation = validateFile(file)
+                                                
+                                                if (!validation.isValid) {
+                                                  setUploadErrors(prev => ({
+                                                    ...prev,
+                                                    [key]: validation.error || 'File không hợp lệ',
+                                                  }))
+                                                  e.target.value = ''
+                                                  return
+                                                }
+                                                
+                                                setUploadErrors(prev => {
+                                                  const next = { ...prev }
+                                                  delete next[key]
+                                                  return next
+                                                })
                                                 onUploadTaskFile(assignmentKey, taskIndex, 'solutionUrl', e.target.files)
                                                 e.target.value = ''
                                               }}
@@ -1333,6 +1467,26 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                                     className="hidden"
                                                     accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                                     onChange={(e) => {
+                                                      const file = e.target.files?.[0]
+                                                      if (!file) return
+                                                      
+                                                      const key = `${assignmentKey}-${taskIndex}-assignmentUrl-${idx}`
+                                                      const validation = validateFile(file)
+                                                      
+                                                      if (!validation.isValid) {
+                                                        setUploadErrors(prev => ({
+                                                          ...prev,
+                                                          [key]: validation.error || 'File không hợp lệ',
+                                                        }))
+                                                        e.target.value = ''
+                                                        return
+                                                      }
+                                                      
+                                                      setUploadErrors(prev => {
+                                                        const next = { ...prev }
+                                                        delete next[key]
+                                                        return next
+                                                      })
                                                       onUploadTaskFile(assignmentKey, taskIndex, 'assignmentUrl', e.target.files, idx)
                                                       e.target.value = ''
                                                     }}
@@ -1369,6 +1523,26 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                               className="hidden"
                                               accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                               onChange={(e) => {
+                                                const file = e.target.files?.[0]
+                                                if (!file) return
+                                                
+                                                const key = `${assignmentKey}-${taskIndex}-assignmentUrl`
+                                                const validation = validateFile(file)
+                                                
+                                                if (!validation.isValid) {
+                                                  setUploadErrors(prev => ({
+                                                    ...prev,
+                                                    [key]: validation.error || 'File không hợp lệ',
+                                                  }))
+                                                  e.target.value = ''
+                                                  return
+                                                }
+                                                
+                                                setUploadErrors(prev => {
+                                                  const next = { ...prev }
+                                                  delete next[key]
+                                                  return next
+                                                })
                                                 onUploadTaskFile(assignmentKey, taskIndex, 'assignmentUrl', e.target.files)
                                                 e.target.value = ''
                                               }}
@@ -1419,6 +1593,26 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                           className="hidden"
                                           accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                           onChange={(e) => {
+                                            const file = e.target.files?.[0]
+                                            if (!file) return
+                                            
+                                            const key = `${assignmentKey}-${taskIndex}-answerURL`
+                                            const validation = validateFile(file)
+                                            
+                                            if (!validation.isValid) {
+                                              setUploadErrors(prev => ({
+                                                ...prev,
+                                                [key]: validation.error || 'File không hợp lệ',
+                                              }))
+                                              e.target.value = ''
+                                              return
+                                            }
+                                            
+                                            setUploadErrors(prev => {
+                                              const next = { ...prev }
+                                              delete next[key]
+                                              return next
+                                            })
                                             onUploadTaskFile(
                                               assignmentKey,
                                               taskIndex,
@@ -1465,6 +1659,26 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                                     className="hidden"
                                                     accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                                     onChange={(e) => {
+                                                      const file = e.target.files?.[0]
+                                                      if (!file) return
+                                                      
+                                                      const key = `${assignmentKey}-${taskIndex}-answerURL-${idx}`
+                                                      const validation = validateFile(file)
+                                                      
+                                                      if (!validation.isValid) {
+                                                        setUploadErrors(prev => ({
+                                                          ...prev,
+                                                          [key]: validation.error || 'File không hợp lệ',
+                                                        }))
+                                                        e.target.value = ''
+                                                        return
+                                                      }
+                                                      
+                                                      setUploadErrors(prev => {
+                                                        const next = { ...prev }
+                                                        delete next[key]
+                                                        return next
+                                                      })
                                                       onUploadTaskFile(assignmentKey, taskIndex, 'answerURL', e.target.files, idx)
                                                       e.target.value = ''
                                                     }}
@@ -1501,6 +1715,26 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                               className="hidden"
                                               accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                               onChange={(e) => {
+                                                const file = e.target.files?.[0]
+                                                if (!file) return
+                                                
+                                                const key = `${assignmentKey}-${taskIndex}-answerURL`
+                                                const validation = validateFile(file)
+                                                
+                                                if (!validation.isValid) {
+                                                  setUploadErrors(prev => ({
+                                                    ...prev,
+                                                    [key]: validation.error || 'File không hợp lệ',
+                                                  }))
+                                                  e.target.value = ''
+                                                  return
+                                                }
+                                                
+                                                setUploadErrors(prev => {
+                                                  const next = { ...prev }
+                                                  delete next[key]
+                                                  return next
+                                                })
                                                 onUploadTaskFile(assignmentKey, taskIndex, 'answerURL', e.target.files)
                                                 e.target.value = ''
                                               }}
@@ -1596,6 +1830,26 @@ const TodayChecklistSection: React.FC<TodayChecklistSectionProps> = ({
                                               className="hidden"
                                               accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                               onChange={(e) => {
+                                                const file = e.target.files?.[0]
+                                                if (!file) return
+                                                
+                                                const key = `${assignmentKey}-${taskIndex}-solutionUrl`
+                                                const validation = validateFile(file)
+                                                
+                                                if (!validation.isValid) {
+                                                  setUploadErrors(prev => ({
+                                                    ...prev,
+                                                    [key]: validation.error || 'File không hợp lệ',
+                                                  }))
+                                                  e.target.value = ''
+                                                  return
+                                                }
+                                                
+                                                setUploadErrors(prev => {
+                                                  const next = { ...prev }
+                                                  delete next[key]
+                                                  return next
+                                                })
                                                 onUploadTaskFile(assignmentKey, taskIndex, 'solutionUrl', e.target.files)
                                                 e.target.value = ''
                                               }}

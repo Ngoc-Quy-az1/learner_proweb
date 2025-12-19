@@ -20,18 +20,36 @@ export default function LoginPage() {
     try {
       const loggedInUser = await login(email, password)
       
-      // Redirect based on role
-      if (loggedInUser.role === 'student' || loggedInUser.role === 'parent') {
-        navigate('/student')
-      } else if (loggedInUser.role === 'tutor') {
-        navigate('/tutor')
-      } else if (loggedInUser.role === 'teacher') {
-        navigate('/teacher')
-      } else if (loggedInUser.role === 'admin') {
-        navigate('/admin')
+      // Check email domain to determine which system to use
+      const emailDomain = email.toLowerCase().split('@')[1] || ''
+      const isClassSystem = emailDomain === 'classskillar.com' || emailDomain === 'classskillar'
+      
+      // Redirect based on email domain and role
+      if (isClassSystem) {
+        // New class system
+        if (loggedInUser.role === 'student' || loggedInUser.role === 'parent') {
+          navigate('/class/student')
+        } else if (loggedInUser.role === 'tutor') {
+          navigate('/class/tutor')
+        } else if (loggedInUser.role === 'admin') {
+          navigate('/class/admin')
+        } else {
+          navigate('/class/student')
+        }
       } else {
-        // Fallback to home if role is unknown
-        navigate('/')
+        // Old system (skillar.com or other domains)
+        if (loggedInUser.role === 'student' || loggedInUser.role === 'parent') {
+          navigate('/student')
+        } else if (loggedInUser.role === 'tutor') {
+          navigate('/tutor')
+        } else if (loggedInUser.role === 'teacher') {
+          navigate('/teacher')
+        } else if (loggedInUser.role === 'admin') {
+          navigate('/admin')
+        } else {
+          // Fallback to home if role is unknown
+          navigate('/')
+        }
       }
     } catch (err) {
       setError('Tên đăng nhập hoặc mật khẩu không đúng')

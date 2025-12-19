@@ -27,9 +27,36 @@ export default function ChecklistDetailTable({
 }: ChecklistDetailTableProps) {
   const handleFileUpload = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file && onUpload) {
-      onUpload(id, file)
+    if (!file || !onUpload) return
+    
+    // Kiểm tra kích thước file (15MB)
+    const MAX_FILE_SIZE = 15 * 1024 * 1024
+    if (file.size > MAX_FILE_SIZE) {
+      alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+      e.target.value = ''
+      return
     }
+    
+    // Kiểm tra định dạng file
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp'
+    ]
+    const fileExtension = file.name.split('.').pop()?.toLowerCase()
+    const isValidType = allowedTypes.includes(file.type) || 
+      ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+    
+    if (!isValidType) {
+      alert(`Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF hoặc hình ảnh.`)
+      e.target.value = ''
+      return
+    }
+    
+    onUpload(id, file)
   }
 
   const getResultDisplay = (result: ChecklistDetailItem['result']) => {

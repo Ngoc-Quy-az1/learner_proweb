@@ -52,7 +52,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode,
   }
   
   if (!allowedRoles.includes(user.role)) {
-    // User role doesn't match - redirect to appropriate dashboard based on role
+    // User role doesn't match - redirect to appropriate dashboard
     // Preserve the section query param if possible
     const section = new URLSearchParams(location.search).get('section')
     const sectionParam = section ? `?section=${section}` : ''

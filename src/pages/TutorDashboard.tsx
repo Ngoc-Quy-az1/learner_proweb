@@ -2281,10 +2281,36 @@ const quickViewData = useMemo(() => {
     
     // Kiểm tra kích thước file
     if (file.size > MAX_FILE_SIZE) {
-      // Hiển thị lỗi ngay dưới trường "File bài tập" trong form tạo bài tập
       setHomeworkFormUploadErrors(prev => ({
         ...prev,
-        [taskIndex]: 'File không được vượt quá 15MB',
+        [taskIndex]: `File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`,
+      }))
+      return
+    }
+    
+    // Kiểm tra định dạng file
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ]
+    const fileExtension = file.name.split('.').pop()?.toLowerCase()
+    const isValidType = allowedTypes.includes(file.type) || 
+      ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+    
+    if (!isValidType) {
+      setHomeworkFormUploadErrors(prev => ({
+        ...prev,
+        [taskIndex]: `Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.`,
       }))
       return
     }
@@ -2981,11 +3007,39 @@ const quickViewData = useMemo(() => {
   ) => {
     if (!files || files.length === 0) return
     const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
+
+    // Kiểm tra kích thước và định dạng từng file
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ]
     
-    // Kiểm tra kích thước từng file
     for (let i = 0; i < files.length; i++) {
-      if (files[i].size > MAX_FILE_SIZE) {
-        setAssignmentsError('File không được vượt quá 15MB')
+      const file = files[i]
+      
+      // Kiểm tra kích thước
+      if (file.size > MAX_FILE_SIZE) {
+        setAssignmentsError(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+        return
+      }
+      
+      // Kiểm tra định dạng
+      const fileExtension = file.name.split('.').pop()?.toLowerCase()
+      const isValidType = allowedTypes.includes(file.type) || 
+        ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+      
+      if (!isValidType) {
+        setAssignmentsError(`Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.`)
         return
       }
     }
@@ -4518,6 +4572,42 @@ const quickViewData = useMemo(() => {
                                                                       className="hidden"
                                                                       accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                                                       onChange={(e) => {
+                                                                        const file = e.target.files?.[0]
+                                                                        if (!file) return
+                                                                        
+                                                                        // Kiểm tra kích thước file (15MB)
+                                                                        const MAX_FILE_SIZE = 15 * 1024 * 1024
+                                                                        if (file.size > MAX_FILE_SIZE) {
+                                                                          alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+                                                                          e.target.value = ''
+                                                                          return
+                                                                        }
+                                                                        
+                                                                        // Kiểm tra định dạng file
+                                                                        const allowedTypes = [
+                                                                          'application/pdf',
+                                                                          'image/jpeg',
+                                                                          'image/jpg',
+                                                                          'image/png',
+                                                                          'image/gif',
+                                                                          'image/webp',
+                                                                          'application/msword',
+                                                                          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                                                          'application/vnd.ms-powerpoint',
+                                                                          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                                                                          'application/vnd.ms-excel',
+                                                                          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                                                        ]
+                                                                        const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                                                                        const isValidType = allowedTypes.includes(file.type) || 
+                                                                          ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                                                                        
+                                                                        if (!isValidType) {
+                                                                          alert(`Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.`)
+                                                                          e.target.value = ''
+                                                                          return
+                                                                        }
+                                                                        
                                                                         handleAssignmentTaskFileUpload(
                                                                           assignmentKey,
                                                                           taskIndex,
@@ -4646,6 +4736,42 @@ const quickViewData = useMemo(() => {
                                                                       className="hidden"
                                                                       accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                                                       onChange={(e) => {
+                                                                        const file = e.target.files?.[0]
+                                                                        if (!file) return
+                                                                        
+                                                                        // Kiểm tra kích thước file (15MB)
+                                                                        const MAX_FILE_SIZE = 15 * 1024 * 1024
+                                                                        if (file.size > MAX_FILE_SIZE) {
+                                                                          alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+                                                                          e.target.value = ''
+                                                                          return
+                                                                        }
+                                                                        
+                                                                        // Kiểm tra định dạng file
+                                                                        const allowedTypes = [
+                                                                          'application/pdf',
+                                                                          'image/jpeg',
+                                                                          'image/jpg',
+                                                                          'image/png',
+                                                                          'image/gif',
+                                                                          'image/webp',
+                                                                          'application/msword',
+                                                                          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                                                          'application/vnd.ms-powerpoint',
+                                                                          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                                                                          'application/vnd.ms-excel',
+                                                                          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                                                        ]
+                                                                        const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                                                                        const isValidType = allowedTypes.includes(file.type) || 
+                                                                          ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                                                                        
+                                                                        if (!isValidType) {
+                                                                          alert(`Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.`)
+                                                                          e.target.value = ''
+                                                                          return
+                                                                        }
+                                                                        
                                                                         handleAssignmentTaskFileUpload(
                                                                           assignmentKey,
                                                                           taskIndex,
@@ -6531,6 +6657,42 @@ const renderChecklistSection = () => {
                                     className="hidden"
                                     accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                     onChange={(e) => {
+                                      const file = e.target.files?.[0]
+                                      if (!file) return
+                                      
+                                      // Kiểm tra kích thước file (15MB)
+                                      const MAX_FILE_SIZE = 15 * 1024 * 1024
+                                      if (file.size > MAX_FILE_SIZE) {
+                                        alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+                                        e.target.value = ''
+                                        return
+                                      }
+                                      
+                                      // Kiểm tra định dạng file
+                                      const allowedTypes = [
+                                        'application/pdf',
+                                        'image/jpeg',
+                                        'image/jpg',
+                                        'image/png',
+                                        'image/gif',
+                                        'image/webp',
+                                        'application/msword',
+                                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                        'application/vnd.ms-powerpoint',
+                                        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                                        'application/vnd.ms-excel',
+                                        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                      ]
+                                      const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                                      const isValidType = allowedTypes.includes(file.type) || 
+                                        ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                                      
+                                      if (!isValidType) {
+                                        alert(`Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.`)
+                                        e.target.value = ''
+                                        return
+                                      }
+                                      
                                       handleHomeworkTaskFileUpload(
                                         index,
                                         'assignmentUrl',

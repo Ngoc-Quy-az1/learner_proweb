@@ -46,6 +46,34 @@ export default function HomeworkDetailTable({
 
   const handleFileChange = (id: string, file?: File) => {
     if (!file) return
+    
+    // Kiểm tra kích thước file (15MB)
+    const MAX_FILE_SIZE = 15 * 1024 * 1024
+    if (file.size > MAX_FILE_SIZE) {
+      alert('File không được vượt quá 15MB. Vui lòng chọn file nhỏ hơn.')
+      return
+    }
+    
+    // Kiểm tra định dạng file
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ]
+    const fileExtension = file.name.split('.').pop()?.toLowerCase()
+    const isValidType = allowedTypes.includes(file.type) || 
+      ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+    
+    if (!isValidType) {
+      alert('Định dạng file không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh hoặc Word.')
+      return
+    }
+    
     setUploadedFiles(prev => ({ ...prev, [id]: file.name }))
     onUpload(id, file)
   }
@@ -125,7 +153,10 @@ export default function HomeworkDetailTable({
                             <input
                               type="file"
                               className="hidden"
-                              onChange={(e) => handleFileChange(item.id, e.target.files?.[0])}
+                              onChange={(e) => {
+                                handleFileChange(item.id, e.target.files?.[0])
+                                e.target.value = ''
+                              }}
                               accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                             />
                             <Upload className="w-3 h-3 flex-shrink-0" />
@@ -137,7 +168,10 @@ export default function HomeworkDetailTable({
                           <input
                             type="file"
                             className="hidden"
-                            onChange={(e) => handleFileChange(item.id, e.target.files?.[0])}
+                            onChange={(e) => {
+                              handleFileChange(item.id, e.target.files?.[0])
+                              e.target.value = ''
+                            }}
                             accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                           />
                           <Upload className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />

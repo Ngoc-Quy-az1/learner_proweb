@@ -271,9 +271,33 @@ export default function ChecklistForm({
     const file = fileList[0]
     const uploadKey = `${exercise.id}-${fileIndex}`
     
-    // Validation đã được kiểm tra ở onChange của input, nhưng kiểm tra lại để chắc chắn
+    // Kiểm tra kích thước file
     if (file.size > MAX_FILE_SIZE) {
-      setUploadErrors((prev) => ({ ...prev, [uploadKey]: 'File không được vượt quá 15MB' }))
+      setUploadErrors((prev) => ({ ...prev, [uploadKey]: `File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.` }))
+      return
+    }
+    
+    // Kiểm tra định dạng file
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ]
+    const fileExtension = file.name.split('.').pop()?.toLowerCase()
+    const isValidType = allowedTypes.includes(file.type) || 
+      ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+    
+    if (!isValidType) {
+      setUploadErrors((prev) => ({ ...prev, [uploadKey]: `Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.` }))
       return
     }
     
@@ -634,6 +658,44 @@ export default function ChecklistForm({
                                         accept="application/pdf,image/*,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                                         className="hidden"
                                         onChange={(event) => {
+                                          const file = event.target.files?.[0]
+                                          if (!file) return
+                                          
+                                          // Kiểm tra kích thước file (15MB)
+                                          const MAX_FILE_SIZE = 15 * 1024 * 1024
+                                          if (file.size > MAX_FILE_SIZE) {
+                                            const uploadKey = `${exercise.id}-${fileIndex}`
+                                            setUploadErrors((prev) => ({ ...prev, [uploadKey]: `File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.` }))
+                                            event.target.value = ''
+                                            return
+                                          }
+                                          
+                                          // Kiểm tra định dạng file
+                                          const allowedTypes = [
+                                            'application/pdf',
+                                            'image/jpeg',
+                                            'image/jpg',
+                                            'image/png',
+                                            'image/gif',
+                                            'image/webp',
+                                            'application/msword',
+                                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                            'application/vnd.ms-powerpoint',
+                                            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                                            'application/vnd.ms-excel',
+                                            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                          ]
+                                          const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                                          const isValidType = allowedTypes.includes(file.type) || 
+                                            ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                                          
+                                          if (!isValidType) {
+                                            const uploadKey = `${exercise.id}-${fileIndex}`
+                                            setUploadErrors((prev) => ({ ...prev, [uploadKey]: `Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.` }))
+                                            event.target.value = ''
+                                            return
+                                          }
+                                          
                                           handleFileUpload(idx, fileIndex, event.target.files)
                                           event.target.value = ''
                                         }}

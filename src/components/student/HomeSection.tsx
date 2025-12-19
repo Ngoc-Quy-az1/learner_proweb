@@ -1742,12 +1742,47 @@ export default function HomeSection({
                                                             onChange={async (e) => {
                                                               const file = e.target.files?.[0]
                                                               if (!file || !onUploadHomeworkFile) return
+                                                              
+                                                              // Kiểm tra kích thước file (15MB)
+                                                              const MAX_FILE_SIZE = 15 * 1024 * 1024
+                                                              if (file.size > MAX_FILE_SIZE) {
+                                                                alert(`File "${file.name}" vượt quá 15MB. Vui lòng chọn file nhỏ hơn.`)
+                                                                e.target.value = ''
+                                                                return
+                                                              }
+                                                              
+                                                              // Kiểm tra định dạng file
+                                                              const allowedTypes = [
+                                                                'application/pdf',
+                                                                'image/jpeg',
+                                                                'image/jpg',
+                                                                'image/png',
+                                                                'image/gif',
+                                                                'image/webp',
+                                                                'application/msword',
+                                                                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                                                'application/vnd.ms-powerpoint',
+                                                                'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                                                                'application/vnd.ms-excel',
+                                                                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                                              ]
+                                                              const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                                                              const isValidType = allowedTypes.includes(file.type) || 
+                                                                ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                                                              
+                                                              if (!isValidType) {
+                                                                alert(`Định dạng file "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.`)
+                                                                e.target.value = ''
+                                                                return
+                                                              }
+                                                              
                                                               try {
                                                                 await onUploadHomeworkFile(item.id, file)
                                                                 onUploadSuccess()
                                                               } catch (error) {
                                                                 console.error('Upload failed:', error)
-                                                                alert('Không thể upload file. Vui lòng thử lại.')
+                                                                const errorMessage = error instanceof Error ? error.message : 'Không thể upload file. Vui lòng thử lại.'
+                                                                alert(errorMessage)
                                                               } finally {
                                                                 e.target.value = ''
                                                               }
@@ -1792,13 +1827,48 @@ export default function HomeSection({
                                                       onChange={async (e) => {
                                                         const file = e.target.files?.[0]
                                                         if (!file || !onUploadHomeworkFile) return
+                                                        
+                                                        // Kiểm tra kích thước file (15MB)
+                                                        const MAX_FILE_SIZE = 15 * 1024 * 1024
+                                                        if (file.size > MAX_FILE_SIZE) {
+                                                          alert('File không được vượt quá 15MB. Vui lòng chọn file nhỏ hơn.')
+                                                          e.target.value = ''
+                                                          return
+                                                        }
+                                                        
+                                                        // Kiểm tra định dạng file
+                                                        const allowedTypes = [
+                                                          'application/pdf',
+                                                          'image/jpeg',
+                                                          'image/jpg',
+                                                          'image/png',
+                                                          'image/gif',
+                                                          'image/webp',
+                                                          'application/msword',
+                                                          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                                          'application/vnd.ms-powerpoint',
+                                                          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                                                          'application/vnd.ms-excel',
+                                                          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                                        ]
+                                                        const fileExtension = file.name.split('.').pop()?.toLowerCase()
+                                                        const isValidType = allowedTypes.includes(file.type) || 
+                                                          ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')
+                                                        
+                                                        if (!isValidType) {
+                                                          alert('Định dạng file không được hỗ trợ. Vui lòng chọn file PDF, hình ảnh, Word, PowerPoint hoặc Excel.')
+                                                          e.target.value = ''
+                                                          return
+                                                        }
+                                                        
                                                         setHomeworkUploading(item.id)
                                                         try {
                                                           await onUploadHomeworkFile(item.id, file)
                                                           onUploadSuccess()
                                                         } catch (error) {
                                                           console.error('Upload failed:', error)
-                                                          alert('Không thể upload file. Vui lòng thử lại.')
+                                                          const errorMessage = error instanceof Error ? error.message : 'Không thể upload file. Vui lòng thử lại.'
+                                                          alert(errorMessage)
                                                         } finally {
                                                           setHomeworkUploading(null)
                                                           e.target.value = ''
