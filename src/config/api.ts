@@ -1,7 +1,7 @@
 // API Configuration
 import { getCookie, setCookie } from '../utils/cookies'
 
-export const API_BASE_URL = 'http://47.128.68.241:3000/v1'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 const ACCESS_TOKEN_COOKIE_NAME = 'accessToken'
 let isRefreshing = false
